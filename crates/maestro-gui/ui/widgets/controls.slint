@@ -1,0 +1,167 @@
+import { Theme } from "../theme.slint";
+import { Icons } from "icons.slint";
+
+export component MaestroButton inherits Rectangle {
+    in-out property <string> text;
+    // Optional leading icon, taken from `Icons`. A button may be icon-only
+    // (leave `text` empty), text-only (leave this unset), or both.
+    in property <image> icon;
+    in-out property <bool> primary: false;
+    in-out property <bool> danger: false;
+    in-out property <bool> disabled: false;
+    in-out property <bool> small-text: false;
+
+    callback clicked;
+
+    // One foreground colour shared by the label and the icon tint, so the two
+    // can never drift apart across the hover/disabled states.
+    property <color> fg: disabled ? Theme.text_disabled
+        : (primary || danger ? Theme.text_primary
+        : (touch.has-hover ? Theme.text_primary : Theme.text_secondary));
+    // An unset `image` has zero size; anything real is at least 1px.
+    property <bool> has_icon: root.icon.width > 0;
+    property <length> icon_size: small-text ? 12px : 15px;
+
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: disabled ? Theme.border_color
+        : (danger ? Theme.danger_border : (primary ? Theme.primary : Theme.border_color));
+    background: disabled ? Theme.bg_card_hover
+        : (danger ? (touch.has-hover ? Theme.danger_hover : Theme.danger)
+        : (primary ? (touch.has-hover ? Theme.primary_hover : Theme.primary)
+        : (touch.has-hover ? Theme.bg_card_hover : Theme.bg_card)));
+
+    min-height: small-text ? 18px : 36px;
+    min-width: small-text ? 18px : 36px;
+
+    touch := TouchArea {
+        enabled: !disabled;
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        padding-left: small-text ? 4px : 8px;
+        padding-right: small-text ? 4px : 8px;
+        padding-top: small-text ? 2px : 4px;
+        padding-bottom: small-text ? 2px : 4px;
+        spacing: root.has_icon && root.text != "" ? 6px : 0px;
+        cross-axis-alignment: center;
+        // An icon-only button centres its icon inside whatever width the call
+        // site pinned. Anything with a label keeps the stretching label so long
+        // text still elides the way it always has.
+        alignment: root.text == "" ? LayoutAlignment.center : LayoutAlignment.stretch;
+
+        if (root.has_icon): Image {
+            source: root.icon;
+            colorize: root.fg;
+            width: root.icon_size;
+            height: root.icon_size;
+            image-fit: contain;
+            horizontal-stretch: 0;
+        }
+
+        if (root.text != ""): Text {
+            text: root.text;
+            color: root.fg;
+            font-family: Theme.font;
+            font-size: small-text ? 10px : 14px;
+            font-weight: 600;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+            overflow: TextOverflow.elide;
+            horizontal-stretch: 1;
+        }
+    }
+}
+
+// Compact button used inside table rows (reorder / edit / delete). Call sites
+// set the width they need — a width declared here would be overridden by the
+// row's layout anyway.
+export component MaestroIconButton inherits MaestroButton {
+    small-text: true;
+}
+
+export component MaestroCard inherits Rectangle {
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: Theme.border_color;
+    background: Theme.bg_card;
+    clip: true;
+}
+
+export component MaestroProgressBar inherits Rectangle {
+    in-out property <float> progress; // 0.0 to 1.0
+    // When true, the bar shows a looping marquee instead of `progress` —
+    // for phases where no total is known yet (e.g. scanning a MIDI).
+    in property <bool> indeterminate: false;
+    in property <float> warn-after: 1.0;
+
+    border-radius: 4px;
+    background: Theme.bg_card_hover;
+    height: 8px;
+    clip: true;
+
+    if (!root.indeterminate): Rectangle {
+        x: 0;
+        y: 0;
+        width: parent.width * clamp(root.progress, 0.0, 1.0);
+        height: 100%;
+        border-radius: 4px;
+        background: get-color(root.progress > root.warn-after);
+    }
+
+    if (root.indeterminate): Rectangle {
+        property <float> phase: Math.mod(animation-tick() / 1.2s, 1.0);
+        width: parent.width * 0.35;
+        x: (parent.width + self.width) * self.phase - self.width;
+        y: 0;
+        height: 100%;
+        border-radius: 4px;
+        background: get-color(root.progress > root.warn-after);
+    }
+
+    function get-color(warn: bool) -> brush {
+        if (warn) {
+            return Theme.accent_red;
+        } else {
+            return @linear-gradient(90deg, Theme.border_focus 0%, Theme.accent_green 100%);
+        }
+    }
+}
+
+// Small coloured square labelling a SoundFont format ("SF2" / "SF3" / "SFZ";
+// anything else renders grey). Used both next to a SoundFont's filename and in
+// the synthesizer picker, where it lists the formats a synth can load.
+export component MaestroSfTypeBadge inherits Rectangle {
+    in property <string> sf_type;
+
+    horizontal-stretch: 0;
+    width: 34px;
+    height: 18px;
+    border-radius: 4px;
+    background: root.sf_type == "SF2" ? #3b82f6 :
+        root.sf_type == "SF3" ? #8b5cf6 :
+        root.sf_type == "SFZ" ? #f59e0b : #6b7280;
+
+    Text {
+        text: root.sf_type;
+        color: #ffffff;
+        font-family: Theme.font;
+        font-size: 10px;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+export component HorizontalSeparator inherits Rectangle {
+    width: 1px;
+    height: 100%;
+    background: Theme.border_color;
+}
+
+export component VerticalSeparator inherits Rectangle {
+    horizontal-stretch: 1;
+    height: 1px;
+    background: Theme.border_color;
+}

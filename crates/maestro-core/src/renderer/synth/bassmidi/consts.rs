@@ -1,0 +1,130 @@
+/// The "no sound" device: BASS still has to be initialised for decoding
+/// channels, but no output device is opened.
+pub const BASS_DEVICE_NOSOUND: u32 = 0;
+
+pub const BASS_ERROR_ALREADY: i32 = 14;
+
+pub const BASS_SAMPLE_MONO: u32 = 2;
+pub const BASS_SAMPLE_FLOAT: u32 = 256;
+pub const BASS_STREAM_DECODE: u32 = 0x200000;
+
+pub const BASS_MIDI_DECAYEND: u32 = 0x1000;
+pub const BASS_MIDI_NOFX: u32 = 0x2000;
+pub const BASS_MIDI_NOTEOFF1: u32 = 0x10000;
+
+pub const BASS_MIDI_FONT_XGDRUMS: u32 = 0x40000;
+pub const BASS_MIDI_FONT_NOFX: u32 = 0x80000;
+pub const BASS_MIDI_FONT_LINATTMOD: u32 = 0x100000;
+pub const BASS_MIDI_FONT_LINDECVOL: u32 = 0x200000;
+pub const BASS_MIDI_FONT_NORAMPIN: u32 = 0x400000;
+pub const BASS_MIDI_FONT_NOSBLIMITS: u32 = 0x800000;
+pub const BASS_MIDI_FONT_MINFX: u32 = 0x1000000;
+pub const BASS_MIDI_FONT_SBLIMITS: u32 = 0x2000000;
+
+pub const BASS_ATTRIB_MIDI_CPU: u32 = 0x12001;
+pub const BASS_ATTRIB_MIDI_VOICES: u32 = 0x12003;
+pub const BASS_ATTRIB_MIDI_VOICES_ACTIVE: u32 = 0x12004;
+pub const BASS_ATTRIB_MIDI_SRC: u32 = 0x12006;
+pub const BASS_ATTRIB_MIDI_KILL: u32 = 0x12007;
+
+pub const BASS_MIDI_EVENTS_RAW: u32 = 0x10000;
+pub const BASS_MIDI_EVENTS_NORSTATUS: u32 = 0x2000000;
+
+pub const MIDI_EVENT_NOTE: u32 = 1;
+pub const MIDI_EVENT_PROGRAM: u32 = 2;
+pub const MIDI_EVENT_CHANPRES: u32 = 3;
+pub const MIDI_EVENT_PITCH: u32 = 4;
+pub const MIDI_EVENT_PITCHRANGE: u32 = 5;
+pub const MIDI_EVENT_DRUMS: u32 = 6;
+pub const MIDI_EVENT_FINETUNE: u32 = 7;
+pub const MIDI_EVENT_COARSETUNE: u32 = 8;
+pub const MIDI_EVENT_MASTERVOL: u32 = 9;
+pub const MIDI_EVENT_BANK: u32 = 10;
+pub const MIDI_EVENT_MODULATION: u32 = 11;
+pub const MIDI_EVENT_VOLUME: u32 = 12;
+pub const MIDI_EVENT_PAN: u32 = 13;
+pub const MIDI_EVENT_EXPRESSION: u32 = 14;
+pub const MIDI_EVENT_SUSTAIN: u32 = 15;
+pub const MIDI_EVENT_SOUNDOFF: u32 = 16;
+pub const MIDI_EVENT_RESET: u32 = 17;
+pub const MIDI_EVENT_NOTESOFF: u32 = 18;
+pub const MIDI_EVENT_PORTAMENTO: u32 = 19;
+pub const MIDI_EVENT_PORTATIME: u32 = 20;
+pub const MIDI_EVENT_PORTANOTE: u32 = 21;
+pub const MIDI_EVENT_MODE: u32 = 22;
+pub const MIDI_EVENT_REVERB: u32 = 23;
+pub const MIDI_EVENT_CHORUS: u32 = 24;
+pub const MIDI_EVENT_CUTOFF: u32 = 25;
+pub const MIDI_EVENT_RESONANCE: u32 = 26;
+pub const MIDI_EVENT_RELEASE: u32 = 27;
+pub const MIDI_EVENT_ATTACK: u32 = 28;
+pub const MIDI_EVENT_DECAY: u32 = 29;
+pub const MIDI_EVENT_REVERB_MACRO: u32 = 30;
+pub const MIDI_EVENT_CHORUS_MACRO: u32 = 31;
+pub const MIDI_EVENT_REVERB_TIME: u32 = 32;
+pub const MIDI_EVENT_REVERB_DELAY: u32 = 33;
+pub const MIDI_EVENT_REVERB_LOCUTOFF: u32 = 34;
+pub const MIDI_EVENT_REVERB_HICUTOFF: u32 = 35;
+pub const MIDI_EVENT_REVERB_LEVEL: u32 = 36;
+pub const MIDI_EVENT_CHORUS_DELAY: u32 = 37;
+pub const MIDI_EVENT_CHORUS_DEPTH: u32 = 38;
+pub const MIDI_EVENT_CHORUS_RATE: u32 = 39;
+pub const MIDI_EVENT_CHORUS_FEEDBACK: u32 = 40;
+pub const MIDI_EVENT_CHORUS_LEVEL: u32 = 41;
+pub const MIDI_EVENT_CHORUS_REVERB: u32 = 42;
+pub const MIDI_EVENT_USERFX: u32 = 43;
+pub const MIDI_EVENT_USERFX_LEVEL: u32 = 44;
+pub const MIDI_EVENT_USERFX_REVERB: u32 = 45;
+pub const MIDI_EVENT_USERFX_CHORUS: u32 = 46;
+pub const MIDI_EVENT_DRUM_FINETUNE: u32 = 50;
+pub const MIDI_EVENT_DRUM_COARSETUNE: u32 = 51;
+pub const MIDI_EVENT_DRUM_PAN: u32 = 52;
+pub const MIDI_EVENT_DRUM_REVERB: u32 = 53;
+pub const MIDI_EVENT_DRUM_CHORUS: u32 = 54;
+pub const MIDI_EVENT_DRUM_CUTOFF: u32 = 55;
+pub const MIDI_EVENT_DRUM_RESONANCE: u32 = 56;
+pub const MIDI_EVENT_DRUM_LEVEL: u32 = 57;
+pub const MIDI_EVENT_DRUM_USERFX: u32 = 58;
+pub const MIDI_EVENT_SOFT: u32 = 60;
+pub const MIDI_EVENT_SYSTEM: u32 = 61;
+pub const MIDI_EVENT_TEMPO: u32 = 62;
+pub const MIDI_EVENT_SCALETUNING: u32 = 63;
+pub const MIDI_EVENT_CONTROL: u32 = 64;
+pub const MIDI_EVENT_CHANPRES_VIBRATO: u32 = 65;
+pub const MIDI_EVENT_CHANPRES_PITCH: u32 = 66;
+pub const MIDI_EVENT_CHANPRES_FILTER: u32 = 67;
+pub const MIDI_EVENT_CHANPRES_VOLUME: u32 = 68;
+pub const MIDI_EVENT_MOD_VIBRATO: u32 = 69;
+pub const MIDI_EVENT_MODRANGE: u32 = 69;
+pub const MIDI_EVENT_BANK_LSB: u32 = 70;
+pub const MIDI_EVENT_KEYPRES: u32 = 71;
+pub const MIDI_EVENT_KEYPRES_VIBRATO: u32 = 72;
+pub const MIDI_EVENT_KEYPRES_PITCH: u32 = 73;
+pub const MIDI_EVENT_KEYPRES_FILTER: u32 = 74;
+pub const MIDI_EVENT_KEYPRES_VOLUME: u32 = 75;
+pub const MIDI_EVENT_SOSTENUTO: u32 = 76;
+pub const MIDI_EVENT_MOD_PITCH: u32 = 77;
+pub const MIDI_EVENT_MOD_FILTER: u32 = 78;
+pub const MIDI_EVENT_MOD_VOLUME: u32 = 79;
+pub const MIDI_EVENT_VIBRATO_RATE: u32 = 80;
+pub const MIDI_EVENT_VIBRATO_DEPTH: u32 = 81;
+pub const MIDI_EVENT_VIBRATO_DELAY: u32 = 82;
+pub const MIDI_EVENT_MASTER_FINETUNE: u32 = 83;
+pub const MIDI_EVENT_MASTER_COARSETUNE: u32 = 84;
+pub const MIDI_EVENT_MIXLEVEL: u32 = 0x10000;
+pub const MIDI_EVENT_TRANSPOSE: u32 = 0x10001;
+pub const MIDI_EVENT_SYSTEMEX: u32 = 0x10002;
+pub const MIDI_EVENT_SPEED: u32 = 0x10004;
+pub const MIDI_EVENT_DEFDRUMS: u32 = 0x10006;
+
+pub const MIDI_EVENT_END: u32 = 0;
+pub const MIDI_EVENT_END_TRACK: u32 = 0x10003;
+
+pub const MIDI_EVENT_NOTES: u32 = 0x20000;
+pub const MIDI_EVENT_VOICES: u32 = 0x20001;
+
+pub const MIDI_SYSTEM_DEFAULT: u32 = 0;
+pub const MIDI_SYSTEM_GM1: u32 = 1;
+pub const MIDI_SYSTEM_GM2: u32 = 2;
+pub const MIDI_SYSTEM_XG: u32 = 3;
+pub const MIDI_SYSTEM_GS: u32 = 4;

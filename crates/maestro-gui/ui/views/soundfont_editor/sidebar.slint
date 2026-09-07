@@ -1,0 +1,116 @@
+import { ScrollView } from "std-widgets.slint";
+import {
+    Theme,
+    MaestroButton,
+    MaestroCard,
+    BodyText,
+    TitleText,
+    Icons,
+} from "../../widgets.slint";
+import { SoundfontEditorState } from "../../globals.slint";
+
+// Sidebar listing every SoundFont list file. Left-click selects, right-click
+// reveals the inline rename / delete actions for that row (the "Default" list
+// cannot be renamed or deleted, so it has no context menu).
+export component SflistSidebar inherits MaestroCard {
+    // Row whose inline context menu is currently expanded, or -1.
+    property <int> context_menu_idx: -1;
+
+    callback rename_requested(int, string); // (index, current name)
+    callback delete_requested(int, string); // (index, name)
+    callback create_requested();
+
+    horizontal-stretch: 0;
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 8px;
+
+        TitleText {
+            text: "SoundFont Lists";
+        }
+
+        ScrollView {
+            VerticalLayout {
+                spacing: 6px;
+
+                for name[idx] in SoundfontEditorState.file_names: row := Rectangle {
+                    property <bool> selected: idx == SoundfontEditorState.selected_file_index;
+                    property <bool> menu_open: root.context_menu_idx == idx;
+
+                    height: self.menu_open ? 84px : 40px;
+                    border-radius: 6px;
+                    background: self.selected ? Theme.primary
+                        : (file_touch.has-hover ? Theme.bg_card_hover : transparent);
+                    border-width: 1px;
+                    border-color: self.selected ? Theme.primary : transparent;
+
+                    file_touch := TouchArea {
+                        pointer-event(event) => {
+                            if (event.kind == PointerEventKind.up) {
+                                if (event.button == PointerEventButton.left) {
+                                    SoundfontEditorState.select_file(idx);
+                                } else if (event.button == PointerEventButton.right && name != "Default") {
+                                    root.context_menu_idx = root.context_menu_idx == idx ? -1 : idx;
+                                }
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: 4px;
+
+                        HorizontalLayout {
+                            height: 40px;
+                            padding-left: 12px;
+                            padding-right: 12px;
+                            alignment: space-between;
+
+                            BodyText {
+                                text: name + (SoundfontEditorState.file_dirty[idx] ? "*" : "");
+                                color: row.selected ? Theme.text_primary
+                                    : (SoundfontEditorState.file_dirty[idx] ? Theme.accent_green : Theme.text_secondary);
+                                overflow: TextOverflow.elide;
+                            }
+                        }
+
+                        if (row.menu_open): HorizontalLayout {
+                            padding-left: 4px;
+                            padding-right: 4px;
+                            spacing: 4px;
+                            alignment: center;
+
+                            MaestroButton {
+                                width: 32px;
+                                height: 32px;
+                                icon: Icons.edit;
+                                clicked => {
+                                    root.rename_requested(idx, name);
+                                    root.context_menu_idx = -1;
+                                }
+                            }
+
+                            MaestroButton {
+                                width: 32px;
+                                height: 32px;
+                                icon: Icons.trash;
+                                danger: true;
+                                clicked => {
+                                    root.delete_requested(idx, name);
+                                    root.context_menu_idx = -1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        MaestroButton {
+            icon: Icons.plus;
+            text: "New List";
+            primary: true;
+            clicked => { root.create_requested(); }
+        }
+    }
+}

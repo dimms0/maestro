@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Maestro virtual MIDI device service (launchd agent).
+
+  Installed as a LaunchAgent (per-user) because CoreMIDI virtual endpoints
+  and CoreAudio output belong to the user session.
+  
+  Keep in step with `plist_text()` in
+  crates/maestro-gui/src/views/system_integration/service.rs, which the GUI's
+  Repair action regenerates this file from.
+
+    cp gr.dimms.maestro.daemon.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$UID ~/Library/LaunchAgents/gr.dimms.maestro.daemon.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>gr.dimms.maestro.daemon</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/maestrod</string>
+    </array>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+</dict>
+</plist>

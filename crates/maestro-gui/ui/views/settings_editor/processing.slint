@@ -1,0 +1,683 @@
+import { Slider } from "std-widgets.slint";
+import {
+    Theme,
+    MaestroCheckBox,
+    MaestroLineEdit,
+    MaestroSpinBox,
+    BodyText,
+    SectionCard,
+    Field,
+    HorizontalSeparator,
+    MaestroButton,
+    MaestroCard,
+    MaestroIcon,
+    Icons,
+} from "../../widgets.slint";
+import { SettingsEditorState } from "../../globals.slint";
+import { EventFlagKind } from "../../enums.slint";
+import {
+    SlintEventProcessorConfig,
+    SlintPostProcessorConfig,
+} from "../../structs.slint";
+
+// Plots the final velocity mapping y(x) produced by PortEventProcessor's
+// velocity_table (see crates/maestro-core/src/renderer/port/event_processor.rs):
+// mult = (x / 127)^curve; y = min(127, floor(x * mult * multiplier)). A fixed
+// velocity flattens the curve. The red line marks the velocity threshold below
+// which notes are dropped.
+component VelocityCurveGraph inherits Rectangle {
+    in property <float> multiplier;
+    in property <float> curve;
+    in property <int> threshold;
+    in property <int> fixed_velocity;
+
+    property <length> plot: 150px;
+
+    width: plot;
+    height: plot;
+    background: Theme.bg_input;
+    border-color: Theme.border_color;
+    border-width: 1px;
+    border-radius: 6px;
+    clip: true;
+
+    // Curve: one dot per input velocity 0..127.
+    for i in 128: Rectangle {
+        property <float> vx: i;
+        property <float> norm: self.vx / 127;
+        property <float> curve_vy: Math.min(127, Math.round(127 * Math.pow(self.norm, root.curve) * root.multiplier));
+        property <float> vy: root.fixed_velocity > 0 ? root.fixed_velocity * 1.0 : self.curve_vy;
+
+        width: 3px;
+        height: 3px;
+        border-radius: 1px;
+        background: Theme.primary;
+        x: self.vx / 127 * (parent.width - self.width);
+        y: (parent.height - self.height) - (self.vy / 127 * (parent.height - self.height));
+    }
+
+    // Threshold line.
+    Rectangle {
+        x: 0;
+        width: parent.width;
+        height: 2px;
+        y: parent.height - (Math.min(root.threshold, 127) / 127 * parent.height);
+        background: Theme.accent_red;
+    }
+}
+
+// One "B" or "I" square inside a flag cell. Filled with its accent colour when
+// the flag is set, so a glance over the grid shows what is muted or skipped.
+component FlagToggle inherits Rectangle {
+    in property <string> label;
+    in property <bool> active;
+    in property <color> accent;
+    in property <bool> enabled: true;
+
+    callback clicked(bool);
+
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: root.active ? root.accent : Theme.border_color;
+    background: root.active ? root.accent : (touch.has-hover ? Theme.bg_card_hover : transparent);
+
+    Text {
+        width: 100%;
+        height: 100%;
+        text: root.label;
+        color: root.active ? Theme.bg_main : Theme.text_secondary;
+        font-family: Theme.font;
+        font-size: 11px;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(!root.active); }
+    }
+}
+
+// One channel or port in a grid: its number plus the two flags that can be set
+// on it. Ignore wins over bypass in the border colour because the event
+// processor drops ignored events before it looks at the bypass list.
+component FlagCell inherits Rectangle {
+    in property <int> index;
+    in property <bool> bypassed;
+    in property <bool> ignored;
+    in property <bool> enabled: true;
+
+    callback bypass_toggled(bool);
+    callback ignore_toggled(bool);
+
+    height: 56px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: root.ignored ? Theme.accent_red : (root.bypassed ? Theme.accent_amber : Theme.border_color);
+    background: Theme.bg_input;
+
+    VerticalLayout {
+        padding: 6px;
+        spacing: 4px;
+        cross-axis-alignment: center;
+
+        Text {
+            text: root.index + 1;
+            color: Theme.text_secondary;
+            font-family: Theme.mono_font;
+            font-size: 14px;
+            font-weight: 800;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            min-width: 16px;
+        }
+
+        HorizontalLayout {
+            spacing: 4px;
+
+            FlagToggle {
+                label: "B";
+                active: root.bypassed;
+                accent: Theme.accent_amber;
+                enabled: root.enabled;
+                clicked(v) => { root.bypass_toggled(v); }
+            }
+
+            FlagToggle {
+                label: "I";
+                active: root.ignored;
+                accent: Theme.accent_red;
+                enabled: root.enabled;
+                clicked(v) => { root.ignore_toggled(v); }
+            }
+        }
+    }
+}
+
+// A 4x4 grid covering the 16 channels (or the 16 ports/groups), replacing what
+// used to be two comma-separated lists. `bypassed` and `ignored` are the flag
+// arrays from the config, one entry per index in the grid.
+component FlagGrid inherits Field {
+    in property <[bool]> bypassed;
+    in property <[bool]> ignored;
+    // Which lists this grid's two toggles edit.
+    in property <EventFlagKind> bypass_kind;
+    in property <EventFlagKind> ignore_kind;
+    in property <bool> enabled: true;
+
+    callback toggled(EventFlagKind, int, bool);
+
+    VerticalLayout {
+        spacing: 6px;
+
+        for r in 4: HorizontalLayout {
+            spacing: 6px;
+
+            for c in 4: FlagCell {
+                property <int> idx: r * 4 + c;
+
+                index: self.idx;
+                bypassed: root.bypassed[self.idx];
+                ignored: root.ignored[self.idx];
+                enabled: root.enabled;
+                bypass_toggled(v) => { root.toggled(root.bypass_kind, self.idx, v); }
+                ignore_toggled(v) => { root.toggled(root.ignore_kind, self.idx, v); }
+            }
+        }
+    }
+}
+
+component KeyRangeBar inherits Rectangle {
+    in property <int> low: 0;
+    in property <int> high: 127;
+    in property <bool> enabled: true;
+
+    // Per pitch class: whether it is an accidental, and how many white keys of
+    // its octave sit below it. Together they place any MIDI note on the strip
+    // of 75 white keys that the 128 notes span.
+    property <[bool]> accidental: [false, true, false, true, false, false, true, false, true, false, true, false];
+    property <[int]> whites_below: [0, 1, 1, 2, 2, 3, 4, 4, 5, 5, 6, 6];
+    property <int> white_count: 75;
+    property <length> white_w: root.width / root.white_count;
+    property <length> black_w: root.white_w * 65%;
+
+    // The white key a note sits on, or — for an accidental — the seam it
+    // straddles, counted in white keys from the bottom of the keyboard.
+    pure function white_slot(note: int) -> float {
+        return Math.floor(note / 12) * 7 + root.whites_below[Math.mod(note, 12)];
+    }
+
+    height: 44px;
+    background: Theme.bg_input;
+    border-color: Theme.border_color;
+    border-width: 1px;
+    border-radius: 6px;
+    clip: true;
+    opacity: root.enabled ? 1.0 : 0.6;
+
+    // White keys first, so the accidentals below can be drawn over them.
+    for i in 128: Rectangle {
+        visible: !root.accidental[Math.mod(i, 12)];
+
+        x: root.white_slot(i) * root.white_w;
+        width: root.white_w;
+        y: 0;
+        height: parent.height;
+        background: i >= root.low && i <= root.high
+            ? Theme.border_focus
+            : Theme.text_disabled;
+        border-color: Theme.bg_main;
+        border-width: 1px;
+    }
+
+    for i in 128: Rectangle {
+        visible: root.accidental[Math.mod(i, 12)];
+
+        x: root.white_slot(i) * root.white_w - root.black_w / 2;
+        width: root.black_w;
+        y: 0;
+        height: parent.height * 62%;
+        border-radius: 2px;
+        background: i >= root.low && i <= root.high
+            ? Theme.primary
+            : Theme.bg_main;
+    }
+}
+
+// A key number plus the note name it stands for, e.g. "60  ·  C4".
+component KeyBound inherits Field {
+    in property <int> value;
+    in property <int> minimum;
+    in property <int> maximum;
+    in property <bool> enabled: true;
+
+    callback edited(int);
+
+    property <[string]> note_names: ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+    HorizontalLayout {
+        spacing: 8px;
+        cross-axis-alignment: center;
+
+        MaestroSpinBox {
+            width: 90px;
+            enabled: root.enabled;
+            minimum: root.minimum;
+            maximum: root.maximum;
+            value: root.value;
+            edited(v) => { root.edited(Math.round(v)); }
+        }
+
+        BodyText {
+            // MIDI key 0 is C-1, so the octave is the key's octave index - 1.
+            text: root.note_names[Math.mod(root.value, 12)] + (Math.floor(root.value / 12) - 1);
+            color: Theme.text_secondary;
+            font_weight: 600;
+            width: 40px;
+        }
+    }
+}
+
+export component EventProcessorSection inherits SectionCard {
+    property <SlintEventProcessorConfig> edit;
+
+    // `has_event_processor` is the user's own toggle below, not a capability of
+    // the component — every component can process events.
+    property <bool> on: SettingsEditorState.current_config.has_event_processor;
+
+    title: "Event Processor";
+
+    MaestroCheckBox {
+        text: "Enable MIDI event processing";
+        checked: root.on;
+        toggled(v) => { SettingsEditorState.toggle_event_processor(v); }
+    }
+
+    // Switched off, the settings stay on screen greyed out rather than being
+    // removed: the page keeps its height, and what the processor offers is
+    // visible before you commit to turning it on.
+    VerticalLayout {
+        spacing: 12px;
+        opacity: root.on ? 1.0 : 0.4;
+
+        SectionCard {
+            title: "Ignore / Bypass";
+
+            HorizontalLayout {
+                spacing: 16px;
+
+                if (SettingsEditorState.current_config.has_port_threads): FlagGrid {
+                    label: "Ports / Groups";
+                    enabled: root.on;
+                    bypassed: SettingsEditorState.current_config.event_processor.bypass_ports;
+                    ignored: SettingsEditorState.current_config.event_processor.ignore_ports;
+                    bypass_kind: EventFlagKind.bypass_port;
+                    ignore_kind: EventFlagKind.ignore_port;
+                    toggled(kind, index, on) => {
+                        SettingsEditorState.toggle_event_flag(kind, index, on);
+                    }
+                }
+
+                if (SettingsEditorState.current_config.has_port_threads): HorizontalSeparator { }
+
+                FlagGrid {
+                    label: "Channels";
+                    enabled: root.on;
+                    bypassed: SettingsEditorState.current_config.event_processor.bypass_channels;
+                    ignored: SettingsEditorState.current_config.event_processor.ignore_channels;
+                    bypass_kind: EventFlagKind.bypass_channel;
+                    ignore_kind: EventFlagKind.ignore_channel;
+                    toggled(kind, index, on) => {
+                        SettingsEditorState.toggle_event_flag(kind, index, on);
+                    }
+                }
+            }
+
+            BodyText {
+                text: "B = Bypass (events pass through unprocessed)   ·   I = Ignore (events are dropped)";
+                color: Theme.text_secondary;
+                font_size: 12px;
+            }
+        }
+
+        SectionCard {
+            title: "Keyboard Range";
+
+            BodyText {
+                text: "Only notes inside this range are played. The range is matched against the incoming key, before transposing.";
+                color: Theme.text_secondary;
+                font_size: 12px;
+            }
+
+            HorizontalLayout {
+                spacing: 16px;
+                cross-axis-alignment: center;
+
+                KeyBound {
+                    label: "Lowest key";
+                    enabled: root.on;
+                    minimum: 0;
+                    // Bounded by each other so the range can never be inverted.
+                    maximum: SettingsEditorState.current_config.event_processor.key_range_high;
+                    value: SettingsEditorState.current_config.event_processor.key_range_low;
+                    edited(v) => {
+                        root.edit = SettingsEditorState.current_config.event_processor;
+                        root.edit.key_range_low = v;
+                        SettingsEditorState.update_event_processor(root.edit);
+                    }
+                }
+
+                KeyBound {
+                    label: "Highest key";
+                    enabled: root.on;
+                    minimum: SettingsEditorState.current_config.event_processor.key_range_low;
+                    maximum: 127;
+                    value: SettingsEditorState.current_config.event_processor.key_range_high;
+                    edited(v) => {
+                        root.edit = SettingsEditorState.current_config.event_processor;
+                        root.edit.key_range_high = v;
+                        SettingsEditorState.update_event_processor(root.edit);
+                    }
+                }
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                }
+
+                MaestroButton {
+                    text: "Full keyboard";
+                    disabled: !root.on;
+                    clicked => {
+                        root.edit = SettingsEditorState.current_config.event_processor;
+                        root.edit.key_range_low = 0;
+                        root.edit.key_range_high = 127;
+                        SettingsEditorState.update_event_processor(root.edit);
+                    }
+                }
+            }
+
+            KeyRangeBar {
+                enabled: root.on;
+                low: SettingsEditorState.current_config.event_processor.key_range_low;
+                high: SettingsEditorState.current_config.event_processor.key_range_high;
+            }
+        }
+
+        SectionCard {
+            title: "Velocity Control";
+
+            HorizontalLayout {
+                spacing: 16px;
+                cross-axis-alignment: center;
+
+                VerticalLayout {
+                    spacing: 12px;
+                    alignment: center;
+
+                    HorizontalLayout {
+                        spacing: 16px;
+
+                        Field {
+                            label: "Velocity Multiplier";
+
+                            MaestroSpinBox {
+                                width: 120px;
+                                enabled: root.on;
+                                value: SettingsEditorState.current_config.event_processor.velocity_multiplier;
+                                decimals: 1;
+                                step: 0.1;
+                                maximum: 127;
+                                minimum: 0;
+                                edited(v) => {
+                                    root.edit = SettingsEditorState.current_config.event_processor;
+                                    root.edit.velocity_multiplier = v;
+                                    SettingsEditorState.update_event_processor(root.edit);
+                                }
+                            }
+                        }
+
+                        Field {
+                            label: "Velocity Curve";
+
+                            MaestroSpinBox {
+                                width: 120px;
+                                enabled: root.on;
+                                value: SettingsEditorState.current_config.event_processor.velocity_curve;
+                                decimals: 2;
+                                step: 0.1;
+                                maximum: 5;
+                                minimum: 0.01;
+                                edited(v) => {
+                                    root.edit = SettingsEditorState.current_config.event_processor;
+                                    root.edit.velocity_curve = v;
+                                    SettingsEditorState.update_event_processor(root.edit);
+                                }
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        Field {
+                            label: "Fixed velocity";
+
+                            HorizontalLayout {
+                                alignment: start;
+                                cross-axis-alignment: center;
+
+                                MaestroCheckBox {
+                                    enabled: root.on;
+                                    checked: SettingsEditorState.current_config.event_processor.fixed_velocity != 0;
+                                    toggled(v) => {
+                                        root.edit = SettingsEditorState.current_config.event_processor;
+                                        root.edit.fixed_velocity = v ? 127 : 0;
+                                        SettingsEditorState.update_event_processor(root.edit);
+                                    }
+                                }
+
+                                MaestroSpinBox {
+                                    width: 90px;
+                                    minimum: 1;
+                                    maximum: 127;
+                                    value: SettingsEditorState.current_config.event_processor.fixed_velocity;
+                                    enabled: root.on && SettingsEditorState.current_config.event_processor.fixed_velocity != 0;
+                                    edited(v) => {
+                                        root.edit = SettingsEditorState.current_config.event_processor;
+                                        root.edit.fixed_velocity = v;
+                                        SettingsEditorState.update_event_processor(root.edit);
+                                    }
+                                }
+                            }
+                        }
+
+                        Field {
+                            label: "Velocity Threshold";
+
+                            MaestroSpinBox {
+                                width: 120px;
+                                enabled: root.on;
+                                minimum: 0;
+                                maximum: 127;
+                                value: SettingsEditorState.current_config.event_processor.velocity_threshold;
+                                edited(v) => {
+                                    root.edit = SettingsEditorState.current_config.event_processor;
+                                    root.edit.velocity_threshold = v;
+                                    SettingsEditorState.update_event_processor(root.edit);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                MaestroIcon {
+                    source: Icons.arrow_right;
+                }
+
+                VelocityCurveGraph {
+                    multiplier: SettingsEditorState.current_config.event_processor.velocity_multiplier;
+                    curve: SettingsEditorState.current_config.event_processor.velocity_curve;
+                    threshold: SettingsEditorState.current_config.event_processor.velocity_threshold;
+                    fixed_velocity: SettingsEditorState.current_config.event_processor.fixed_velocity;
+                }
+            }
+        }
+
+        SectionCard {
+            title: "Miscellaneous";
+
+            HorizontalLayout {
+                spacing: 16px;
+                cross-axis-alignment: center;
+
+                Field {
+                    label: "Transpose (semi.)";
+
+                    MaestroSpinBox {
+                        width: 120px;
+                        enabled: root.on;
+                        minimum: -24;
+                        maximum: 24;
+                        value: SettingsEditorState.current_config.event_processor.transpose;
+                        edited(v) => {
+                            root.edit = SettingsEditorState.current_config.event_processor;
+                            root.edit.transpose = v;
+                            SettingsEditorState.update_event_processor(root.edit);
+                        }
+                    }
+                }
+
+                HorizontalSeparator { }
+
+                VerticalLayout {
+                    spacing: 8px;
+
+                    MaestroCheckBox {
+                        enabled: root.on;
+                        text: "Ignore Program Change messages";
+                        checked: SettingsEditorState.current_config.event_processor.ignore_program_change;
+                        toggled(v) => {
+                            root.edit = SettingsEditorState.current_config.event_processor;
+                            root.edit.ignore_program_change = v;
+                            SettingsEditorState.update_event_processor(root.edit);
+                        }
+                    }
+
+                    MaestroCheckBox {
+                        enabled: root.on;
+                        text: "Ignore System Exclusive messages";
+                        checked: SettingsEditorState.current_config.event_processor.ignore_sysex;
+                        toggled(v) => {
+                            root.edit = SettingsEditorState.current_config.event_processor;
+                            root.edit.ignore_sysex = v;
+                            SettingsEditorState.update_event_processor(root.edit);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// One of the limiter's millisecond parameters.
+component LimiterField inherits Field {
+    in property <float> value;
+    in property <bool> enabled;
+    callback value_edited(float);
+
+    MaestroLineEdit {
+        width: 80px;
+        text: root.value;
+        enabled: enabled;
+        edited(v) => { root.value_edited(v.to-float()); }
+    }
+}
+
+export component PostProcessorSection inherits SectionCard {
+    property <SlintPostProcessorConfig> edit;
+
+    // As with the event processor, this flag is the user's toggle below rather
+    // than a component capability.
+    property <bool> on: SettingsEditorState.current_config.has_post_processor;
+
+    title: "Post Processor";
+
+    MaestroCheckBox {
+        text: "Enable audio post processing";
+        checked: root.on;
+        toggled(v) => { SettingsEditorState.toggle_post_processor(v); }
+    }
+
+    VerticalLayout {
+        spacing: 12px;
+        opacity: root.on ? 1.0 : 0.4;
+
+        Field {
+            label: "Master Volume";
+
+            HorizontalLayout {
+                spacing: 12px;
+
+                Slider {
+                    enabled: root.on;
+                    minimum: 0.0;
+                    maximum: 4.0;
+                    value: SettingsEditorState.current_config.post_processor.volume;
+                    changed(v) => {
+                        root.edit = SettingsEditorState.current_config.post_processor;
+                        root.edit.volume = v;
+                        SettingsEditorState.update_post_processor(root.edit);
+                    }
+                }
+
+                BodyText {
+                    text: round(SettingsEditorState.current_config.post_processor.volume * 100) / 100 + "x";
+                    width: 50px;
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 16px;
+            cross-axis-alignment: center;
+            alignment: start;
+
+            MaestroCheckBox {
+                enabled: root.on;
+                text: "Enable Limiter";
+                checked: SettingsEditorState.current_config.post_processor.has_limiter;
+                toggled(v) => {
+                    root.edit = SettingsEditorState.current_config.post_processor;
+                    root.edit.has_limiter = v;
+                    SettingsEditorState.update_post_processor(root.edit);
+                }
+            }
+
+            HorizontalSeparator { }
+
+            LimiterField {
+                label: "Attack (ms)";
+                value: SettingsEditorState.current_config.post_processor.limiter_attack_ms;
+                enabled: root.on && SettingsEditorState.current_config.post_processor.has_limiter;
+                value_edited(v) => {
+                    root.edit = SettingsEditorState.current_config.post_processor;
+                    root.edit.limiter_attack_ms = v;
+                    SettingsEditorState.update_post_processor(root.edit);
+                }
+            }
+
+            LimiterField {
+                label: "Release (ms)";
+                value: SettingsEditorState.current_config.post_processor.limiter_release_ms;
+                enabled: root.on && SettingsEditorState.current_config.post_processor.has_limiter;
+                value_edited(v) => {
+                    root.edit = SettingsEditorState.current_config.post_processor;
+                    root.edit.limiter_release_ms = v;
+                    SettingsEditorState.update_post_processor(root.edit);
+                }
+            }
+        }
+    }
+}

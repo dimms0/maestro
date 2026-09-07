@@ -1,0 +1,37 @@
+import { ModalOverlay, ModalActions } from "../widgets/layout.slint";
+import { LabelText } from "../widgets/text.slint";
+import { MaestroButton } from "../widgets/controls.slint";
+import { AppState, SystemIntegrationState } from "../globals.slint";
+import { Tab } from "../enums.slint";
+
+export component StartupIssueModal inherits ModalOverlay {
+    title: "Maestro needs attention";
+    card_width: 420px;
+    card_height: 180px;
+    content_spacing: 16px;
+
+    dismissed => { SystemIntegrationState.startup_issue = false; }
+
+    LabelText {
+        text: "The virtual device service or an audio library isn't installed correctly.";
+        font-size: 13px;
+        wrap: word-wrap;
+        vertical-alignment: top;
+    }
+
+    ModalActions {
+        MaestroButton {
+            text: "Later";
+            clicked => { SystemIntegrationState.startup_issue = false; }
+        }
+
+        MaestroButton {
+            text: "Review";
+            primary: true;
+            clicked => {
+                SystemIntegrationState.startup_issue = false;
+                AppState.active_tab = Tab.system;
+            }
+        }
+    }
+}

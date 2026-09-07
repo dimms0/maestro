@@ -1,0 +1,227 @@
+// Component-specific settings panels: shown only for the component that owns
+// them, as declared by its profile on the Rust side.
+import {
+    Theme,
+    BodyText,
+    MaestroCheckBox,
+    MaestroComboBox,
+    MaestroLineEdit,
+    MaestroMidiModeBox,
+    MaestroSpinBox,
+    SectionCard,
+    Field,
+    LabelText,
+} from "../../widgets.slint";
+import { SettingsEditorState } from "../../globals.slint";
+import { SlintConverterCustom, SlintSystemCustom } from "../../structs.slint";
+
+export component ConverterSection inherits SectionCard {
+    property <SlintConverterCustom> edit;
+
+    // Which quality control the chosen format actually has. Keep the indices in
+    // sync with `slint_conv.rs`: 0 WAV, 1 FLAC, 2 MP3, 3 OGG.
+    property <int> format: SettingsEditorState.current_config.converter_custom.output_format;
+    property <bool> is_wav: root.format == 0;
+    property <bool> is_lossy: root.format == 2 || root.format == 3;
+
+    title: "Converter Options";
+
+    HorizontalLayout {
+        spacing: 24px;
+
+        Field {
+            label: "Output Format";
+
+            MaestroComboBox {
+                width: 200px;
+                model: ["WAV", "FLAC", "MP3", "OGG Vorbis"];
+                current_index: root.format;
+                selected(v, i) => {
+                    root.edit = SettingsEditorState.current_config.converter_custom;
+                    root.edit.output_format = i;
+                    SettingsEditorState.update_converter_custom(root.edit);
+                }
+            }
+        }
+
+        // Only one of these applies to any given format, so the other is
+        // hidden rather than left on screen doing nothing.
+        if (root.is_wav): Field {
+            label: "Bit Depth";
+
+            MaestroComboBox {
+                width: 200px;
+                model: ["32-bit float", "24-bit integer", "16-bit integer"];
+                current_index: SettingsEditorState.current_config.converter_custom.wav_bit_depth;
+                selected(v, i) => {
+                    root.edit = SettingsEditorState.current_config.converter_custom;
+                    root.edit.wav_bit_depth = i;
+                    SettingsEditorState.update_converter_custom(root.edit);
+                }
+            }
+        }
+
+        if (root.is_lossy): Field {
+            label: "Bitrate";
+
+            MaestroComboBox {
+                width: 200px;
+                model: SettingsEditorState.bitrates;
+                current_index: SettingsEditorState.current_config.converter_custom.bitrate_index;
+                selected(v, i) => {
+                    root.edit = SettingsEditorState.current_config.converter_custom;
+                    root.edit.bitrate_index = i;
+                    SettingsEditorState.update_converter_custom(root.edit);
+                }
+            }
+        }
+
+        if (!root.is_wav && !root.is_lossy): Field {
+            label: "Bitrate";
+
+            BodyText {
+                text: "FLAC is lossless";
+                color: Theme.text_secondary;
+                font_size: 12px;
+                vertical-alignment: center;
+                height: 36px;
+            }
+        }
+
+        Rectangle {
+            horizontal-stretch: 1;
+        }
+    }
+
+    HorizontalLayout {
+        spacing: 12px;
+        cross-axis-alignment: center;
+
+        MaestroCheckBox {
+            text: "Multi-threaded queue export";
+            checked: SettingsEditorState.current_config.converter_custom.multithreaded_export;
+            toggled(v) => {
+                root.edit = SettingsEditorState.current_config.converter_custom;
+                root.edit.multithreaded_export = v;
+                SettingsEditorState.update_converter_custom(root.edit);
+            }
+        }
+
+        Rectangle {
+            horizontal-stretch: 1;
+        }
+
+        MaestroSpinBox {
+            width: 110px;
+            minimum: 0;
+            maximum: 64;
+            value: SettingsEditorState.current_config.converter_custom.export_threads;
+            enabled: SettingsEditorState.current_config.converter_custom.multithreaded_export;
+            edited(v) => {
+                root.edit = SettingsEditorState.current_config.converter_custom;
+                root.edit.export_threads = Math.round(v);
+                SettingsEditorState.update_converter_custom(root.edit);
+            }
+        }
+
+        LabelText {
+            // 0 hands the choice back to the scheduler, which sizes the pool
+            // to the machine.
+            text: SettingsEditorState.current_config.converter_custom.export_threads == 0
+                ? "threads (auto)"
+                : "threads at once";
+        }
+    }
+
+    Field {
+        label: "Output Directory (empty = next to each MIDI)";
+
+        MaestroLineEdit {
+            placeholder: "/path/to/output";
+            text: SettingsEditorState.current_config.converter_custom.output_path;
+            edited(v) => {
+                root.edit = SettingsEditorState.current_config.converter_custom;
+                root.edit.output_path = v;
+                SettingsEditorState.update_converter_custom(root.edit);
+            }
+        }
+    }
+}
+
+export component DeviceSection inherits SectionCard {
+    property <SlintSystemCustom> edit;
+
+    title: "Virtual MIDI Device";
+
+    Field {
+        label: "Device Name";
+
+        MaestroLineEdit {
+            placeholder: "Maestro";
+            text: SettingsEditorState.current_config.system_custom.device_name;
+            edited(v) => {
+                root.edit = SettingsEditorState.current_config.system_custom;
+                root.edit.device_name = v;
+                SettingsEditorState.update_system_custom(root.edit);
+            }
+        }
+    }
+
+    Field {
+        label: "MIDI Mode";
+
+        // One box, two halves: the port count only applies to the MIDI 1.0
+        // half, since a MIDI 2.0 endpoint always carries 16 groups.
+        MaestroMidiModeBox {
+            midi2_enabled: SettingsEditorState.current_config.system_custom.midi2_enabled;
+            num_ports: SettingsEditorState.current_config.system_custom.num_ports;
+            mode_selected(v) => {
+                root.edit = SettingsEditorState.current_config.system_custom;
+                root.edit.midi2_enabled = v;
+                SettingsEditorState.update_system_custom(root.edit);
+            }
+            ports_edited(v) => {
+                root.edit = SettingsEditorState.current_config.system_custom;
+                root.edit.num_ports = v;
+                SettingsEditorState.update_system_custom(root.edit);
+            }
+        }
+    }
+
+    HorizontalLayout {
+        spacing: 12px;
+        cross-axis-alignment: center;
+
+        MaestroCheckBox {
+            text: "Unload Maestro after inactivity";
+            checked: SettingsEditorState.current_config.system_custom.idle_timeout_minutes != 0;
+
+            toggled(v) => {
+                root.edit = SettingsEditorState.current_config.system_custom;
+                root.edit.idle_timeout_minutes = v ? 10 : 0;
+                SettingsEditorState.update_system_custom(root.edit);
+            }
+        }
+
+        Rectangle {
+            horizontal-stretch: 1;
+        }
+
+        MaestroSpinBox {
+            max-width: 130px;
+            minimum: 0;
+            maximum: 1440;
+            value: SettingsEditorState.current_config.system_custom.idle_timeout_minutes;
+            enabled: SettingsEditorState.current_config.system_custom.idle_timeout_minutes != 0;
+            edited(v) => {
+                root.edit = SettingsEditorState.current_config.system_custom;
+                root.edit.idle_timeout_minutes = Math.round(v);
+                SettingsEditorState.update_system_custom(root.edit);
+            }
+        }
+
+        LabelText {
+            text: "minutes";
+        }
+    }
+}

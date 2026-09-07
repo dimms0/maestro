@@ -1,0 +1,36 @@
+import { ModalOverlay, ModalActions } from "../widgets/layout.slint";
+import { LabelText } from "../widgets/text.slint";
+import { MaestroButton } from "../widgets/controls.slint";
+import { AppState } from "../globals.slint";
+
+export component GetSoundfontsModal inherits ModalOverlay {
+    title: "No SoundFonts configured";
+    card_width: 420px;
+    card_height: 190px;
+    content_spacing: 16px;
+
+    dismissed => { AppState.no_soundfonts_prompt = false; }
+
+    LabelText {
+        text: "MIDI files will not produce any audio until a SoundFont is added.";
+        font-size: 13px;
+        wrap: word-wrap;
+        vertical-alignment: top;
+    }
+
+    ModalActions {
+        MaestroButton {
+            text: "Not now";
+            clicked => { AppState.no_soundfonts_prompt = false; }
+        }
+
+        MaestroButton {
+            text: "Get SoundFonts";
+            primary: true;
+            clicked => {
+                AppState.no_soundfonts_prompt = false;
+                AppState.open_soundfonts_page();
+            }
+        }
+    }
+}

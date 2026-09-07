@@ -1,0 +1,28 @@
+// Single source of truth for every colour and type face used by the GUI.
+// Views and widgets must reference `Theme.*` rather than hard-coding a literal,
+// so a palette change is a one-file edit.
+export global Theme {
+    in-out property <color> bg_main: #090506;
+    in-out property <color> bg_card: #14090a;
+    in-out property <color> bg_card_hover: #0d0506;
+    in-out property <color> bg_input: #0d0506;
+    in-out property <color> bg_input_disabled: #181414;
+    in-out property <color> primary: #461C26;
+    in-out property <color> primary_hover: #391920;
+    in-out property <color> text_primary: #f9fafb;
+    in-out property <color> text_secondary: #9ca3af;
+    in-out property <color> text_disabled: #4b5563;
+    in-out property <color> border_color: #374151;
+    in-out property <color> border_focus: #d2a5b0;
+    in-out property <color> accent_green: #10b981;
+    in-out property <color> accent_amber: #f59e0b;
+    in-out property <color> accent_red: #ef4444;
+    in-out property <color> danger: #dc2626;
+    in-out property <color> danger_hover: #ef4444;
+    in-out property <color> danger_border: #b91c1c;
+    // Backdrop dimming used by every modal overlay.
+    in-out property <color> overlay: #00000099;
+
+    in-out property <string> font: "Poppins";
+    in-out property <string> mono_font: "monospace";
+}

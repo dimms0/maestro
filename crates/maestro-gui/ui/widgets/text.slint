@@ -1,0 +1,208 @@
+import { Theme } from "../theme.slint";
+import { ScrollView } from "std-widgets.slint";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Typography
+//
+// Every piece of text in the app comes from one of these, so the font family and
+// the default colour/size per role are declared once. Call sites override only
+// what actually differs (usually just `font-size` or `color`).
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Section and view headings.
+export component TitleText inherits Text {
+    font-family: Theme.font;
+    font-size: 16px;
+    font-weight: 700;
+    color: Theme.text_primary;
+    vertical-alignment: center;
+    overflow: TextOverflow.elide;
+}
+
+// Regular foreground copy.
+export component BodyText inherits Text {
+    font-family: Theme.font;
+    font-size: 14px;
+    color: Theme.text_primary;
+    vertical-alignment: center;
+}
+
+// De-emphasised captions, field labels and helper sentences.
+export component LabelText inherits Text {
+    font-family: Theme.font;
+    font-size: 12px;
+    color: Theme.text_secondary;
+    vertical-alignment: center;
+}
+
+// "Unsaved changes" marker, shown next to whatever the user is editing.
+export component DirtyBadge inherits Text {
+    in property <bool> starred: true;
+    text: root.starred ? "Unsaved changes *" : "Unsaved changes";
+    font-family: Theme.font;
+    font-size: 12px;
+    color: Theme.accent_green;
+    vertical-alignment: center;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hover affordances
+// ─────────────────────────────────────────────────────────────────────────────
+
+export component MaestroTooltip inherits Rectangle {
+    in property <string> text;
+    background: #333;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: Theme.border_color;
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        padding-top: 4px;
+        padding-bottom: 4px;
+
+        Text {
+            text: root.text;
+            color: white;
+            font-family: Theme.font;
+            font-size: 12px;
+            wrap: no-wrap;
+        }
+    }
+}
+
+// Wraps a single-line label with hover detection: hovering shows a
+// MaestroTooltip anchored just below it. Reusable anywhere a label needs
+// a "show full value on hover" affordance (e.g. an elided path/filename).
+export component MaestroHoverText inherits Rectangle {
+    in property <string> text;
+    in property <string> tooltip_text;
+    in property <color> text_color: Theme.text_primary;
+    in property <length> text_font_size: 14px;
+    in property <TextOverflow> text_overflow: TextOverflow.elide;
+    in property <TextHorizontalAlignment> text_horizontal_alignment: TextHorizontalAlignment.left;
+
+    property <bool> show_tooltip: hover.has-hover && root.tooltip_text != "";
+
+    hover := TouchArea { }
+
+    HorizontalLayout {
+        Text {
+            text: root.text;
+            color: root.text_color;
+            font-family: Theme.font;
+            font-size: root.text_font_size;
+            overflow: root.text_overflow;
+            horizontal-alignment: root.text_horizontal_alignment;
+            vertical-alignment: center;
+        }
+    }
+
+    if (show_tooltip): MaestroTooltip {
+        text: root.tooltip_text;
+        x: 0px;
+        y: root.height + 4px;
+        z: 1000;
+    }
+}
+
+// Single-line text that shows `text` elided by default and, while hovered,
+// swaps to `hover_text` and scrolls it left→right→back so a long value (e.g. a
+// full file path) can be read in place without a tooltip. If the hover text
+// fits, it just stays put.
+export component MaestroMarqueeText inherits Rectangle {
+    in property <string> text;
+    in property <string> hover_text: text;
+    in property <color> text_color: Theme.text_primary;
+    in property <length> text_font_size: 14px;
+
+    // Keep the scrolling text clipped to the visible box.
+    clip: true;
+    horizontal-stretch: 1;
+    min-height: label.preferred-height;
+
+    property <bool> hovered: hover.has-hover;
+    // How far the hover text overflows the visible width (0 if it fits).
+    property <length> overflow: max(0px, label.preferred-width - root.width);
+    // Constant scroll speed: the travel time scales with the distance so a
+    // long path glides at the same pace as a short one instead of flying to
+    // the end. Tune the per-pixel figure to change the speed.
+    property <duration> scroll_duration: (root.overflow / 1px) * 12ms;
+    // Marquee endpoint the text is currently easing toward: false = start,
+    // true = fully scrolled to reveal the end.
+    property <bool> at_end: false;
+
+    // Reset to the start whenever the pointer leaves so the next hover replays
+    // the scroll from the beginning.
+    changed hovered => {
+        if (!self.hovered) {
+            self.at_end = false;
+        } else {
+            self.at_end = true;
+        }
+    }
+
+    hover := TouchArea { }
+
+    label := Text {
+        text: root.hovered ? root.hover_text : root.text;
+        color: root.text_color;
+        font-family: Theme.font;
+        font-size: root.text_font_size;
+        vertical-alignment: center;
+        height: root.height;
+        // Fit-and-elide when idle; natural width so it can scroll on hover.
+        width: root.hovered ? self.preferred-width : root.width;
+        overflow: root.hovered ? TextOverflow.clip : TextOverflow.elide;
+        x: root.hovered && root.at_end ? -root.overflow : 0px;
+
+        // Distance-proportional so the scroll speed stays constant.
+        animate x { duration: root.scroll_duration; }
+    }
+
+    // While hovering an overflowing value, flip the endpoint on an interval so
+    // the `animate x` above eases the text back and forth. The interval leaves
+    // a short dwell at each end once the (distance-scaled) scroll completes.
+    Timer {
+        interval: root.scroll_duration + 700ms;
+        running: root.hovered && root.overflow > 0px;
+        triggered => {
+            root.at_end = !root.at_end;
+        }
+    }
+}
+
+// Read-only, selectable multi-line text used by the error surfaces so a message
+// can be copied for a bug report. `copy_all()` puts the whole message on the
+// clipboard.
+export component SelectableMessage inherits Rectangle {
+    in property <string> text;
+    in property <length> text_font_size: 13px;
+
+    public function copy_all() {
+        input.select-all();
+        input.copy();
+    }
+
+    background: Theme.bg_main;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.border_color;
+
+    scroll := ScrollView {
+        VerticalLayout {
+            padding: 12px;
+            input := TextInput {
+                width: scroll.visible-width - 24px;
+                text: root.text;
+                read-only: true;
+                single-line: false;
+                wrap: word-wrap;
+                color: Theme.text_primary;
+                font-family: Theme.mono_font;
+                font-size: root.text_font_size;
+            }
+        }
+    }
+}

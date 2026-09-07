@@ -1,0 +1,105 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  linux:
+    name: linux (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, arch: x86_64, target: x86_64-unknown-linux-gnu }
+          - {
+              os: ubuntu-24.04-arm,
+              arch: aarch64,
+              target: aarch64-unknown-linux-gnu,
+            }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y libjack-jackd2-dev libpulse-dev libpipewire-0.3-dev pkg-config build-essential libasound2-dev
+      - run: cargo install cargo-deb cargo-generate-rpm
+      - run: ./packaging/linux/build-deb.sh --arch ${{ matrix.arch }}
+      - run: ./packaging/linux/build-rpm.sh --arch ${{ matrix.arch }}
+      - run: ./packaging/linux/build-tarball.sh --arch ${{ matrix.arch }}
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            target/debian/*.deb
+            target/${{ matrix.target }}/debian/*.deb
+            target/generate-rpm/*.rpm
+            target/${{ matrix.target }}/generate-rpm/*.rpm
+            maestro-*.tar.gz
+
+  macos:
+    name: macos (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, arch: aarch64 }
+          - { os: macos-15-intel, arch: x86_64 }
+    runs-on: ${{ matrix.os }}
+    env:
+      SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: ./packaging/macos/build-app.sh --arch ${{ matrix.arch }}
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: target/packaging/*.dmg
+
+  windows:
+    name: windows (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, arch: x86_64 }
+          # The runner has no x64/x86 MSVC cross toolchain, so this installer
+          # ships without the emulation companions.
+          - { os: windows-11-arm, arch: aarch64, companions: none }
+    runs-on: ${{ matrix.os }}
+    env:
+      WIN_CERT_PFX_BASE64: ${{ secrets.WIN_CERT_PFX_BASE64 }}
+      WIN_CERT_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Inno Setup
+        shell: pwsh
+        env:
+          INNO_VERSION: "6.7.3"
+        run: |
+          $candidates = @($env:ProgramFiles, ${env:ProgramFiles(x86)}) |
+            Where-Object { $_ } |
+            ForEach-Object { $root = $_; 7, 6 | ForEach-Object { Join-Path $root "Inno Setup $_\ISCC.exe" } }
+          if (-not ($candidates | Where-Object { Test-Path $_ })) {
+            $tag = "is-" + $env:INNO_VERSION.Replace(".", "_")
+            $url = "https://github.com/jrsoftware/issrc/releases/download/$tag/innosetup-$env:INNO_VERSION.exe"
+            $exe = "$env:RUNNER_TEMP\innosetup.exe"
+            Invoke-WebRequest -Uri $url -OutFile $exe
+            Start-Process -Wait -FilePath $exe -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/SP-"
+          }
+      # FluidSynth and libsndfile are compiled from source; vcpkg's binary
+      # cache keeps that to the first run for a given version.
+      - uses: actions/cache@v4
+        with:
+          path: ~/AppData/Local/vcpkg/archives
+          key: vcpkg-${{ matrix.arch }}-${{ hashFiles('packaging/windows/build-fluidsynth.sh') }}
+          restore-keys: vcpkg-${{ matrix.arch }}-
+      - run: ./packaging/windows/build-installer.sh --arch ${{ matrix.arch }}
+        shell: bash
+        env:
+          MAESTRO_COMPANION_ARCHS: ${{ matrix.companions }}
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: maestro-*-setup.exe

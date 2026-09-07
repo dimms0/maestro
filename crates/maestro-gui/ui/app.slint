@@ -1,0 +1,278 @@
+import {
+    Theme,
+    MaestroCard,
+    TitleText,
+    MaestroIcon,
+    Icons,
+} from "widgets.slint";
+import { Tab, StandaloneMode } from "enums.slint";
+import {
+    AppState,
+    SoundfontEditorState,
+    SettingsEditorState,
+    SflistState,
+    AudioDeviceState,
+    RendererState,
+    DeviceManagerState,
+    SystemIntegrationState,
+    ErrorState,
+} from "globals.slint";
+import { WelcomeView } from "views/welcome.slint";
+import { SoundfontEditorView } from "views/soundfont_editor.slint";
+import { SettingsEditor } from "views/settings_editor.slint";
+import { RendererView } from "views/converter.slint";
+import { DeviceManagerView } from "views/device_manager.slint";
+import { SystemIntegrationView } from "views/system_integration.slint";
+import { ErrorView, ErrorDialog } from "views/error.slint";
+import { QuitConfirmModal } from "views/quit.slint";
+import { StartupIssueModal } from "views/startup_issue.slint";
+import { GetSoundfontsModal } from "views/get_soundfonts.slint";
+import { UpdateAvailableModal } from "views/update.slint";
+
+import "../../../assets/fonts/Poppins-Black.ttf";
+import "../../../assets/fonts/Poppins-Bold.ttf";
+import "../../../assets/fonts/Poppins-ExtraBold.ttf";
+import "../../../assets/fonts/Poppins-ExtraLight.ttf";
+import "../../../assets/fonts/Poppins-Light.ttf";
+import "../../../assets/fonts/Poppins-Medium.ttf";
+import "../../../assets/fonts/Poppins-Regular.ttf";
+import "../../../assets/fonts/Poppins-SemiBold.ttf";
+import "../../../assets/fonts/Poppins-Thin.ttf";
+import { BodyText, LabelText } from "widgets/text.slint";
+
+// Re-exported so the generated Rust API exposes every global and struct the
+// application code binds to.
+export {
+    AppState,
+    SoundfontEditorState,
+    SettingsEditorState,
+    SflistState,
+    AudioDeviceState,
+    RendererState,
+    DeviceManagerState,
+    SystemIntegrationState,
+    ErrorState,
+}
+
+// One entry in the top navigation bar. Keyboard reachable: Tab moves focus,
+// Enter/Space activates.
+component NavTab inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <Tab> target;
+    in property <length> parent_height;
+
+    property <bool> active: AppState.active_tab == root.target;
+
+    background: bgcolor();
+    height: parent_height - 10px;
+    border-radius: 8px;
+
+    HorizontalLayout {
+        padding: 12px;
+        spacing: 6px;
+        cross-axis-alignment: center;
+        alignment: center;
+
+        MaestroIcon {
+            source: icon;
+        }
+
+        Text {
+            text: root.text;
+            font-family: Theme.font;
+            font-size: 13px;
+            color: root.active ? Theme.text_primary : Theme.text_secondary;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    focus := TouchArea {
+        clicked => { AppState.active_tab = root.target; }
+    }
+
+    function bgcolor() -> color {
+        if (focus.has-hover) {
+            if (root.active) {
+                return Theme.primary_hover;
+            } else {
+                return Theme.bg_card_hover;
+            }
+        } else {
+            if (root.active) {
+                return Theme.primary;
+            } else {
+                return Theme.bg_card;
+            }
+        }
+    }
+}
+
+component NavBar inherits Rectangle {
+    height: 50px;
+    background: Theme.bg_card;
+
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.border_color;
+    }
+
+    HorizontalLayout {
+        padding-left: 24px;
+        padding-right: 24px;
+        alignment: space-between;
+
+        Rectangle {
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: center;
+                cross-axis-alignment: center;
+
+                Image {
+                    source: @image-url("../../../assets/icons/maestro-white.png");
+                    width: 28px;
+                    height: 28px;
+                    image-fit: contain;
+                }
+
+                TitleText {
+                    text: "Maestro";
+                    font-size: 18px;
+                    font-weight: 800;
+                }
+            }
+
+            // Clicking the logo/name returns to the welcome screen.
+            TouchArea {
+                clicked => { AppState.active_tab = Tab.welcome; }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 4px;
+            alignment: center;
+            cross-axis-alignment: center;
+
+            NavTab {
+                text: "SoundFont List Editor";
+                icon: Icons.sflists;
+                target: Tab.soundfonts;
+                parent_height: parent.height;
+            }
+
+            NavTab {
+                text: "MIDI Converter";
+                icon: Icons.converter;
+                target: Tab.converter;
+                parent_height: parent.height;
+            }
+
+            NavTab {
+                text: "Virtual MIDI Device";
+                icon: Icons.virt_device;
+                target: Tab.device;
+                parent_height: parent.height;
+            }
+
+            NavTab {
+                text: "System Integration";
+                icon: Icons.settings;
+                target: Tab.system;
+                parent_height: parent.height;
+            }
+        }
+    }
+}
+
+export component MainWindow inherits Window {
+    title: is_error ? "Critical Error - Maestro" : "Maestro";
+    icon: @image-url("../../../assets/icons/maestro.png");
+    min-width: 800px;
+    min-height: 600px;
+    preferred-width: 1200px;
+    preferred-height: 800px;
+    default-font-family: "Poppins";
+
+    in-out property <bool> is_error: false;
+    in-out property <string> error_msg: "";
+
+    // `edit-config` shows one editor at a time full-window: the config itself,
+    // or — after a SoundFont list picker's Edit button — the SoundFont list
+    // editor, which returns here via its "Back to Config" button.
+    property <bool> config_window: AppState.standalone_mode == StandaloneMode.edit_config;
+    property <bool> editing_sflist: root.config_window && !SettingsEditorState.open;
+
+    callback exit_app();
+
+    background: Theme.bg_main;
+
+    if (!is_error): VerticalLayout {
+        if (AppState.combined && AppState.active_tab != Tab.welcome): NavBar { }
+
+        if (AppState.combined && AppState.active_tab == Tab.welcome): WelcomeView { }
+
+        if (AppState.standalone_mode == StandaloneMode.edit_list
+            || root.editing_sflist
+            || (AppState.combined && AppState.active_tab == Tab.soundfonts)): SoundfontEditorView {
+            standalone: AppState.standalone_mode == StandaloneMode.edit_list;
+            show_back: root.editing_sflist;
+            back => { SettingsEditorState.open = true; }
+        }
+
+        // Standalone `edit-config` renders the shared editor full-window.
+        if (root.config_window && SettingsEditorState.open): SettingsEditor {
+            standalone: true;
+        }
+
+        if (AppState.combined && AppState.active_tab == Tab.converter): RendererView { }
+
+        if (AppState.combined && AppState.active_tab == Tab.device): DeviceManagerView { }
+
+        if (AppState.combined && AppState.active_tab == Tab.system): SystemIntegrationView { }
+    }
+
+    // Settings editor modal overlay (combined mode).
+    if (!is_error && AppState.combined && SettingsEditorState.open): Rectangle {
+        background: #000000cc;
+        TouchArea { } // block interaction with content underneath
+
+        MaestroCard {
+            width: parent.width * 90%;
+            height: parent.height * 90%;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+
+            SettingsEditor {
+                standalone: false;
+            }
+        }
+    }
+
+    // Non-fatal error dialogs. Rendered at the window level (outside every tab
+    // branch) so they stay put across tab changes, and above the settings modal
+    // so errors are always reachable. When the fatal screen is up, the opaque
+    // ErrorView below is drawn on top and covers these.
+    for dialog[idx] in ErrorState.dialogs: ErrorDialog {
+        title: dialog.title;
+        message: dialog.message;
+        stack_offset: idx * 16px;
+        dismiss => { ErrorState.dismiss(dialog.id); }
+    }
+
+    // Also at window level: the close request arrives whatever tab is showing.
+    if (!is_error && AppState.quit_prompt_open): QuitConfirmModal { }
+
+    if (!is_error && AppState.combined && AppState.active_tab != Tab.system
+        && SystemIntegrationState.startup_issue): StartupIssueModal { }
+
+    if (!is_error && AppState.combined && AppState.no_soundfonts_prompt): GetSoundfontsModal { }
+
+    if (!is_error && AppState.combined && AppState.update_available != ""): UpdateAvailableModal { }
+
+    if (is_error): ErrorView {
+        error_msg: error_msg;
+        exit_app => { exit_app(); }
+    }
+}

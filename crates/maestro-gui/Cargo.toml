@@ -1,0 +1,157 @@
+[package]
+name = "maestro-gui"
+description = "A MIDI synthesizer host"
+
+license.workspace = true
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "maestro"
+path = "src/main.rs"
+
+[dependencies]
+maestro-core = { path = "../maestro-core", features = ["encoders"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+directories = "6.0.0"
+midi-parser = { path = "../midi-parser" }
+rayon = "1.12"
+slint = { version = "~1.17", features = ["unstable-winit-030"] }
+rfd = "0.17"
+libloading = "0.9"
+ureq = { version = "3", optional = true, features = ["json"] }
+
+[features]
+default = ["update-check"]
+update-check = ["dep:ureq"]
+
+[build-dependencies]
+slint-build = "~1.17"
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[target.'cfg(all(windows, target_arch = "x86_64"))'.dependencies]
+maestro-core = { path = "../maestro-core", features = ["asio"] }
+
+[package.metadata.deb]
+maintainer = "dimms"
+copyright = "2026, dimms"
+license-file = ["../../LICENSE.md", "0"]
+extended-description = "A MIDI synthesizer host."
+depends = "$auto, libfluidsynth3"
+section = "sound"
+priority = "optional"
+assets = [
+    [
+        "target/release/maestro",
+        "usr/bin/",
+        "755",
+    ],
+    [
+        "target/release/maestrod",
+        "usr/bin/",
+        "755",
+    ],
+    [
+        "../maestro-daemon/service/maestrod.service",
+        "usr/lib/systemd/user/",
+        "644",
+    ],
+    [
+        "../../packaging/linux/gr.dimms.maestro.desktop",
+        "usr/share/applications/",
+        "644",
+    ],
+    [
+        "../../assets/icons/maestro.svg",
+        "usr/share/icons/hicolor/scalable/apps/gr.dimms.maestro.svg",
+        "644",
+    ],
+    [
+        "../../assets/icons/maestro-256.png",
+        "usr/share/icons/hicolor/256x256/apps/gr.dimms.maestro.png",
+        "644",
+    ],
+    [
+        "../../THIRD-PARTY-NOTICES.md",
+        "usr/share/doc/maestro/",
+        "644",
+    ],
+    [
+        "../../assets/fonts/OFL.txt",
+        "usr/share/doc/maestro/",
+        "644",
+    ],
+    [
+        "target/release/libOmniMIDI.so",
+        "usr/share/maestro/lib/",
+        "755",
+    ],
+    [
+        "../../packaging/linux/vendor/staged/libbass.so",
+        "usr/share/maestro/lib/",
+        "755",
+    ],
+    [
+        "../../packaging/linux/vendor/staged/libbassmidi.so",
+        "usr/share/maestro/lib/",
+        "755",
+    ],
+    [
+        "../../packaging/linux/vendor/staged/libbassflac.so",
+        "usr/share/maestro/lib/",
+        "755",
+    ],
+    [
+        "../../packaging/linux/vendor/staged/bass.txt",
+        "usr/share/doc/maestro/",
+        "644",
+    ],
+    [
+        "../../packaging/linux/vendor/staged/bassmidi.txt",
+        "usr/share/doc/maestro/",
+        "644",
+    ],
+    [
+        "../../packaging/linux/vendor/staged/bassflac.txt",
+        "usr/share/doc/maestro/",
+        "644",
+    ],
+]
+
+[package.metadata.generate-rpm]
+requires = { "fluidsynth-libs" = "*" }
+assets = [
+    { source = "target/release/maestro", dest = "/usr/bin/maestro", mode = "0755" },
+    { source = "target/release/maestrod", dest = "/usr/bin/maestrod", mode = "0755" },
+    { source = "../maestro-daemon/service/maestrod.service", dest = "/usr/lib/systemd/user/maestrod.service", mode = "0644" },
+    { source = "../../packaging/linux/gr.dimms.maestro.desktop", dest = "/usr/share/applications/gr.dimms.maestro.desktop", mode = "0644" },
+    { source = "../../assets/icons/maestro.svg", dest = "/usr/share/icons/hicolor/scalable/apps/gr.dimms.maestro.svg", mode = "0644" },
+    { source = "../../assets/icons/maestro-256.png", dest = "/usr/share/icons/hicolor/256x256/apps/gr.dimms.maestro.png", mode = "0644" },
+    { source = "../../THIRD-PARTY-NOTICES.md", dest = "/usr/share/doc/maestro/THIRD-PARTY-NOTICES.md", mode = "0644" },
+    { source = "../../assets/fonts/OFL.txt", dest = "/usr/share/doc/maestro/OFL.txt", mode = "0644" },
+    { source = "target/release/libOmniMIDI.so", dest = "/usr/share/maestro/lib/libOmniMIDI.so", mode = "0755" },
+    { source = "../../packaging/linux/vendor/staged/libbass.so", dest = "/usr/share/maestro/lib/libbass.so", mode = "0755" },
+    { source = "../../packaging/linux/vendor/staged/libbassmidi.so", dest = "/usr/share/maestro/lib/libbassmidi.so", mode = "0755" },
+    { source = "../../packaging/linux/vendor/staged/libbassflac.so", dest = "/usr/share/maestro/lib/libbassflac.so", mode = "0755" },
+    { source = "../../packaging/linux/vendor/staged/bass.txt", dest = "/usr/share/doc/maestro/bass.txt", mode = "0644" },
+    { source = "../../packaging/linux/vendor/staged/bassmidi.txt", dest = "/usr/share/doc/maestro/bassmidi.txt", mode = "0644" },
+    { source = "../../packaging/linux/vendor/staged/bassflac.txt", dest = "/usr/share/doc/maestro/bassflac.txt", mode = "0644" },
+]

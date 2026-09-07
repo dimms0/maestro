@@ -1,0 +1,261 @@
+import {
+    Theme,
+    MaestroButton,
+    MaestroLineEdit,
+    MaestroSpinBox,
+    MaestroSfTypeBadge,
+    MaestroMarqueeText,
+    LabelText,
+    Field,
+    ModalOverlay,
+    ModalActions,
+    TitleText,
+    BodyText,
+    MaestroCheckBox,
+} from "../../widgets.slint";
+import { ScrollView } from "std-widgets.slint";
+
+// Single-field naming dialog, shared by "new sub-list", "rename sub-list",
+// "new SoundFont list" and "rename SoundFont list" — the caller supplies the
+// wording and handles `confirmed`.
+export component NameEntryModal inherits ModalOverlay {
+    in property <string> placeholder;
+    in property <string> confirm_text: "Create";
+    in-out property <string> value;
+
+    callback confirmed(string);
+
+    card_width: 360px;
+    card_height: 200px;
+
+    MaestroLineEdit {
+        placeholder: root.placeholder;
+        text <=> root.value;
+    }
+
+    ModalActions {
+        MaestroButton {
+            text: "Discard";
+            clicked => {
+                root.value = "";
+                root.dismissed();
+            }
+        }
+
+        MaestroButton {
+            text: root.confirm_text;
+            primary: true;
+            disabled: root.value == "";
+            clicked => {
+                if (root.value != "") {
+                    root.confirmed(root.value);
+                    root.value = "";
+                    root.dismissed();
+                }
+            }
+        }
+    }
+}
+
+// Destructive-action confirmation dialog.
+export component ConfirmModal inherits ModalOverlay {
+    in property <string> message;
+    in property <string> confirm_text: "Delete";
+    in property <string> cancel_text: "Cancel";
+
+    callback confirmed();
+
+    card_width: 400px;
+    card_height: 200px;
+    content_spacing: 16px;
+
+    LabelText {
+        text: root.message;
+        font-size: 13px;
+        wrap: word-wrap;
+        vertical-alignment: top;
+    }
+
+    ModalActions {
+        MaestroButton {
+            text: root.cancel_text;
+            clicked => { root.dismissed(); }
+        }
+
+        MaestroButton {
+            text: root.confirm_text;
+            danger: true;
+            clicked => {
+                root.confirmed();
+                root.dismissed();
+            }
+        }
+    }
+}
+
+// Bank / preset dialog, shared by "add" and "edit". The file itself is always
+// chosen through the file picker, so there is no path field: adding an SF2/SF3
+// skips this dialog entirely and only SFZ fonts (which address a single
+// bank/preset slot) stop here on the way in.
+export component SoundFontDetailsModal inherits ModalOverlay {
+    in property <string> path;
+    in property <string> sf_type;
+    // True when an existing row is being edited rather than a new font added.
+    in property <bool> editing: false;
+    in-out property <int> bank: 0;
+    in-out property <int> preset: -1;
+
+    callback confirmed(int, int); // (bank, preset)
+
+    // SFZ fonts map onto exactly one bank/preset, so "-1 = all" is not
+    // available for them and the ranges are the MIDI-addressable ones.
+    property <bool> is_sfz: root.sf_type == "SFZ";
+
+    title: root.editing ? "Edit SoundFont" : "Add SoundFont";
+    card_width: 480px;
+    card_height: 260px;
+    content_spacing: 16px;
+
+    // The file is picked through the file dialog, so it is shown for context.
+    HorizontalLayout {
+        spacing: 8px;
+        cross-axis-alignment: center;
+
+        MaestroSfTypeBadge {
+            sf_type: root.sf_type;
+        }
+
+        MaestroMarqueeText {
+            horizontal-stretch: 1;
+            text: root.path;
+            hover_text: root.path;
+            text_color: Theme.text_secondary;
+            text_font_size: 13px;
+        }
+    }
+
+    MaestroCheckBox {
+        text: "Use all presets";
+        checked: root.preset == -1;
+        enabled: !root.is_sfz;
+        toggled(v) => {
+            if (v) {
+                root.preset = -1;
+            } else {
+                root.preset = 0;
+            }
+        }
+    }
+
+    HorizontalLayout {
+        spacing: 12px;
+
+        Field {
+            label: root.preset == -1 ? "Bank Offset" : "Bank";
+
+            MaestroSpinBox {
+                minimum: 0;
+                maximum: 128;
+                value: root.bank;
+                edited(v) => { root.bank = v; }
+            }
+        }
+
+        Field {
+            label: "Preset";
+
+            MaestroSpinBox {
+                minimum: root.is_sfz ? 0 : -1;
+                maximum: 127;
+                value: root.preset;
+                enabled: root.preset != -1;
+                edited(v) => { root.preset = v; }
+            }
+        }
+    }
+
+    ModalActions {
+        MaestroButton {
+            text: "Discard";
+            clicked => { root.dismissed(); }
+        }
+
+        MaestroButton {
+            text: root.editing ? "Save Changes" : "Add SoundFont";
+            primary: true;
+            disabled: root.path == "";
+            clicked => {
+                if (root.path != "") {
+                    root.confirmed(root.bank, root.preset);
+                    root.dismissed();
+                }
+            }
+        }
+    }
+}
+
+// Short explainer opened from the editor's "?" button.
+export component HelpModal inherits ModalOverlay {
+    card_width: 480px;
+    card_height: 280px;
+    content_padding: 0px;
+    ScrollView {
+        VerticalLayout {
+            padding: 12px;
+            spacing: 12px;
+            alignment: start;
+
+            TitleText {
+                text: "SoundFont List";
+            }
+
+            LabelText {
+                text: "A SoundFont list contains detailed information about the selection of soundfonts each MIDI port (MIDI 1.0) or UMP group uses.";
+                wrap: word-wrap;
+            }
+
+            LabelText {
+                text: "Each SoundFont list can be selected by one of Maestro's components (Converter, Virtual Device etc.) to be used for rendering. You can select your list of choice in each component's settings.";
+                wrap: word-wrap;
+            }
+
+            TitleText {
+                text: "Sublists";
+            }
+
+            LabelText {
+                text: "A sublist is what contains a selection of SoundFonts (SF2/SF3/SFZ). A SoundFont list may contain multiple sublists.";
+                wrap: word-wrap;
+            }
+
+            LabelText {
+                text: "Ports (MIDI 1.0) / groups (UMP) will use the sublist assigned to them or fallback to the default sublist. If a default sublist is not set, ports/groups without an assignment will not produce any sound. To manage the assignments, expand the \"Port / Group Assignments\" panel.";
+                wrap: word-wrap;
+            }
+
+            LabelText {
+                text: "When loading the SoundFonts, Maestro will give priority from the bottom to the top. This means that for each bank-preset pair, Maestro will use the first one it finds while searching from the last SoundFont to the first.";
+                wrap: word-wrap;
+            }
+
+            TitleText {
+                text: "SoundFont";
+            }
+
+            BodyText {
+                text: "Maestro provides support for multiple MIDI synthesizers, although not all of the provided functionality is supported by all of them.";
+                wrap: word-wrap;
+            }
+
+            LabelText {
+                text: "A SoundFont can be of format SF2, SF3 or SFZ. Each synthesizer supports different formats. When switching synthesizer in the settings you are able to see the formats each one supports. If a SoundFont found in a sublist has a format that is not supported by a synthesizer, it will be ignored.";
+                wrap: word-wrap;
+            }
+
+            LabelText {
+                text: "For each SoundFont you can select to either use all presets with a bank offset or use a specific bank-preset pair. The second function is only supported by BASSMIDI (the default synth).";
+                wrap: word-wrap;
+            }
+        }
+    }
+}

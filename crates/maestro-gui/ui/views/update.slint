@@ -1,0 +1,56 @@
+import { ModalOverlay, ModalActions } from "../widgets/layout.slint";
+import { LabelText, BodyText } from "../widgets/text.slint";
+import { MaestroButton } from "../widgets/controls.slint";
+import { AppState } from "../globals.slint";
+import { MaestroIcon, Icons } from "../widgets/icons.slint";
+
+export component UpdateAvailableModal inherits ModalOverlay {
+    title: "Update available";
+    card_width: 400px;
+    // card_height: 170px;
+    content_spacing: 16px;
+
+    dismissed => { AppState.update_available = ""; }
+
+    LabelText {
+        text: "A newer version of Maestro is available:";
+        font-size: 13px;
+        wrap: word-wrap;
+        vertical-alignment: top;
+    }
+
+    HorizontalLayout {
+        alignment: center;
+        cross-axis-alignment: center;
+        spacing: 12px;
+
+        BodyText {
+            text: AppState.version;
+        }
+
+        MaestroIcon {
+            source: Icons.arrow_right;
+            size: 20px;
+        }
+
+        BodyText {
+            text: AppState.update_available;
+        }
+    }
+
+    ModalActions {
+        MaestroButton {
+            text: "Later";
+            clicked => { AppState.update_available = ""; }
+        }
+
+        MaestroButton {
+            text: "Open download page";
+            primary: true;
+            clicked => {
+                AppState.update_available = "";
+                AppState.open_update_page();
+            }
+        }
+    }
+}

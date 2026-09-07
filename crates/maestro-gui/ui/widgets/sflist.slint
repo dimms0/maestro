@@ -1,0 +1,53 @@
+import { MaestroButton } from "controls.slint";
+import { Icons } from "icons.slint";
+import { MaestroComboBox } from "inputs.slint";
+import { SflistState } from "../globals.slint";
+
+// The one SoundFont list picker: a drop-down of every available list plus the
+// shortcut that opens that list in the SoundFont editor. Every place that
+// assigns a list (component settings, the device cards, the conversion queue,
+// the Add MIDI dialog) uses this, so the choices, the ordering and the "start
+// editing this list" action can never drift apart between them.
+//
+// The current row is addressed either by name (`current`) or positionally
+// (`current_index`, for hosts that resolve the name to an index on the Rust
+// side); `current_index` wins when it is in range. Picking a row reports the
+// chosen name through `selected` and never mutates either input, so a binding
+// to the underlying config keeps working after the first pick.
+export component SflistPicker inherits HorizontalLayout {
+    in property <string> current;
+    in property <int> current_index: -1;
+    // Hosts that cannot survive navigating away (transient dialogs) turn the
+    // Edit shortcut off.
+    in property <bool> editable: true;
+    in property <length> combo_width: 250px;
+    // Height of both controls, so the picker can shrink into table rows.
+    in property <length> control_height: 32px;
+    in property <bool> small_text: false;
+
+    callback selected(string);
+
+    // The list the picker is showing, and therefore the one Edit acts on.
+    out property <string> resolved:
+        (root.current_index >= 0 && root.current_index < SflistState.available.length)
+        ? SflistState.available[root.current_index]
+        : root.current;
+
+    spacing: 8px;
+
+    MaestroComboBox {
+        width: root.combo_width;
+        height: root.control_height;
+        model: SflistState.available;
+        current_value: root.resolved;
+        selected(value, index) => { root.selected(value); }
+    }
+
+    if (root.editable): MaestroButton {
+        height: root.control_height;
+        icon: Icons.edit;
+        text: root.small_text ? "" : "Edit";
+        small_text: root.small_text;
+        clicked => { SflistState.edit(root.resolved); }
+    }
+}

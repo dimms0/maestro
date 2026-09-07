@@ -1,0 +1,313 @@
+import { ScrollView } from "std-widgets.slint";
+import {
+    Theme,
+    MaestroButton,
+    MaestroCard,
+    MaestroSwitch,
+    HorizontalSeparator,
+    TitleText,
+    BodyText,
+    LabelText,
+    Icons,
+} from "../widgets.slint";
+import { SystemIntegrationState } from "../globals.slint";
+import {
+    IntegrationStatus,
+    ServiceAction,
+    KdmapiAction,
+    LibraryAction,
+} from "../enums.slint";
+import { SlintIntegrationItem, SlintLibraryItem } from "../structs.slint";
+import { VerticalSeparator } from "../widgets/controls.slint";
+
+component StatusDot inherits Rectangle {
+    in property <IntegrationStatus> status;
+
+    width: 8px;
+    height: 8px;
+    border-radius: 4px;
+    background: root.status == IntegrationStatus.ok ? Theme.accent_green
+        : (root.status == IntegrationStatus.warning ? Theme.accent_red
+        : (root.status == IntegrationStatus.missing ? Theme.text_secondary : Theme.text_disabled));
+}
+
+// Shared header for every card on this tab: a dot, the component name and the
+// one-line state, with the follow-up reason underneath when there is one.
+component ItemHeader inherits VerticalLayout {
+    in property <SlintIntegrationItem> item;
+
+    spacing: 8px;
+
+    HorizontalLayout {
+        spacing: 12px;
+        cross-axis-alignment: center;
+
+        StatusDot {
+            status: root.item.status;
+        }
+
+        TitleText {
+            text: root.item.name;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+
+        BodyText {
+            text: root.item.detail;
+            horizontal-alignment: right;
+        }
+    }
+
+    if (root.item.hint != ""): LabelText {
+        text: root.item.hint;
+        font-size: 13px;
+        wrap: word-wrap;
+        vertical-alignment: top;
+    }
+}
+
+component LibraryRow inherits Rectangle {
+    in property <SlintLibraryItem> library;
+    in property <int> index;
+
+    HorizontalLayout {
+        spacing: 12px;
+        cross-axis-alignment: center;
+
+        StatusDot {
+            status: root.library.status;
+        }
+
+        VerticalLayout {
+            spacing: 2px;
+            horizontal-stretch: 1;
+
+            BodyText {
+                text: root.library.name;
+            }
+
+            LabelText {
+                text: root.library.status == IntegrationStatus.ok
+                    ? (root.library.version == "" ? root.library.source : root.library.version + "  ·  " + root.library.source)
+                    : (root.library.detail == "" ? root.library.filename : root.library.detail);
+                font-size: 12px;
+                overflow: elide;
+            }
+        }
+
+        if (root.library.status != IntegrationStatus.ok): MaestroButton {
+            text: "Get";
+            small-text: true;
+            disabled: SystemIntegrationState.busy;
+            clicked => { SystemIntegrationState.library_action(root.index, LibraryAction.get); }
+        }
+    }
+}
+
+export component SystemIntegrationView inherits Rectangle {
+    background: Theme.bg_main;
+
+    ScrollView {
+        VerticalLayout {
+            padding: 24px;
+            spacing: 20px;
+            alignment: start;
+            cross-axis-alignment: center;
+
+            HorizontalLayout {
+                spacing: 16px;
+                cross-axis-alignment: center;
+                vertical-stretch: 0;
+
+                TitleText {
+                    overflow: TextOverflow.clip;
+                    text: "System Integration";
+                    font-size: 24px;
+                    font-weight: 800;
+                }
+
+                HorizontalSeparator { }
+
+                LabelText {
+                    text: "Check and repair Maestro's installed components";
+                    wrap: TextWrap.word-wrap;
+                    font-size: 14px;
+                }
+
+                MaestroButton {
+                    icon: Icons.refresh;
+                    text: "Re-check";
+                    disabled: SystemIntegrationState.busy;
+                    width: 120px;
+                    clicked => { SystemIntegrationState.refresh(); }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 16px;
+                vertical-stretch: 0;
+
+                VerticalLayout {
+                    spacing: 16px;
+                    width: Math.min(root.width, 1000px) * 0.45;
+
+                    MaestroCard {
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 20px;
+
+                            ItemHeader {
+                                item: SystemIntegrationState.service;
+                            }
+
+                            // TODO remove check when WMS is implemented
+                            if (!SystemIntegrationState.windows): VerticalLayout {
+                                spacing: 4px;
+
+                                MaestroSwitch {
+                                    text: "Start on login";
+                                    checked: SystemIntegrationState.autostart;
+                                    enabled: !SystemIntegrationState.busy;
+                                    toggled(v) => { SystemIntegrationState.set_autostart(v); }
+                                }
+
+                                LabelText {
+                                    text: "Maestro starts automatically when you log in, so its virtual devices are already there when other apps open.";
+                                    font-size: 12px;
+                                    wrap: word-wrap;
+                                }
+                            }
+
+                            Rectangle {
+                                vertical-stretch: 1;
+                            }
+
+                            HorizontalLayout {
+                                alignment: end;
+                                spacing: 12px;
+                                cross-axis-alignment: end;
+
+                                if (SystemIntegrationState.windows): MaestroButton {
+                                    text: "Install Driver Files";
+                                    disabled: SystemIntegrationState.busy && !SystemIntegrationState.service_installed;
+                                    clicked => { SystemIntegrationState.service_action(ServiceAction.install_files); }
+                                }
+
+                                if (SystemIntegrationState.windows): MaestroButton {
+                                    text: "Unregister";
+                                    danger: true;
+                                    disabled: SystemIntegrationState.busy && SystemIntegrationState.service_installed;
+                                    clicked => { SystemIntegrationState.service_action(ServiceAction.uninstall_files); }
+                                }
+                                MaestroButton {
+                                    text: "Reinstall / Repair";
+                                    primary: true;
+                                    disabled: SystemIntegrationState.busy;
+                                    clicked => { SystemIntegrationState.service_action(ServiceAction.repair); }
+                                }
+                            }
+                        }
+                    }
+
+                    MaestroCard {
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 20px;
+
+                            ItemHeader {
+                                item: SystemIntegrationState.kdmapi;
+                            }
+
+                            Rectangle {
+                                vertical-stretch: 1;
+                            }
+
+                            if (!SystemIntegrationState.kdmapi_blocked): HorizontalLayout {
+                                alignment: end;
+                                spacing: 12px;
+                                cross-axis-alignment: end;
+
+                                if (SystemIntegrationState.kdmapi.status == IntegrationStatus.ok): MaestroButton {
+                                    text: "Uninstall";
+                                    danger: true;
+                                    disabled: SystemIntegrationState.busy;
+                                    clicked => { SystemIntegrationState.kdmapi_action(KdmapiAction.uninstall); }
+                                }
+
+                                if (SystemIntegrationState.kdmapi.status != IntegrationStatus.ok): MaestroButton {
+                                    text: "Install";
+                                    primary: true;
+                                    disabled: SystemIntegrationState.busy;
+                                    clicked => { SystemIntegrationState.kdmapi_action(KdmapiAction.install); }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                MaestroCard {
+                    width: Math.min(root.width, 1000px) * 0.45;
+
+                    VerticalLayout {
+                        padding: 24px;
+                        spacing: 12px;
+
+                        TitleText {
+                            text: "Audio Libraries";
+                        }
+
+                        for library[idx] in SystemIntegrationState.libraries: LibraryRow {
+                            library: library;
+                            index: idx;
+                        }
+
+                        Rectangle {
+                            vertical-stretch: 1;
+                            min-height: 20px;
+                        }
+
+                        HorizontalLayout {
+                            alignment: space-between;
+                            cross-axis-alignment: center;
+                            spacing: 12px;
+
+                            VerticalLayout {
+                                spacing: 12px;
+
+                                LabelText {
+                                    text: "Place missing libraries in:";
+                                    font-size: 12px;
+                                }
+
+                                LabelText {
+                                    text: SystemIntegrationState.lib_dir;
+                                    font-size: 12px;
+                                    wrap: word-wrap;
+                                    vertical-alignment: top;
+                                }
+
+                                LabelText {
+                                    text: SystemIntegrationState.lib_arch_hint;
+                                    font-size: 12px;
+                                    wrap: word-wrap;
+                                    vertical-alignment: top;
+                                }
+                            }
+
+                            MaestroButton {
+                                text: "Open Folder";
+                                disabled: SystemIntegrationState.busy;
+                                min-width: 110px;
+                                clicked => { SystemIntegrationState.library_action(-1, LibraryAction.reveal); }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                vertical-stretch: 1;
+            }
+        }
+    }
+}

@@ -1,0 +1,50 @@
+import { Theme } from "../theme.slint";
+import { ModalOverlay, ModalActions } from "../widgets/layout.slint";
+import { LabelText } from "../widgets/text.slint";
+import { MaestroButton } from "../widgets/controls.slint";
+import { AppState } from "../globals.slint";
+
+// Shown when the window is closed with the daemon still running.
+//
+// Not dismissable by clicking the backdrop: the whole point is that closing the
+// window stops being something that happens by accident, so the user has to
+// pick one of the three outcomes.
+export component QuitConfirmModal inherits ModalOverlay {
+    title: "Maestro is still running";
+    card_width: 460px;
+    card_height: 220px;
+    content_spacing: 16px;
+    dismissable: false;
+
+    LabelText {
+        text: AppState.quit_prompt_detail;
+        font-size: 13px;
+        wrap: word-wrap;
+        vertical-alignment: top;
+    }
+
+    ModalActions {
+        MaestroButton {
+            text: "Cancel";
+            clicked => { AppState.quit_prompt_open = false; }
+        }
+
+        MaestroButton {
+            text: "Stop and quit";
+            danger: true;
+            clicked => {
+                AppState.quit_prompt_open = false;
+                AppState.quit_and_stop();
+            }
+        }
+
+        MaestroButton {
+            text: "Keep running";
+            primary: true;
+            clicked => {
+                AppState.quit_prompt_open = false;
+                AppState.quit_keep_running();
+            }
+        }
+    }
+}

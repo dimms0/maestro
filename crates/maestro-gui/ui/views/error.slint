@@ -1,0 +1,145 @@
+import { VerticalBox } from "std-widgets.slint";
+import {
+    Theme,
+    MaestroButton,
+    MaestroCard,
+    TitleText,
+    BodyText,
+    LabelText,
+    SelectableMessage,
+    ModalActions,
+    Icons,
+    MaestroIcon,
+} from "../widgets.slint";
+
+// Non-fatal, dismissible error dialog. Unlike `ErrorView` (which is the
+// full-window fatal panic screen), this is a modal overlay meant to sit on top
+// of the normal UI and be closed by the user without quitting the app. Multiple
+// instances stack with a small offset via `stack_offset`.
+export component ErrorDialog inherits Rectangle {
+    in property <string> title: "Error";
+    in property <string> message: "";
+    in property <length> stack_offset: 0px;
+    callback dismiss();
+
+    // Dim + swallow all interaction with whatever is underneath.
+    background: Theme.overlay;
+    TouchArea { }
+
+    MaestroCard {
+        width: min(560px, root.width - 64px);
+        height: min(380px, root.height - 64px);
+        x: (root.width - self.width) / 2 + stack_offset;
+        y: (root.height - self.height) / 2 + stack_offset;
+
+        // Absorb clicks so they don't dismiss via the backdrop TouchArea.
+        TouchArea { }
+
+        VerticalLayout {
+            padding: 20px;
+            spacing: 14px;
+
+            HorizontalLayout {
+                spacing: 10px;
+                MaestroIcon {
+                    source: Icons.warning;
+                    colorize: Theme.accent_red;
+                    size: 20px;
+                    y: (parent.height - self.height) / 2;
+                }
+
+                TitleText {
+                    text: root.title == "" ? "Error" : root.title;
+                    font-size: 18px;
+                    font-weight: 800;
+                    horizontal-stretch: 1;
+                }
+            }
+
+            message_box := SelectableMessage {
+                text: root.message;
+                vertical-stretch: 1;
+            }
+
+            ModalActions {
+                spacing: 10px;
+                MaestroButton {
+                    text: "Copy";
+                    clicked => { message_box.copy_all(); }
+                }
+                MaestroButton {
+                    text: "Close";
+                    primary: true;
+                    clicked => { root.dismiss(); }
+                }
+            }
+        }
+    }
+}
+
+// Full-window fatal error screen, shown when the panic hook fires.
+export component ErrorView inherits Rectangle {
+    in-out property <string> error_msg: "";
+    callback exit_app();
+
+    background: Theme.bg_main;
+
+    VerticalBox {
+        alignment: center;
+        spacing: 20px;
+        padding: 30px;
+
+        TitleText {
+            text: "Critical Error";
+            font-size: 24px;
+            font-weight: 800;
+            horizontal-alignment: center;
+            color: Theme.accent_red;
+        }
+
+        Rectangle {
+            background: Theme.bg_card;
+            border-color: Theme.accent_red;
+            border-width: 1px;
+            border-radius: 8px;
+
+            VerticalBox {
+                padding: 15px;
+                spacing: 10px;
+
+                BodyText {
+                    text: "The application has encountered a fatal error and must close.";
+                    font-weight: 500;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+
+                LabelText {
+                    text: "Error Details:";
+                    font-size: 14px;
+                    font-weight: 700;
+                }
+
+                details := SelectableMessage {
+                    text: error_msg;
+                }
+            }
+        }
+
+        HorizontalLayout {
+            alignment: center;
+            spacing: 12px;
+
+            MaestroButton {
+                text: "Copy Error";
+                clicked => { details.copy_all(); }
+            }
+
+            MaestroButton {
+                text: "Close and Exit";
+                primary: true;
+                clicked => { exit_app(); }
+            }
+        }
+    }
+}

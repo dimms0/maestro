@@ -1,0 +1,670 @@
+import { Theme } from "../theme.slint";
+import { SlintComboItem } from "../structs.slint";
+import { MaestroSfTypeBadge } from "controls.slint";
+import { Icons, MaestroIcon } from "icons.slint";
+
+export component MaestroLineEdit inherits Rectangle {
+    in-out property <string> text <=> input.text;
+    in-out property <string> placeholder;
+    in-out property <bool> enabled: true;
+
+    callback edited(string);
+
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.border_focus : Theme.border_color;
+    background: Theme.bg_input;
+
+    min-height: 36px;
+    // Keep long text (and the scrolled TextInput content) from painting
+    // outside the box.
+    clip: true;
+
+    // Clicking anywhere inside the box (including the side padding) starts
+    // editing. The TextInput itself sits above this area, so clicks landing
+    // directly on the text still position the caret / start a selection.
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.text;
+        enabled: root.enabled;
+        clicked => { input.focus(); }
+    }
+
+    // Placeholder overlay: non-interactive, so it never steals clicks from the
+    // input beneath the caret.
+    if (root.text == "" && !input.has-focus): Text {
+        x: 12px;
+        width: parent.width - 24px;
+        height: 100%;
+        text: root.placeholder;
+        color: Theme.text_secondary;
+        vertical-alignment: center;
+        font-family: Theme.font;
+        font-size: 14px;
+        overflow: elide;
+    }
+
+    // Fills the box width so a click anywhere over the text area focuses it and
+    // places the caret. `single-line` makes it scroll horizontally to follow the
+    // caret instead of overflowing when the text is longer than the box.
+    input := TextInput {
+        x: 12px;
+        width: parent.width - 24px;
+        height: 100%;
+        enabled: root.enabled;
+        color: Theme.text_primary;
+        vertical-alignment: center;
+        font-family: Theme.font;
+        font-size: 14px;
+        single-line: true;
+        edited => { root.edited(self.text); }
+    }
+}
+
+export component MaestroCheckBox inherits Rectangle {
+    in-out property <bool> checked;
+    in-out property <string> text;
+
+    in property <bool> enabled: true;
+
+    callback toggled(bool);
+
+    height: 24px;
+    background: transparent;
+
+    HorizontalLayout {
+        spacing: 8px;
+        alignment: start;
+
+        box := Rectangle {
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            border-width: 1px;
+            border-color: root.checked ? Theme.primary : Theme.border_color;
+            background: root.enabled ? (root.checked ? Theme.primary : Theme.bg_input) : Theme.bg_input_disabled;
+            y: (parent.height - self.height) / 2;
+
+            if (root.checked): MaestroIcon {
+                source: Icons.check;
+                colorize: Theme.text_primary;
+                size: 12px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+            }
+        }
+
+        Text {
+            text: root.text;
+            color: Theme.text_primary;
+            vertical-alignment: center;
+            font-family: Theme.font;
+            font-size: 14px;
+            overflow: TextOverflow.elide;
+        }
+    }
+
+    TouchArea {
+        clicked => {
+            if (root.enabled) {
+                root.checked = !root.checked;
+                root.toggled(root.checked);
+            }
+        }
+    }
+}
+
+// An on/off switch. Same contract as MaestroCheckBox — `checked` in, `toggled`
+// out — but it reads as a state the user is flipping rather than a box being
+// ticked, which is what the enable controls need now that flipping one takes
+// effect immediately.
+export component MaestroSwitch inherits Rectangle {
+    in-out property <bool> checked;
+    in-out property <string> text;
+    in property <bool> enabled: true;
+
+    callback toggled(bool);
+
+    height: 24px;
+    background: transparent;
+    forward-focus: focus;
+
+    HorizontalLayout {
+        spacing: 10px;
+        alignment: start;
+
+        track := Rectangle {
+            width: 40px;
+            height: 22px;
+            border-radius: 11px;
+            border-width: 1px;
+            y: (parent.height - self.height) / 2;
+            border-color: root.checked ? Theme.accent_green : Theme.border_color;
+            background: root.checked ? Theme.accent_green : Theme.bg_input;
+            opacity: root.enabled ? 1.0 : 0.5;
+
+            // A focus ring, since the whole control is a single hit target.
+            if (focus.has-focus): Rectangle {
+                border-radius: parent.border-radius;
+                border-width: 2px;
+                border-color: Theme.border_focus;
+            }
+
+            knob := Rectangle {
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                y: (parent.height - self.height) / 2;
+                x: root.checked ? parent.width - self.width - 3px : 3px;
+                background: root.checked ? Theme.text_primary : Theme.text_secondary;
+
+                animate x, background {
+                    duration: 120ms;
+                    easing: ease-out;
+                }
+            }
+        }
+
+        if (root.text != ""): Text {
+            text: root.text;
+            color: root.enabled ? Theme.text_primary : Theme.text_disabled;
+            vertical-alignment: center;
+            font-family: Theme.font;
+            font-size: 14px;
+            overflow: TextOverflow.elide;
+        }
+    }
+
+    focus := FocusScope {
+        enabled: root.enabled;
+
+        key-pressed(event) => {
+            if (event.text == Key.Return || event.text == " ") {
+                root.flip();
+                return accept;
+            }
+            reject
+        }
+
+        TouchArea {
+            enabled: root.enabled;
+            mouse-cursor: MouseCursor.pointer;
+            clicked => {
+                focus.focus();
+                root.flip();
+            }
+        }
+    }
+
+    function flip() {
+        root.checked = !root.checked;
+        root.toggled(root.checked);
+    }
+}
+
+// One row of a MaestroComboBox drop-down: a label plus up to three badges.
+component ComboRow inherits Rectangle {
+    in property <string> text;
+    in property <string> badge_a;
+    in property <string> badge_b;
+    in property <string> badge_c;
+    in property <bool> current;
+
+    callback clicked;
+
+    border-radius: 4px;
+    background: touch.has-hover ? Theme.bg_card_hover :
+        (root.current ? Theme.primary : transparent);
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 6px;
+        alignment: space-between;
+
+        Text {
+            text: root.text;
+            color: Theme.text_primary;
+            font-family: Theme.font;
+            font-size: 14px;
+            vertical-alignment: center;
+            overflow: TextOverflow.elide;
+            horizontal-stretch: 1;
+        }
+
+        HorizontalLayout {
+            spacing: 4px;
+            horizontal-stretch: 0;
+            alignment: end;
+
+            if (root.badge_a != ""): MaestroSfTypeBadge {
+                sf_type: root.badge_a;
+                y: (parent.height - self.height) / 2;
+            }
+            if (root.badge_b != ""): MaestroSfTypeBadge {
+                sf_type: root.badge_b;
+                y: (parent.height - self.height) / 2;
+            }
+            if (root.badge_c != ""): MaestroSfTypeBadge {
+                sf_type: root.badge_c;
+                y: (parent.height - self.height) / 2;
+            }
+        }
+    }
+}
+
+// Themed drop-down, used in place of the std-widgets ComboBox.
+//
+// Rows come from either `model` (plain labels) or `items` (labels plus badges,
+// which the std widget cannot show); `items` wins when it is non-empty. The
+// selection can be driven by `current_value` or by `current_index`, and both
+// are pure inputs: unlike a std ComboBox, picking a row never overwrites them,
+// so a binding to the underlying config keeps working after the first pick and
+// external updates (e.g. Discard) still show up. The chosen row is reported
+// through `selected(value, index)`.
+export component MaestroComboBox inherits Rectangle {
+    in property <[string]> model;
+    in property <[SlintComboItem]> items;
+    in property <int> current_index: -1;
+    in property <string> current_value;
+    in property <bool> enabled: true;
+    in property <length> row_height: 30px;
+    in property <length> max_popup_width: 560px;
+
+    callback selected(string, int);
+
+    property <bool> use_items: root.items.length > 0;
+    property <int> row_count: root.use_items ? root.items.length : root.model.length;
+    // `current_value` takes precedence; `current_index` is the fallback for
+    // call sites that address rows positionally.
+    property <string> display_text:
+        root.current_value != "" ? root.current_value :
+        (root.current_index >= 0 && root.current_index < root.row_count
+        ? (root.use_items ? root.items[root.current_index].text : root.model[root.current_index])
+        : "");
+
+    min-width: 120px;
+    height: 36px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: touch.has-hover && root.enabled ? Theme.border_focus : Theme.border_color;
+    background: root.enabled ? (touch.has-hover ? Theme.bg_card_hover : Theme.bg_input) : Theme.bg_input_disabled;
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { popup.show(); }
+    }
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 8px;
+
+        Text {
+            text: root.display_text;
+            color: root.enabled ? Theme.text_primary : Theme.text_secondary;
+            font-family: Theme.font;
+            font-size: 14px;
+            vertical-alignment: center;
+            overflow: TextOverflow.elide;
+            horizontal-stretch: 1;
+        }
+
+        MaestroIcon {
+            source: Icons.chevron_down;
+            colorize: Theme.text_secondary;
+            size: 12px;
+            horizontal-stretch: 0;
+            y: (parent.height - self.height) / 2;
+        }
+    }
+
+    popup := PopupWindow {
+        x: 0;
+        y: root.height + 4px;
+        width: Math.max(root.width, Math.min(root.max_popup_width, content.preferred-width));
+        height: root.row_count * root.row_height + 8px;
+        close-policy: PopupClosePolicy.close-on-click-outside;
+
+        Rectangle {
+            background: Theme.bg_card;
+            border-radius: 6px;
+            border-width: 1px;
+            border-color: Theme.border_color;
+
+            content := VerticalLayout {
+                padding: 4px;
+
+                if (root.use_items): VerticalLayout {
+                    for item[i] in root.items: ComboRow {
+                        height: root.row_height;
+                        text: item.text;
+                        badge_a: item.badge_a;
+                        badge_b: item.badge_b;
+                        badge_c: item.badge_c;
+                        current: item.text == root.display_text;
+                        clicked => {
+                            root.selected(item.text, i);
+                            popup.close();
+                        }
+                    }
+                }
+
+                if (!root.use_items): VerticalLayout {
+                    for label[i] in root.model: ComboRow {
+                        height: root.row_height;
+                        text: label;
+                        current: label == root.display_text;
+                        clicked => {
+                            root.selected(label, i);
+                            popup.close();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Synthesizer picker: a MaestroComboBox whose badges are SoundFont formats, so
+// each row shows at a glance which of SF2 / SF3 / SFZ that synth can load. Feed
+// it `items` built from the synth list (see views/settings_editor/synth.slint).
+export component MaestroSynthComboBox inherits MaestroComboBox {
+    min-width: 220px;
+    row_height: 32px;
+}
+
+// Themed numeric field with step buttons, used in place of the std-widgets
+// SpinBox. `value` stays a pure input: edits are reported through `edited` and
+// the field re-syncs from `value` whenever the host pushes a new one, so a
+// rejected or clamped edit cannot leave the box showing a value nothing else
+// agrees with.
+//
+// Works as either an integer or a float field via `decimals`: the default of 0
+// keeps the classic integer behaviour (every value is rounded to a whole
+// number), while a positive value turns it into a float field that rounds
+// edits to that many decimal places. `step` may itself be fractional (e.g.
+// `0.1`) for float fields.
+export component MaestroSpinBox inherits Rectangle {
+    in property <float> minimum: -2147483647;
+    in property <float> maximum: 2147483647;
+    in property <float> step: 1;
+    // Number of decimal places to keep. 0 == integer spin box.
+    in property <int> decimals: 0;
+    in property <bool> enabled: true;
+    in property <float> value;
+
+    callback edited(float);
+
+    pure function scale() -> float {
+        return Math.pow(10, root.decimals);
+    }
+
+    // Clamp into range and round to the configured precision. Every value the
+    // box shows or reports passes through here, so integer mode (decimals == 0)
+    // can never surface or emit a fractional value.
+    pure function normalized(v: float) -> float {
+        return Math.max(root.minimum,
+            Math.min(root.maximum, Math.round(v * root.scale()) / root.scale()));
+    }
+
+    // Text for a value: the normalized number rendered without trailing zeros
+    // (Slint has no fixed-decimal formatter, so 1.50 shows as "1.5").
+    pure function display(v: float) -> string {
+        return root.normalized(v) + "";
+    }
+
+    // Mirrors a new value into the field and reports it. The field's text is
+    // maintained by assignment rather than a binding, because typing into a
+    // TextInput severs any binding on its `text`.
+    function commit(v: float) {
+        input.text = root.display(v);
+        root.edited(root.normalized(v));
+    }
+
+    // Re-sync from the host, but never while the field has focus: the host
+    // answers every keystroke with a new `value`, and rewriting the text
+    // mid-word would fight the caret. Leaving the field normalizes whatever
+    // was typed (clamped, non-numeric text as 0) back to the accepted value.
+    property <bool> editing: input.has-focus;
+    changed value => {
+        if (!root.editing) {
+            input.text = root.display(root.value);
+        }
+    }
+    changed editing => {
+        if (!root.editing) {
+            input.text = root.display(root.value);
+        }
+    }
+
+    min-height: 36px;
+    min-width: 90px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.border_focus : Theme.border_color;
+    background: root.enabled ? Theme.bg_input : Theme.bg_input_disabled;
+    clip: true;
+
+    HorizontalLayout {
+        padding: 4px;
+        spacing: 4px;
+
+        step_down := Rectangle {
+            width: 24px;
+            border-radius: 4px;
+            background: down_touch.has-hover && root.enabled ? Theme.bg_card_hover : transparent;
+
+            down_touch := TouchArea {
+                enabled: root.enabled && root.value > root.minimum;
+                clicked => { root.commit(root.value - root.step); }
+            }
+
+            MaestroIcon {
+                source: Icons.minus;
+                colorize: down_touch.enabled ? Theme.text_secondary : Theme.text_disabled;
+                size: 14px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+            }
+        }
+
+        input := TextInput {
+            horizontal-stretch: 1;
+            text: root.display(root.value);
+            enabled: root.enabled;
+            color: root.enabled ? Theme.text_primary : Theme.text_secondary;
+            font-family: Theme.font;
+            font-size: 14px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            single-line: true;
+            // Reported on every keystroke (normalized to range and precision),
+            // matching how the settings views expect to receive edits;
+            // unparsable text reads as 0 and is then clamped like any other value.
+            edited => { root.edited(root.normalized(self.text.to-float())); }
+            accepted => { root.commit(self.text.to-float()); }
+        }
+
+        step_up := Rectangle {
+            width: 24px;
+            border-radius: 4px;
+            background: up_touch.has-hover && root.enabled ? Theme.bg_card_hover : transparent;
+
+            up_touch := TouchArea {
+                enabled: root.enabled && root.value < root.maximum;
+                clicked => { root.commit(root.value + root.step); }
+            }
+
+            MaestroIcon {
+                source: Icons.plus;
+                colorize: up_touch.enabled ? Theme.text_secondary : Theme.text_disabled;
+                size: 14px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+            }
+        }
+    }
+}
+
+// One half of a MaestroMidiModeBox: a clickable panel that highlights while it
+// is the selected mode. Extra controls belonging to a mode go in as children,
+// so they sit inside the panel that owns them.
+component ModePanel inherits Rectangle {
+    in property <bool> selected;
+    in property <string> title;
+    in property <string> description;
+
+    callback clicked();
+
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: root.selected ? Theme.border_focus : transparent;
+    background: root.selected ? Theme.primary
+        : (touch.has-hover ? Theme.bg_card_hover : transparent);
+
+    // Declared before the content so the controls placed inside a panel (the
+    // port spin box) still receive their own clicks.
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 8px;
+        alignment: start;
+
+        HorizontalLayout {
+            spacing: 8px;
+            cross-axis-alignment: center;
+
+            Rectangle {
+                width: 14px;
+                height: 14px;
+                border-radius: 7px;
+                border-width: 1px;
+                border-color: root.selected ? Theme.border_focus : Theme.border_color;
+                background: Theme.bg_input;
+
+                if (root.selected): Rectangle {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    width: 6px;
+                    height: 6px;
+                    border-radius: 3px;
+                    background: Theme.text_primary;
+                }
+            }
+
+            Text {
+                text: root.title;
+                color: root.selected ? Theme.text_primary : Theme.text_secondary;
+                font-family: Theme.font;
+                font-size: 14px;
+                font-weight: 700;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                overflow: TextOverflow.elide;
+            }
+        }
+
+        Text {
+            text: root.description;
+            color: root.selected ? Theme.text_secondary : Theme.text_disabled;
+            font-family: Theme.font;
+            font-size: 12px;
+            wrap: word-wrap;
+            vertical-alignment: top;
+        }
+
+        @children
+    }
+}
+
+// The virtual device's MIDI mode picker: a single box split down the middle,
+// MIDI 1.0 on the left with its port count nested inside it, MIDI 2.0 on the
+// right. Clicking a half selects that mode.
+//
+// This is purely a different front end over the two settings the card used to
+// edit separately (`num_ports` and `midi2_enabled`); it reports them through
+// `mode_selected` and `ports_edited` exactly as the checkbox and spin box did.
+export component MaestroMidiModeBox inherits Rectangle {
+    in property <bool> midi2_enabled;
+    in property <float> num_ports;
+    in property <float> min_ports: 1;
+    in property <float> max_ports: 16;
+
+    callback mode_selected(bool);
+    callback ports_edited(float);
+
+    // The two halves are positioned by hand rather than by a layout so the
+    // split lands exactly in the middle whatever each side's content needs.
+    // Everything is inset by the outer border so a highlighted half cannot
+    // paint over it.
+    property <length> half_width: (root.width - 1px) / 2;
+
+    min-width: 320px;
+    height: Math.max(midi1.preferred-height, midi2.preferred-height) + 2px;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: Theme.border_color;
+    background: Theme.bg_input;
+    clip: true;
+
+    midi1 := ModePanel {
+        x: 1px;
+        y: 1px;
+        width: root.half_width - 1px;
+        height: root.height - 2px;
+        selected: !root.midi2_enabled;
+        title: "MIDI 1.0";
+        description: "Numbered ports";
+        clicked => { root.mode_selected(false); }
+
+        HorizontalLayout {
+            spacing: 8px;
+            cross-axis-alignment: center;
+
+            Text {
+                text: "Ports";
+                color: root.midi2_enabled ? Theme.text_disabled : Theme.text_secondary;
+                font-family: Theme.font;
+                font-size: 12px;
+                vertical-alignment: center;
+                horizontal-stretch: 0;
+            }
+
+            MaestroSpinBox {
+                horizontal-stretch: 1;
+                max-width: 130px;
+                minimum: root.min_ports;
+                maximum: root.max_ports;
+                value: root.num_ports;
+                enabled: !root.midi2_enabled;
+                edited(v) => { root.ports_edited(v); }
+            }
+        }
+    }
+
+    Rectangle {
+        x: root.half_width;
+        y: 1px;
+        width: 1px;
+        height: root.height - 2px;
+        background: Theme.border_color;
+    }
+
+    midi2 := ModePanel {
+        x: root.half_width + 1px;
+        y: 1px;
+        width: root.width - root.half_width - 2px;
+        height: root.height - 2px;
+        selected: root.midi2_enabled;
+        title: "MIDI 2.0";
+        description: "One UMP device with 16 groups";
+        clicked => { root.mode_selected(true); }
+    }
+}

@@ -1,0 +1,142 @@
+import {
+    Theme,
+    MaestroButton,
+    MaestroCard,
+    TitleText,
+    LabelText,
+    BodyText,
+    HorizontalSeparator,
+    Icons,
+    MaestroIcon,
+} from "../widgets.slint";
+import { RendererState } from "../globals.slint";
+import { RenderQueueTable } from "converter/queue.slint";
+import { RenderProgressModal, AddMidiModal } from "converter/modals.slint";
+
+// Banner shown while the converter config has in-memory edits: a render loads
+// its configuration from disk, so unsaved edits would silently not apply.
+component UnsavedSettingsWarning inherits Rectangle {
+    background: #78350f33;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.accent_red;
+
+    HorizontalLayout {
+        padding: 10px;
+        spacing: 8px;
+        cross-axis-alignment: center;
+
+        MaestroIcon {
+            source: Icons.warning;
+            colorize: Theme.accent_red;
+            size: 15px;
+        }
+
+        BodyText {
+            text: "You have unsaved converter settings. Open Converter Settings and save them, otherwise this render will use the last saved configuration.";
+            font-size: 12px;
+            wrap: word-wrap;
+            horizontal-stretch: 1;
+        }
+
+        MaestroButton {
+            text: "Open Settings";
+            clicked => { RendererState.open_converter_settings(); }
+        }
+    }
+}
+
+export component RendererView inherits Rectangle {
+    background: Theme.bg_main;
+    clip: true;
+
+    property <bool> show_add_midi: false;
+
+    VerticalLayout {
+        padding: 24px;
+        spacing: 20px;
+
+        HorizontalLayout {
+            alignment: space-between;
+
+            HorizontalLayout {
+                spacing: 12px;
+
+                TitleText {
+                    text: "MIDI to Audio Converter";
+                    font-size: 24px;
+                    font-weight: 800;
+                }
+
+                HorizontalSeparator { }
+
+                LabelText {
+                    text: "Convert MIDI file sequences to high-quality audio files";
+                    font-size: 14px;
+                    overflow: TextOverflow.elide;
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 12px;
+                alignment: center;
+
+                MaestroButton {
+                    icon: Icons.settings;
+                    text: "Converter Settings";
+                    clicked => { RendererState.open_converter_settings(); }
+                }
+            }
+        }
+
+        MaestroCard {
+            VerticalLayout {
+                padding: 16px;
+                spacing: 16px;
+
+                TitleText {
+                    text: "Conversion Queue (" + RendererState.render_queue.length + " items)";
+                }
+
+                RenderQueueTable { }
+
+                if (RendererState.converter_settings_dirty): UnsavedSettingsWarning { }
+
+                Rectangle {
+                    background: Theme.bg_card_hover;
+                    border-radius: 6px;
+                    border-width: 1px;
+                    border-color: Theme.border_color;
+                    height: 60px;
+
+                    HorizontalLayout {
+                        padding: 12px;
+                        spacing: 12px;
+                        alignment: space-between;
+
+                        MaestroButton {
+                            icon: Icons.plus;
+                            text: "Add MIDI";
+                            primary: true;
+                            clicked => { root.show_add_midi = true; }
+                        }
+
+                        MaestroButton {
+                            icon: Icons.converter;
+                            text: "Start Render Sequence";
+                            primary: true;
+                            disabled: RendererState.render_queue.length == 0;
+                            clicked => { RendererState.start_render(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (RendererState.is_rendering): RenderProgressModal { }
+
+    if (root.show_add_midi): AddMidiModal {
+        dismissed => { root.show_add_midi = false; }
+    }
+}

@@ -1,0 +1,21 @@
+[package]
+name = "midi-parser"
+description = "Standard MIDI File and MIDI Clip File reader/writer"
+
+license.workspace = true
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+memmap2 = "0.9"
+thiserror = "2.0"
+rayon = { version = "1.12", optional = true }
+
+[features]
+default = ["parallel"]
+parallel = ["dep:rayon"]

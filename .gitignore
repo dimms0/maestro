@@ -1,0 +1,12 @@
+/target
+/graphify-out
+CLAUDE.md
+/.claude
+/.cargo
+*.DS_Store
+
+/*.tar.gz
+
+# Synth libraries downloaded by packaging/fetch-libs.sh, one directory per
+# architecture (the vendor README.md next to them stays tracked).
+/packaging/*/vendor/*/

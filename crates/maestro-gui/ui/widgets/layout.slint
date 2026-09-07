@@ -1,0 +1,146 @@
+import { Theme } from "../theme.slint";
+import { MaestroButton, MaestroCard } from "controls.slint";
+import { TitleText, LabelText } from "text.slint";
+
+// A titled card wrapper, for consistent section styling across every editor.
+export component SectionCard inherits MaestroCard {
+    in property <string> title;
+    in property <length> content_spacing: 12px;
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: root.content_spacing;
+
+        if (root.title != ""): TitleText {
+            text: root.title;
+        }
+
+        @children
+    }
+}
+
+// A labelled column: caption above a control. The single way a form field is
+// laid out anywhere in the app.
+export component Field inherits VerticalLayout {
+    in property <string> label;
+    in property <length> label_font_size: 12px;
+    in property <color> label_color: Theme.text_secondary;
+    spacing: 6px;
+
+    LabelText {
+        text: root.label;
+        font-size: root.label_font_size;
+        color: root.label_color;
+    }
+
+    @children
+}
+
+// Full-window dimming backdrop with a centred card. Every modal in the app is
+// built from this, so they all dismiss, dim and centre the same way.
+//
+// Clicking the backdrop calls `dismissed()` unless `dismissable` is false;
+// clicks inside the card are absorbed so they never fall through.
+export component ModalOverlay inherits Rectangle {
+    in property <string> title;
+    in property <length> card_width: 360px;
+    in property <length> card_height: 200px;
+    in property <length> content_padding: 24px;
+    in property <length> content_spacing: 20px;
+    in property <bool> dismissable: true;
+    in property <color> backdrop: Theme.overlay;
+
+    callback dismissed();
+
+    z: 100;
+    background: root.backdrop;
+
+    TouchArea {
+        clicked => {
+            if (root.dismissable) {
+                root.dismissed();
+            }
+        }
+    }
+
+    Rectangle {
+        width: root.card_width;
+        height: root.card_height;
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        border-radius: 10px;
+        border-width: 1px;
+        border-color: Theme.border_color;
+        background: Theme.bg_card;
+
+        // Absorb clicks so they don't reach the dismiss TouchArea behind.
+        TouchArea { }
+
+        VerticalLayout {
+            padding: root.content_padding;
+            spacing: root.content_spacing;
+
+            if (root.title != ""): TitleText {
+                text: root.title;
+            }
+
+            @children
+        }
+    }
+}
+
+// Right-aligned row of modal buttons (Discard / Confirm).
+export component ModalActions inherits HorizontalLayout {
+    spacing: 12px;
+    alignment: end;
+
+    @children
+}
+
+// The Save / Discard / exit row shared by the editors. `standalone` swaps the
+// in-app buttons for the exit pair used when the editor owns the whole window.
+export component EditorActionBar inherits HorizontalLayout {
+    in property <bool> standalone: false;
+    // Whether the non-standalone variant offers a "Close" button (modal hosts).
+    in property <bool> closable: false;
+
+    callback save();
+    callback discard();
+    callback close();
+    callback exit_standalone();
+
+    spacing: 12px;
+
+    MaestroButton {
+        text: "Save Changes";
+        primary: true;
+        clicked => { root.save(); }
+    }
+
+    MaestroButton {
+        text: "Discard";
+        clicked => { root.discard(); }
+    }
+
+    if (root.closable && !root.standalone): MaestroButton {
+        text: "Close";
+        clicked => { root.close(); }
+    }
+
+    if (root.standalone): MaestroButton {
+        text: "Save & Exit";
+        primary: true;
+        clicked => {
+            root.save();
+            root.exit_standalone();
+        }
+    }
+
+    if (root.standalone): MaestroButton {
+        text: "Exit without Saving";
+        danger: true;
+        clicked => { root.exit_standalone(); }
+    }
+
+    @children
+}

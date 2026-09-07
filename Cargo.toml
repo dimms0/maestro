@@ -1,0 +1,22 @@
+[workspace]
+members = ["crates/*"]
+default-members = [
+    "crates/maestro-gui",
+    "crates/maestro-daemon",
+    "crates/maestro-kdmapi",
+]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+authors = ["dimms"]
+license = "LGPL-3.0-or-later"
+homepage = "https://dimms.gr/maestro"
+repository = "https://github.com/dimms0/maestro"
+keywords = ["midi", "audio", "synthesizer"]
+categories = ["multimedia::audio"]
+
+[profile.release]
+opt-level = 3
+codegen-units = 16

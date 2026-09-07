@@ -1,0 +1,222 @@
+import { ScrollView } from "std-widgets.slint";
+import {
+    Theme,
+    MaestroButton,
+    MaestroCard,
+    MaestroLineEdit,
+    MaestroProgressBar,
+    SflistPicker,
+    TitleText,
+    LabelText,
+    BodyText,
+    ModalOverlay,
+    ModalActions,
+} from "../../widgets.slint";
+import { RendererState, SflistState } from "../../globals.slint";
+import { RenderPhase } from "../../enums.slint";
+import { SlintRenderJob } from "../../structs.slint";
+
+// One in-flight MIDI in the progress modal.
+component RenderJobRow inherits Rectangle {
+    in property <SlintRenderJob> job;
+
+    background: Theme.bg_main;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.border_color;
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 8px;
+
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: space-between;
+
+            BodyText {
+                text: root.job.midi_path;
+                font-size: 13px;
+                font-weight: 600;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+
+            Text {
+                text: root.job.phase == RenderPhase.scanning ? "Scanning" : "Rendering";
+                font-family: Theme.font;
+                font-size: 11px;
+                font-weight: 700;
+                color: root.job.phase == RenderPhase.scanning ? Theme.text_secondary : Theme.primary;
+                horizontal-stretch: 0;
+                vertical-alignment: center;
+            }
+
+            BodyText {
+                text: root.job.indeterminate ? "—" : round(root.job.progress * 100) + "%";
+                font-size: 13px;
+                font-weight: 700;
+                color: Theme.primary;
+                horizontal-stretch: 0;
+                min-width: 40px;
+                horizontal-alignment: right;
+            }
+        }
+
+        MaestroProgressBar {
+            progress: root.job.progress;
+            indeterminate: root.job.indeterminate;
+        }
+
+        Text {
+            text: root.job.stats;
+            font-family: Theme.mono_font;
+            font-size: 11px;
+            color: Theme.text_secondary;
+            wrap: word-wrap;
+        }
+    }
+}
+
+// Blocking progress modal shown for the duration of a render run.
+export component RenderProgressModal inherits Rectangle {
+    background: #000000b0;
+
+    // Block mouse events to components underneath.
+    TouchArea { }
+
+    MaestroCard {
+        width: 560px;
+        height: 460px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+
+        VerticalLayout {
+            padding: 24px;
+            spacing: 16px;
+
+            TitleText {
+                text: "Rendering In Progress";
+                font-size: 18px;
+                font-weight: 800;
+                horizontal-alignment: center;
+            }
+
+            LabelText {
+                text: RendererState.render_jobs.length == 1
+                    ? "1 file in progress"
+                    : RendererState.render_jobs.length + " files in progress";
+                font-size: 13px;
+                horizontal-alignment: center;
+            }
+
+            // Identical layout whether there is one job (sequential mode) or
+            // many (parallel mode).
+            ScrollView {
+                vertical-stretch: 1;
+                VerticalLayout {
+                    spacing: 10px;
+
+                    for job in RendererState.render_jobs: RenderJobRow {
+                        vertical-stretch: 0;
+                        job: job;
+                    }
+
+                    Rectangle {
+                        vertical-stretch: 1;
+                    }
+
+                    if (RendererState.render_jobs.length == 0): Rectangle {
+                        height: 40px;
+                        LabelText {
+                            text: "Preparing…";
+                            font-size: 14px;
+                            horizontal-alignment: center;
+                        }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                alignment: center;
+                // Workers only notice a cancel between render batches, so show
+                // a disabled "Cancelling…" until they actually stop (the worker
+                // clears is_rendering when every render ended).
+                MaestroButton {
+                    text: RendererState.is_cancelling ? "Cancelling…" : "Cancel";
+                    danger: true;
+                    disabled: RendererState.is_cancelling;
+                    clicked => { RendererState.cancel_render(); }
+                }
+            }
+        }
+    }
+}
+
+// "Add MIDI" dialog: pick a file and the SoundFont list to render it with.
+export component AddMidiModal inherits ModalOverlay {
+    in-out property <string> midi_path: "";
+    in-out property <string> sflist: SflistState.available.length > 0
+        ? SflistState.available[0]
+        : "Default";
+
+    title: "Add MIDI";
+    card_width: 420px;
+    card_height: 250px;
+
+    HorizontalLayout {
+        spacing: 8px;
+
+        MaestroLineEdit {
+            horizontal-stretch: 1;
+            placeholder: "MIDI file path (.mid)";
+            text <=> root.midi_path;
+        }
+
+        MaestroButton {
+            horizontal-stretch: 0;
+            text: "Browse…";
+            clicked => { root.midi_path = RendererState.browse_midi(); }
+        }
+    }
+
+    HorizontalLayout {
+        spacing: 8px;
+
+        LabelText {
+            text: "SoundFont List:";
+            font-size: 13px;
+        }
+
+        // No Edit shortcut here: jumping to the SoundFont editor would navigate
+        // out from under this dialog and lose the file being added.
+        SflistPicker {
+            editable: false;
+            combo_width: 180px;
+            current: root.sflist;
+            selected(val) => { root.sflist = val; }
+        }
+    }
+
+    ModalActions {
+        MaestroButton {
+            text: "Discard";
+            clicked => {
+                root.midi_path = "";
+                root.dismissed();
+            }
+        }
+
+        MaestroButton {
+            text: "Add to Queue";
+            primary: true;
+            disabled: root.midi_path == "";
+            clicked => {
+                if (root.midi_path != "") {
+                    RendererState.add_midi_to_queue(root.midi_path, root.sflist);
+                    root.midi_path = "";
+                    root.dismissed();
+                }
+            }
+        }
+    }
+}

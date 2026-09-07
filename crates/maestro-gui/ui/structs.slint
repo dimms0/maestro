@@ -1,0 +1,239 @@
+import { IntegrationStatus, RenderPhase, SynthKind } from "enums.slint";
+
+export struct SlintSoundFont {
+    enabled: bool,
+    path: string,
+    filename: string,
+    // Format label derived from the file extension: "SF2", "SF3", "SFZ" or "?".
+    sf_type: string,
+    bank: int,
+    preset: int,
+}
+
+// One row of a MaestroComboBox that needs more than a label: up to three small
+// badges are drawn after the text (empty strings are skipped). The synthesizer
+// picker uses them for the SoundFont formats each synth supports.
+export struct SlintComboItem {
+    text: string,
+    badge_a: string,
+    badge_b: string,
+    badge_c: string,
+}
+
+export struct SlintPortAssignment {
+    port: int,
+    list_name: string,
+}
+
+export struct SlintRealtimeConfig {
+    device_audio_params: bool,
+    render_buffer_ms: float,
+    precision_playback: bool,
+    max_nps: int,
+    has_max_nps: bool,
+
+    // Indices into AudioDeviceState.hosts / .devices. Index 0 of each is the
+    // "default" entry, which maps back to `None` on the Rust side.
+    audio_host_index: int,
+    output_device_index: int,
+
+    // Device period in frames, only applied when `has_buffer_size` is set;
+    // otherwise the device default is left alone.
+    buffer_size: int,
+    has_buffer_size: bool,
+}
+
+export struct SlintRendererConfig {
+    port_threads: int,
+    has_port_threads: bool,
+    render_fps: float,
+    has_render_fps: bool,
+    render_fps_variation: float,
+}
+
+// Union of every synthesizer's parameters. Only the fields for the active
+// `kind` are shown in the editor; the rest are ignored. Adding a synth = add its
+// fields here, a `SynthKind` variant, a panel under views/settings_editor/, and
+// a match arm in `slint_conv.rs`.
+export struct SlintSynthConfig {
+    kind: SynthKind,
+
+    // --- FluidSynth ---
+    fluid_voice_limit: int,
+    fluid_interpolation: int, // 0 None, 1 Linear, 2 Sinc4th, 3 Sinc7th
+    fluid_min_note_length: int,
+    fluid_system_id: int,
+    fluid_chorus: bool,
+    fluid_reverb: bool,
+    fluid_overflow_age: float,
+    fluid_overflow_percussion: float,
+    fluid_overflow_released: float,
+    fluid_overflow_sustained: float,
+    fluid_overflow_volume: float,
+
+    // --- BASSMIDI ---
+    bass_voice_limit: int,
+    bass_render_time_limit: float,
+    bass_interpolation: int, // 0 None, 1 Linear, 2 Sinc8, 3 Sinc16 (UI index)
+    bass_multithreading: bool,
+    bass_thread_count: int, // 0 = auto
+    bass_keyboard_divisions: int,
+    bass_disable_effects: bool,
+    bass_fade_out_killing: bool,
+    bass_follow_overlaps: bool,
+    bass_sf_linear_attack_mod: bool,
+    bass_sf_linear_decay_vol: bool,
+    bass_sf_minfx: bool,
+    bass_sf_nofx: bool,
+    bass_sf_no_rampin: bool,
+    bass_sf_sb_limits: bool,
+    bass_sf_xg_drums: bool,
+}
+
+export struct SlintEventProcessorConfig {
+    bypass_channels: [bool],
+    ignore_channels: [bool],
+    bypass_ports: [bool],
+    ignore_ports: [bool],
+    fixed_velocity: int,
+    transpose: int,
+    velocity_multiplier: float,
+    velocity_threshold: int,
+    velocity_curve: float,
+    // Inclusive MIDI key bounds (0-127); notes outside them are dropped.
+    key_range_low: int,
+    key_range_high: int,
+    ignore_program_change: bool,
+    ignore_sysex: bool,
+}
+
+export struct SlintPostProcessorConfig {
+    volume: float,
+    has_limiter: bool,
+    limiter_attack_ms: float,
+    limiter_release_ms: float,
+}
+
+export struct SlintConverterCustom {
+    multithreaded_export: bool,
+    export_threads: int, // 0 = auto
+    output_format: int, // 0 wav, 1 flac, 2 mp3, 3 ogg
+    wav_bit_depth: int, // 0 32-bit float, 1 24-bit int, 2 16-bit int
+    // Index into ConverterState.bitrates, not a rate in kbps.
+    bitrate_index: int,
+    output_path: string,
+}
+
+export struct SlintSystemCustom {
+    device_name: string,
+    num_ports: int,
+    midi2_enabled: bool,
+    idle_timeout_minutes: int,
+}
+
+export struct SlintAudioParameters {
+    channels: int,
+    sample_rate: int,
+}
+
+export struct SlintComponentConfig {
+    name: string,
+    dirty: bool,
+    has_enabled: bool,
+    enabled: bool,
+    has_sflist: bool,
+    sflist: string,
+    sflist_index: int, // index of `sflist` within `SflistState.available` (0 if not found)
+
+    has_audio_params: bool,
+    audio_params: SlintAudioParameters,
+    has_realtime: bool,
+    realtime: SlintRealtimeConfig,
+    has_renderer: bool,
+    renderer: SlintRendererConfig,
+    synth: SlintSynthConfig,
+    has_event_processor: bool,
+    event_processor: SlintEventProcessorConfig,
+    has_post_processor: bool,
+    post_processor: SlintPostProcessorConfig,
+
+    // Which component-specific panels the editor shows. Derived from the
+    // component profile on the Rust side so the view never has to know which
+    // component it is looking at.
+    has_port_threads: bool,
+    has_converter_options: bool,
+    has_device_options: bool,
+    converter_custom: SlintConverterCustom,
+    system_custom: SlintSystemCustom,
+}
+
+// The parts of a component's configuration the Virtual MIDI Device tab shows
+// inline, so its two cards can be a single reusable component.
+export struct SlintComponentSummary {
+    enabled: bool,
+    dirty: bool,
+    // Index of the assigned list within `SflistState.available`.
+    sflist_index: int,
+}
+
+// Live statistics of one process using a Maestro component, read from that
+// process's statistics pipe.
+//
+// `state` is 0 off, 1 starting, 2 live, 3 paused for inactivity — a component
+// can be loaded with no engine behind it, either because it is still building
+// one or because it released the memory after a quiet spell.
+export struct SlintComponentStats {
+    name: string,
+    state: int,
+    state_text: string,
+    memory: string,
+    voices: string,
+    render_load_txt: string,
+    render_load: float,
+}
+
+export struct SlintMidiRenderEntry {
+    midi_path: string,
+    sflist_name: string,
+}
+
+// A single MIDI currently being scanned or rendered. Shown as one row in the
+// render progress modal's job list (one row in sequential mode, many in
+// parallel).
+export struct SlintRenderJob {
+    midi_path: string,
+    phase: RenderPhase,
+    progress: float,
+    indeterminate: bool,
+    stats: string,
+}
+
+// One component on the System Integration tab. `detail` is the current state in
+// words, `hint` the follow-up action or reason shown underneath when non-empty.
+export struct SlintIntegrationItem {
+    name: string,
+    detail: string,
+    hint: string,
+    status: IntegrationStatus,
+}
+
+// One third-party audio library row. `source` says which of the three search
+// tiers the library was loaded from; `detail` carries the reason when it could
+// not be loaded.
+export struct SlintLibraryItem {
+    name: string,
+    filename: string,
+    version: string,
+    source: string,
+    detail: string,
+    status: IntegrationStatus,
+}
+
+// A single non-fatal error dialog. Rendered as a stackable overlay window that
+// persists across tab changes until dismissed via its Close button. `id` is a
+// stable handle used to dismiss the correct dialog from the Rust side.
+export struct SlintErrorDialog {
+    id: int,
+    title: string,
+    message: string,
+}

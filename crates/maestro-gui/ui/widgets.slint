@@ -1,0 +1,51 @@
+// Barrel module for the shared widget library. Views import everything they
+// need from here; the implementations live in `widgets/` grouped by role.
+export { Theme } from "theme.slint";
+
+// Every icon in the UI: SVGs embedded in the binary, so a glyph never depends
+// on which fonts the host machine has.
+export { Icons, MaestroIcon } from "widgets/icons.slint";
+
+export {
+    TitleText,
+    BodyText,
+    LabelText,
+    DirtyBadge,
+    MaestroTooltip,
+    MaestroHoverText,
+    MaestroMarqueeText,
+    SelectableMessage,
+} from "widgets/text.slint";
+
+export {
+    MaestroButton,
+    MaestroIconButton,
+    MaestroCard,
+    MaestroProgressBar,
+    MaestroSfTypeBadge,
+    HorizontalSeparator,
+    VerticalSeparator,
+} from "widgets/controls.slint";
+
+export {
+    MaestroLineEdit,
+    MaestroCheckBox,
+    MaestroSwitch,
+    MaestroComboBox,
+    MaestroSynthComboBox,
+    MaestroSpinBox,
+    MaestroMidiModeBox,
+} from "widgets/inputs.slint";
+
+// Unlike the rest of the library this one is bound to a global
+// (`SflistState`) — that is the point: it is the single SoundFont list picker
+// shared by every view that assigns a list.
+export { SflistPicker } from "widgets/sflist.slint";
+
+export {
+    SectionCard,
+    Field,
+    ModalOverlay,
+    ModalActions,
+    EditorActionBar,
+} from "widgets/layout.slint";

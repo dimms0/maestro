@@ -1,0 +1,291 @@
+// Application state shared between Rust and the views.
+//
+// Every view reads its global directly rather than having `app.slint` forward
+// each property and callback into it. Adding a field is therefore a single edit
+// here plus its use in the view — there is no third place to keep in sync.
+import {
+    Tab,
+    StandaloneMode,
+    DeviceComponent,
+    RenderStatus,
+    ServiceAction,
+    KdmapiAction,
+    LibraryAction,
+    EventFlagKind,
+} from "enums.slint";
+import {
+    SlintSoundFont,
+    SlintPortAssignment,
+    SlintComponentConfig,
+    SlintComponentStats,
+    SlintComponentSummary,
+    SlintAudioParameters,
+    SlintRealtimeConfig,
+    SlintRendererConfig,
+    SlintSynthConfig,
+    SlintEventProcessorConfig,
+    SlintPostProcessorConfig,
+    SlintConverterCustom,
+    SlintSystemCustom,
+    SlintMidiRenderEntry,
+    SlintRenderJob,
+    SlintErrorDialog,
+    SlintIntegrationItem,
+    SlintLibraryItem,
+} from "structs.slint";
+
+export global AppState {
+    in-out property <Tab> active_tab: Tab.welcome;
+    in-out property <StandaloneMode> standalone_mode: StandaloneMode.combined;
+
+    // True when the tabbed shell (nav bar + tab bodies) is in charge, i.e. the
+    // app was not launched to edit a single file.
+    out property <bool> combined: root.standalone_mode == StandaloneMode.combined;
+
+    in property <string> version: "0.1.0";
+
+    // Set at startup when every SoundFont list is empty, so a MIDI file playing
+    // silently doesn't become the user's first impression of the app.
+    in-out property <bool> no_soundfonts_prompt: false;
+    callback open_soundfonts_page();
+
+    // Set from a background check against GitHub Releases (update-check
+    // feature, release builds only).
+    in-out property <string> update_available: "";
+    in-out property <string> update_url;
+    callback open_update_page();
+
+    // Persisted setting: when on, the welcome page's checkbox keeps whatever
+    // tab was last chosen there and the app opens straight to it next launch.
+    in-out property <bool> remember_last_tab: false;
+    // The welcome page's mode cards call this instead of setting `active_tab`
+    // directly, so the choice can be persisted when `remember_last_tab` is on.
+    callback welcome_navigate(Tab);
+    callback set_remember_last_tab(bool);
+
+    // Closing the window while the daemon is running is intercepted so the user
+    // decides rather than forgets: the daemon keeps a soundfont bank resident
+    // with nothing on screen to show for it.
+    in-out property <bool> quit_prompt_open: false;
+    in-out property <string> quit_prompt_detail;
+
+    // Close the window, leaving the daemon alone.
+    callback quit_keep_running();
+    // Stop the daemon, then close.
+    callback quit_and_stop();
+}
+
+// Everything the shared `SflistPicker` widget needs. Keeping the list of names
+// and the jump-to-editor action in one global is what lets every picker in the
+// app be the same widget: a view only says which list it is currently showing,
+// never where the choices come from or what "Edit" does.
+// Audio hardware as the machine currently reports it, filled from Rust. Kept
+// separate from the config so the lists can be refreshed (a device appearing or
+// disappearing) without touching what the user has chosen.
+export global AudioDeviceState {
+    // Both lists lead with a "default" entry, so index 0 always means "let the
+    // system decide" rather than a specific piece of hardware.
+    in-out property <[string]> hosts;
+    in-out property <[string]> devices;
+
+    // Rates the selected device actually reports, rather than a fixed list that
+    // it may not support.
+    in-out property <[string]> sample_rates;
+
+    // Device period bounds in frames, 0 when the device does not report them.
+    in-out property <int> buffer_min;
+    in-out property <int> buffer_max;
+
+    // Power-of-two periods within those bounds, as the buffer size dropdown
+    // never offers a value the device cannot take.
+    in-out property <[string]> buffer_sizes;
+
+    // Under JACK the server owns the rate and buffer size, so the controls are
+    // shown but not editable.
+    in-out property <bool> fixed_by_host: false;
+
+    // Re-query the devices and capabilities for the current selection.
+    callback refresh();
+}
+
+export global SflistState {
+    in-out property <[string]> available;
+
+    // Open the SoundFont list editor on `name`. Works from anywhere, including
+    // the standalone `edit-config` window.
+    callback edit(string);
+}
+
+export global SoundfontEditorState {
+    in-out property <[string]> file_names;
+    in-out property <[bool]> file_dirty;
+    in-out property <int> selected_file_index: -1;
+
+    in-out property <[SlintSoundFont]> current_soundfonts;
+    in-out property <[string]> available_sublists;
+    in-out property <int> selected_sublist_index: -1;
+    in-out property <[SlintPortAssignment]> current_port_assignments;
+    in-out property <string> default_sublist: "Default";
+
+    callback select_file(int);
+    callback select_sublist(int);
+    callback add_soundfont(string, int, int);
+    callback remove_soundfont(int);
+    callback update_soundfont(int, bool, string, int, int);
+    callback move_soundfont(int, int);
+    callback add_sublist(string);
+    callback remove_sublist(string);
+    callback rename_sublist(string, string);
+    callback update_port_assignment(int, string);
+    callback set_default_sublist(string);
+    callback save_current();
+    callback discard_current();
+    callback exit_standalone();
+    callback browse_soundfont() -> string;
+    callback soundfont_type(string) -> string;
+    callback create_sflist(string);
+    callback delete_sflist(int);
+    callback rename_sflist(int, string);
+}
+
+// Shared settings editor state. Any component opens the editor by calling
+// `open_settings(<component-name>)`; the editor is shown as a modal (combined
+// mode) or full-window (standalone `edit-config`).
+//
+// `open` doubles as the pane selector in `edit-config`: that window shows the
+// config editor while it is true and the SoundFont list editor while it is
+// false, which is how a picker's Edit button works there too.
+export global SettingsEditorState {
+    in-out property <bool> open: false;
+    in-out property <SlintComponentConfig> current_config;
+
+    // Labels for the converter's bitrate picker, filled from the rate list the
+    // encoders accept. `converter_custom.bitrate_index` indexes into it.
+    in-out property <[string]> bitrates;
+
+    callback open_settings(string);
+    callback update_enabled(bool);
+    callback update_sflist(string);
+    callback update_audio_params(SlintAudioParameters);
+    callback update_realtime(SlintRealtimeConfig);
+    callback update_renderer(SlintRendererConfig);
+    callback update_synth(SlintSynthConfig);
+    callback toggle_event_processor(bool);
+    callback update_event_processor(SlintEventProcessorConfig);
+    // Sets or clears one bypass/ignore flag for the channel or port at `index`.
+    // The grids toggle a single cell at a time, so they edit the list in place
+    // rather than sending the whole event processor config back.
+    callback toggle_event_flag(EventFlagKind, int, bool);
+    callback toggle_post_processor(bool);
+    callback update_post_processor(SlintPostProcessorConfig);
+    callback update_converter_custom(SlintConverterCustom);
+    callback update_system_custom(SlintSystemCustom);
+    callback save_current();
+    callback discard_current();
+    callback close();
+    callback exit_standalone();
+}
+
+export global RendererState {
+    in-out property <[SlintMidiRenderEntry]> render_queue;
+    in-out property <bool> converter_settings_dirty: false;
+
+    in-out property <bool> is_rendering: false;
+    // True after a cancel was requested but before the workers actually stopped
+    // (they only check between render batches). Cleared together with
+    // `is_rendering` by the render worker.
+    in-out property <bool> is_cancelling: false;
+    // Live per-MIDI progress rows for the render modal. One entry in sequential
+    // mode, one per in-flight file in parallel mode.
+    in-out property <[SlintRenderJob]> render_jobs;
+    // Per-queue-entry status, parallel to `render_queue`. Empty when no render
+    // has been started for the current queue contents.
+    in-out property <[RenderStatus]> render_statuses;
+
+    callback add_midi_to_queue(string, string);
+    callback remove_midi_from_queue(int);
+    callback update_midi_sflist(int, string);
+    callback start_render();
+    callback cancel_render();
+    callback open_converter_settings();
+    callback browse_midi() -> string;
+}
+
+// Virtual MIDI Device tab. The System and KDMAPI cards are the same component
+// parameterised by `DeviceComponent`, so every callback takes the component it
+// applies to instead of being duplicated per component.
+export global DeviceManagerState {
+    in-out property <SlintSystemCustom> system_custom;
+    in-out property <SlintComponentSummary> system;
+    in-out property <SlintComponentSummary> kdmapi;
+
+    in-out property <[SlintComponentStats]> stats;
+
+    // The daemon's live state, read from its statistics socket rather than from
+    // the config: it is a separate process, so what it is doing right now is
+    // the only honest source. `daemon_state` matches SlintComponentStats.state.
+    in-out property <bool> daemon_running: false;
+    in-out property <int> daemon_state: 0;
+    in-out property <string> daemon_memory;
+    // Set while a start or stop is in flight, so the switch cannot be flipped
+    // again before the daemon has answered.
+    in-out property <bool> daemon_busy: false;
+
+    // Persisted setting: run `service::start()` as soon as the GUI launches.
+    in-out property <bool> start_on_launch: false;
+
+    callback update_system_custom(SlintSystemCustom);
+    callback set_running(bool);
+    callback set_start_on_launch(bool);
+    callback set_enabled(DeviceComponent, bool);
+    callback set_sflist(DeviceComponent, string);
+    callback save(DeviceComponent);
+    callback discard(DeviceComponent);
+    callback open_settings(DeviceComponent);
+}
+
+// System Integration tab. Everything here is derived from the machine, never
+// from the config, so it holds no dirty/save state: each action runs a system
+// command on a worker thread and the whole tab is re-checked afterwards.
+export global SystemIntegrationState {
+    // Selects the WinMM driver card over the user-service card. Both arms are
+    // always compiled; this decides which one is shown.
+    in-out property <bool> windows: false;
+    in-out property <bool> busy: false;
+
+    in-out property <SlintIntegrationItem> service;
+    // Installed and usable. Whether it is *running* lives in
+    // DeviceManagerState, which learns it from the daemon itself.
+    in-out property <bool> service_installed;
+    // Whether maestrod is set to launch on login (systemd user unit enabled,
+    // launchd RunAtLoad, or a registry Run key entry on Windows).
+    in-out property <bool> autostart;
+
+    in-out property <SlintIntegrationItem> kdmapi;
+    // True when a non-Maestro OmniMIDI owns the system library: the install and
+    // uninstall actions are withheld until the user removes it.
+    in-out property <bool> kdmapi_blocked;
+
+    in-out property <[SlintLibraryItem]> libraries;
+    in-out property <string> lib_dir;
+    in-out property <string> lib_arch_hint;
+
+    // Set after every probe (including the one at startup) when the service
+    // isn't installed or a library is missing, so the GUI can prompt the user
+    // to visit this tab instead of them finding out only when audio is silent.
+    in-out property <bool> startup_issue: false;
+
+    callback refresh();
+    callback service_action(ServiceAction);
+    callback set_autostart(bool);
+    callback kdmapi_action(KdmapiAction);
+    callback library_action(int, LibraryAction);
+}
+
+// Global, app-wide stack of non-fatal error dialogs. Any component reports an
+// error by pushing onto `dialogs` (from Rust via `errors::report`); the dialog
+// overlays persist regardless of the active tab until dismissed.
+export global ErrorState {
+    in-out property <[SlintErrorDialog]> dialogs;
+    callback dismiss(int);
+}

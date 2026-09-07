@@ -1,0 +1,251 @@
+import {
+    Theme,
+    MaestroButton,
+    MaestroCard,
+    TitleText,
+    LabelText,
+    DirtyBadge,
+    EditorActionBar,
+    Icons,
+} from "../widgets.slint";
+import { SoundfontEditorState } from "../globals.slint";
+import { NameEntryAction } from "../enums.slint";
+import { SflistSidebar } from "soundfont_editor/sidebar.slint";
+import { SublistBar } from "soundfont_editor/sublists.slint";
+import { SoundFontTable } from "soundfont_editor/fonts.slint";
+import { PortAssignmentPanel } from "soundfont_editor/ports.slint";
+import {
+    NameEntryModal,
+    ConfirmModal,
+    SoundFontDetailsModal,
+    HelpModal,
+} from "soundfont_editor/modals.slint";
+
+export component SoundfontEditorView inherits Rectangle {
+    // True when the editor owns the whole window (`edit-list` mode): the file
+    // sidebar is hidden and the action bar offers the exit buttons instead.
+    in property <bool> standalone: false;
+    // True when the editor was reached from a config being edited full-window
+    // (`edit-config`), which is the only way back to it.
+    in property <bool> show_back: false;
+
+    callback back();
+
+    background: Theme.bg_main;
+
+    // ── Name-entry modal (new/rename sub-list, new/rename SoundFont list) ──
+    property <bool> show_name_modal: false;
+    property <NameEntryAction> name_action;
+    property <string> name_value;
+    // Context captured when opening a rename.
+    property <string> rename_sublist_old;
+    property <int> rename_list_idx: -1;
+
+    property <string> name_modal_title:
+        root.name_action == NameEntryAction.new_sublist ? "New Sub-list" :
+        root.name_action == NameEntryAction.rename_sublist ? "Rename Sub-list" :
+        root.name_action == NameEntryAction.new_list ? "New SoundFont List" : "Rename SoundFont List";
+    property <bool> name_modal_is_sublist:
+        root.name_action == NameEntryAction.new_sublist || root.name_action == NameEntryAction.rename_sublist;
+    property <bool> name_modal_is_create:
+        root.name_action == NameEntryAction.new_sublist || root.name_action == NameEntryAction.new_list;
+
+    // ── Delete confirmation ──
+    property <bool> show_delete_confirm: false;
+    property <int> delete_target_idx: -1;
+    property <string> delete_target_name;
+
+    // ── SoundFont bank/preset dialog ──
+    property <bool> show_soundfont_modal: false;
+    property <int> edit_soundfont_idx: -1; // < 0 = adding
+    property <bool> edit_soundfont_enabled: true;
+    property <string> modal_path;
+    property <string> modal_sf_type;
+    property <int> modal_bank: 0;
+    property <int> modal_preset: -1;
+
+    property <bool> show_help_modal: false;
+
+    function open_name_modal(action: NameEntryAction, value: string) {
+        root.name_action = action;
+        root.name_value = value;
+        root.show_name_modal = true;
+    }
+
+    HorizontalLayout {
+        padding: 16px;
+        spacing: 16px;
+
+        if (!root.standalone): SflistSidebar {
+            create_requested => { root.open_name_modal(NameEntryAction.new_list, ""); }
+            rename_requested(idx, name) => {
+                root.rename_list_idx = idx;
+                root.open_name_modal(NameEntryAction.rename_list, name);
+            }
+            delete_requested(idx, name) => {
+                root.delete_target_idx = idx;
+                root.delete_target_name = name;
+                root.show_delete_confirm = true;
+            }
+        }
+
+        if (SoundfontEditorState.selected_file_index >= 0 || root.standalone): VerticalLayout {
+            spacing: 16px;
+            horizontal-stretch: 1;
+
+            HorizontalLayout {
+                spacing: 12px;
+                alignment: space-between;
+
+                HorizontalLayout {
+                    spacing: 12px;
+                    cross-axis-alignment: center;
+
+                    TitleText {
+                        text: root.standalone ? "Editing SoundFont List File"
+                            : "Editing: " + SoundfontEditorState.file_names[SoundfontEditorState.selected_file_index];
+                        font-size: 20px;
+                        min-width: 80px;
+                    }
+
+                    if (SoundfontEditorState.selected_file_index >= 0
+                        && SoundfontEditorState.file_dirty[SoundfontEditorState.selected_file_index]): DirtyBadge {
+                        starred: false;
+                    }
+                }
+
+                EditorActionBar {
+                    standalone: root.standalone;
+                    save => { SoundfontEditorState.save_current(); }
+                    discard => { SoundfontEditorState.discard_current(); }
+                    exit_standalone => { SoundfontEditorState.exit_standalone(); }
+
+                    if (root.show_back): MaestroButton {
+                        icon: Icons.arrow_left;
+                        text: "Back to Config";
+                        clicked => { root.back(); }
+                    }
+
+                    MaestroButton {
+                        icon: Icons.help;
+                        clicked => { root.show_help_modal = true; }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 16px;
+
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 16px;
+
+                    SublistBar {
+                        height: 10%;
+                        create_requested => { root.open_name_modal(NameEntryAction.new_sublist, ""); }
+                        rename_requested(name) => {
+                            root.rename_sublist_old = name;
+                            root.open_name_modal(NameEntryAction.rename_sublist, name);
+                        }
+                    }
+
+                    if (SoundfontEditorState.selected_sublist_index >= 0): SoundFontTable {
+                        add_requested(path, sf_type) => {
+                            root.edit_soundfont_idx = -1;
+                            root.modal_path = path;
+                            root.modal_sf_type = sf_type;
+                            root.modal_bank = 0;
+                            root.modal_preset = 0;
+                            root.show_soundfont_modal = true;
+                        }
+                        edit_requested(idx, enabled, path, sf_type, bank, preset) => {
+                            root.edit_soundfont_idx = idx;
+                            root.edit_soundfont_enabled = enabled;
+                            root.modal_path = path;
+                            root.modal_sf_type = sf_type;
+                            root.modal_bank = bank;
+                            root.modal_preset = preset;
+                            root.show_soundfont_modal = true;
+                        }
+                    }
+                }
+
+                PortAssignmentPanel {
+                    horizontal-stretch: 10;
+                }
+            }
+        }
+
+        if (SoundfontEditorState.selected_file_index < 0 && !root.standalone): MaestroCard {
+            horizontal-stretch: 1;
+
+            LabelText {
+                text: "Select a SoundFont List file from the sidebar or create one to begin editing.";
+                font-size: 16px;
+                overflow: elide;
+                horizontal-alignment: center;
+            }
+        }
+    }
+
+    if (root.show_name_modal): NameEntryModal {
+        title: root.name_modal_title;
+        placeholder: root.name_modal_is_sublist ? "Sub-list name" : "List name";
+        confirm_text: root.name_modal_is_create ? "Create" : "Rename";
+        value <=> root.name_value;
+        dismissed => { root.show_name_modal = false; }
+        confirmed(value) => {
+            if (root.name_action == NameEntryAction.new_sublist) {
+                SoundfontEditorState.add_sublist(value);
+            } else if (root.name_action == NameEntryAction.rename_sublist) {
+                SoundfontEditorState.rename_sublist(root.rename_sublist_old, value);
+            } else if (root.name_action == NameEntryAction.new_list) {
+                SoundfontEditorState.create_sflist(value);
+            } else {
+                SoundfontEditorState.rename_sflist(root.rename_list_idx, value);
+            }
+        }
+    }
+
+    if (root.show_delete_confirm): ConfirmModal {
+        title: "Delete SoundFont List";
+        message: "Permanently delete '" + root.delete_target_name + "'? This cannot be undone. Anything currently using it will switch to the 'Default' list.";
+        dismissed => { root.show_delete_confirm = false; }
+        confirmed => {
+            SoundfontEditorState.delete_sflist(root.delete_target_idx);
+            root.delete_target_idx = -1;
+        }
+    }
+
+    if (root.show_soundfont_modal): SoundFontDetailsModal {
+        editing: root.edit_soundfont_idx >= 0;
+        path: root.modal_path;
+        sf_type: root.modal_sf_type;
+        bank <=> root.modal_bank;
+        preset <=> root.modal_preset;
+        dismissed => {
+            root.edit_soundfont_idx = -1;
+            root.modal_path = "";
+            root.modal_sf_type = "";
+            root.modal_bank = 0;
+            root.modal_preset = -1;
+            root.show_soundfont_modal = false;
+        }
+        confirmed(bank, preset) => {
+            if (root.edit_soundfont_idx >= 0) {
+                SoundfontEditorState.update_soundfont(
+                    root.edit_soundfont_idx,
+                    root.edit_soundfont_enabled,
+                    root.modal_path,
+                    bank,
+                    preset);
+            } else {
+                SoundfontEditorState.add_soundfont(root.modal_path, bank, preset);
+            }
+        }
+    }
+
+    if (root.show_help_modal): HelpModal {
+        dismissed => { root.show_help_modal = false; }
+    }
+}

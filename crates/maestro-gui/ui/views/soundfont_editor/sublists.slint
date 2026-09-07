@@ -1,0 +1,143 @@
+import { ScrollView } from "std-widgets.slint";
+import {
+    Theme,
+    MaestroButton,
+    MaestroCard,
+    TitleText,
+    LabelText,
+    BodyText,
+    Icons,
+    MaestroIcon,
+} from "../../widgets.slint";
+import { SoundfontEditorState } from "../../globals.slint";
+
+// A small inline icon action inside a sub-list chip.
+component ChipAction inherits TouchArea {
+    in property <image> icon;
+
+    horizontal-stretch: 0;
+    width: 12px;
+
+    MaestroIcon {
+        source: root.icon;
+        colorize: Theme.text_secondary;
+        size: 12px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+    }
+}
+
+// Horizontal strip of sub-list chips plus the default-sub-list controls.
+export component SublistBar inherits MaestroCard {
+    callback create_requested();
+    callback rename_requested(string); // (current name)
+
+    // Name of the sub-list the user is currently looking at, or "".
+    property <string> selected_name:
+        SoundfontEditorState.selected_sublist_index >= 0
+        && SoundfontEditorState.selected_sublist_index < SoundfontEditorState.available_sublists.length
+        ? SoundfontEditorState.available_sublists[SoundfontEditorState.selected_sublist_index]
+        : "";
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 12px;
+
+        HorizontalLayout {
+            spacing: 12px;
+
+            TitleText {
+                horizontal-stretch: 0;
+                text: "Sub-lists";
+                font-size: 15px;
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+
+            if (root.selected_name == SoundfontEditorState.default_sublist): MaestroButton {
+                horizontal-stretch: 0;
+                text: "Unset Default";
+                clicked => { SoundfontEditorState.set_default_sublist(""); }
+            }
+            if (root.selected_name != SoundfontEditorState.default_sublist): MaestroButton {
+                horizontal-stretch: 0;
+                text: "Set as Default";
+                clicked => { SoundfontEditorState.set_default_sublist(root.selected_name); }
+            }
+
+            MaestroButton {
+                horizontal-stretch: 0;
+                icon: Icons.plus;
+                text: "New Sub-list";
+                primary: true;
+                clicked => { root.create_requested(); }
+            }
+        }
+
+        ScrollView {
+            height: 40px;
+
+            HorizontalLayout {
+                spacing: 8px;
+
+                for sname[sidx] in SoundfontEditorState.available_sublists: Rectangle {
+                    property <bool> selected: sidx == SoundfontEditorState.selected_sublist_index;
+
+                    border-radius: 6px;
+                    background: self.selected ? Theme.primary : Theme.bg_card_hover;
+                    border-width: 1px;
+                    border-color: self.selected ? Theme.primary : Theme.border_color;
+                    height: 32px;
+
+                    TouchArea {
+                        clicked => { SoundfontEditorState.select_sublist(sidx); }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        padding-left: 12px;
+                        padding-right: 12px;
+
+                        BodyText {
+                            text: sname;
+                            font-size: 13px;
+                            horizontal-stretch: 0;
+                        }
+
+                        if (sname == SoundfontEditorState.default_sublist): MaestroIcon {
+                            source: Icons.star;
+                            colorize: Theme.text_primary;
+                            size: 11px;
+                            horizontal-stretch: 0;
+                            y: (parent.height - self.height) / 2;
+                        }
+
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+
+                        ChipAction {
+                            horizontal-stretch: 0;
+                            icon: Icons.edit;
+                            clicked => { root.rename_requested(sname); }
+                        }
+
+                        ChipAction {
+                            horizontal-stretch: 0;
+                            icon: Icons.trash;
+                            clicked => { SoundfontEditorState.remove_sublist(sname); }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (SoundfontEditorState.default_sublist == ""): LabelText {
+            text: "No default sub-list is set. MIDI ports without an assignment will not produce sound.";
+            overflow: elide;
+            horizontal-alignment: center;
+        }
+    }
+}

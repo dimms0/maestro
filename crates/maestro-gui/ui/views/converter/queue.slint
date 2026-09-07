@@ -1,0 +1,163 @@
+import { ScrollView } from "std-widgets.slint";
+import {
+    Theme,
+    MaestroIconButton,
+    SflistPicker,
+    Icons,
+    LabelText,
+    BodyText,
+} from "../../widgets.slint";
+import { RendererState } from "../../globals.slint";
+import { RenderStatus } from "../../enums.slint";
+import { SlintMidiRenderEntry } from "../../structs.slint";
+
+// Column widths, shared by the header and the rows so they always line up.
+global QueueColumns {
+    out property <length> status: 80px;
+    out property <length> sflist: 210px;
+    out property <length> action: 40px;
+}
+
+component ColumnHeading inherits LabelText {
+    font-weight: 700;
+    horizontal-stretch: 0;
+}
+
+// Per-entry outcome of the last started render run.
+component StatusLabel inherits Text {
+    in property <RenderStatus> status;
+
+    text: root.status == RenderStatus.rendering ? "Rendering" :
+        root.status == RenderStatus.done ? "Done" :
+        root.status == RenderStatus.failed ? "Failed" : "Pending";
+    color: root.status == RenderStatus.rendering ? Theme.primary :
+        root.status == RenderStatus.done ? Theme.accent_green :
+        root.status == RenderStatus.failed ? Theme.accent_red : Theme.text_secondary;
+    font-family: Theme.font;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+component QueueRow inherits Rectangle {
+    in property <SlintMidiRenderEntry> entry;
+    in property <int> index;
+
+    height: 48px;
+    border-radius: 6px;
+    background: Theme.bg_main;
+    border-width: 1px;
+    border-color: Theme.border_color;
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 12px;
+
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+
+            BodyText {
+                text: root.entry.midi_path;
+                font-size: 13px;
+                overflow: elide;
+            }
+        }
+
+        if (root.index < RendererState.render_statuses.length): VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            width: QueueColumns.status;
+
+            StatusLabel {
+                status: RendererState.render_statuses[root.index];
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+
+            SflistPicker {
+                combo_width: 180px;
+                control_height: root.height / 1.75;
+                small_text: true;
+                current: root.entry.sflist_name;
+                selected(val) => { RendererState.update_midi_sflist(root.index, val); }
+            }
+        }
+
+        HorizontalLayout {
+            alignment: center;
+            cross-axis-alignment: center;
+            horizontal-stretch: 0;
+            width: QueueColumns.action;
+
+            MaestroIconButton {
+                height: parent.height / 2;
+                width: 30px;
+                icon: Icons.trash;
+                danger: true;
+                clicked => { RendererState.remove_midi_from_queue(root.index); }
+            }
+        }
+    }
+}
+
+// The conversion queue: a fixed header plus one scrollable row per entry.
+export component RenderQueueTable inherits VerticalLayout {
+    spacing: 16px;
+
+    Rectangle {
+        background: Theme.bg_main;
+        height: 32px;
+        border-radius: 4px;
+
+        HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            spacing: 8px;
+
+            ColumnHeading {
+                text: "MIDI Path";
+                horizontal-stretch: 1;
+            }
+
+            if (RendererState.render_statuses.length > 0): ColumnHeading {
+                text: "Status";
+                width: QueueColumns.status;
+            }
+
+            ColumnHeading {
+                text: "SoundFont List";
+                width: QueueColumns.sflist;
+            }
+
+            ColumnHeading {
+                text: "Action";
+                horizontal-alignment: center;
+                width: QueueColumns.action;
+            }
+        }
+    }
+
+    ScrollView {
+        VerticalLayout {
+            spacing: 8px;
+
+            for entry[idx] in RendererState.render_queue: QueueRow {
+                entry: entry;
+                index: idx;
+            }
+
+            if (RendererState.render_queue.length == 0): Rectangle {
+                height: 100px;
+                LabelText {
+                    text: "Queue is empty. Add MIDI files below, or drop them onto the window.";
+                    font-size: 14px;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+    }
+}

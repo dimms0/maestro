@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Maestro
+Comment=MIDI synthesizer host
+Exec=maestro
+Icon=gr.dimms.maestro
+Categories=AudioVideo;Audio;
+StartupWMClass=gr.dimms.maestro

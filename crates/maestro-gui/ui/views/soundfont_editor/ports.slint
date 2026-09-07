@@ -1,0 +1,184 @@
+import { ScrollView } from "std-widgets.slint";
+import {
+    Theme,
+    MaestroCard,
+    MaestroCheckBox,
+    MaestroComboBox,
+    MaestroIconButton,
+    TitleText,
+    LabelText,
+    BodyText,
+    Icons,
+    MaestroIcon,
+} from "../../widgets.slint";
+import { SoundfontEditorState } from "../../globals.slint";
+
+// Routes each MIDI port (UMP group in MIDI 2.0) to a sub-list of the current
+// SoundFont list.
+export component PortAssignmentPanel inherits MaestroCard {
+    // Collapsed by default: assignments only matter while they are being
+    // edited, and expanded the panel claims a large slice of the editor.
+    in-out property <bool> expanded: false;
+
+    // Sub-list a newly enabled port should start on: the default if there is
+    // one, otherwise the first sub-list.
+    property <string> fallback_sublist:
+        SoundfontEditorState.default_sublist != "" ? SoundfontEditorState.default_sublist :
+        (SoundfontEditorState.available_sublists.length > 0 ? SoundfontEditorState.available_sublists[0] : "");
+
+    // Just wide enough for the re-open button; the expanded sizes are the ones
+    // the panel has always used, so the layout is unchanged once it is open.
+    property <length> collapsed_width: 44px;
+
+    max-width: root.expanded ? 400px : root.collapsed_width;
+    min-width: root.expanded ? 150px : root.collapsed_width;
+    preferred-width: root.expanded ? 400px : root.collapsed_width;
+
+    if (!root.expanded): Rectangle {
+        // The whole strip re-opens the panel, not just the button.
+        TouchArea {
+            clicked => { root.expanded = true; }
+        }
+
+        VerticalLayout {
+            padding: 8px;
+            spacing: 10px;
+            alignment: start;
+
+            MaestroIconButton {
+                icon: Icons.arrow_left;
+                height: 28px;
+                clicked => { root.expanded = true; }
+            }
+
+            // I coulnt find another way to make the vertical text work lol
+            ScrollView {
+                horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+                vertical-scrollbar-policy: ScrollBarPolicy.always-off;
+                height: 200px;
+
+                TitleText {
+                    overflow: TextOverflow.clip;
+                    text: "Port / Group Assignments";
+                    font-size: 15px;
+                    transform-rotation: 90deg;
+                }
+            }
+        }
+    }
+
+    if (root.expanded): VerticalLayout {
+        padding: 16px;
+        spacing: 12px;
+
+        HorizontalLayout {
+            spacing: 8px;
+            cross-axis-alignment: center;
+
+            TitleText {
+                text: "Port / Group Assignments";
+                font-size: 15px;
+                horizontal-stretch: 1;
+            }
+
+            MaestroIconButton {
+                icon: Icons.arrow_right;
+                width: 28px;
+                height: 28px;
+                horizontal-stretch: 0;
+                clicked => { root.expanded = false; }
+            }
+        }
+
+        LabelText {
+            text: "Route sub-lists to specific MIDI ports. In MIDI 2.0 they correspond to UMP groups.";
+            wrap: TextWrap.word-wrap;
+            vertical-alignment: top;
+        }
+
+        ScrollView {
+            VerticalLayout {
+                spacing: 10px;
+
+                for pa in SoundfontEditorState.current_port_assignments: Rectangle {
+                    height: 48px;
+                    border-radius: 6px;
+                    background: Theme.bg_main;
+                    border-width: 1px;
+                    border-color: Theme.border_color;
+
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        spacing: 16px;
+                        alignment: space-between;
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            cross-axis-alignment: center;
+
+                            MaestroCheckBox {
+                                width: 20px;
+                                checked: pa.list_name != "";
+                                toggled(val) => {
+                                    SoundfontEditorState.update_port_assignment(
+                                        pa.port,
+                                        val ? root.fallback_sublist : "");
+                                }
+                            }
+
+                            BodyText {
+                                text: "Port / Group " + (pa.port + 1);
+                                font-size: 13px;
+                                font-weight: 600;
+                            }
+                        }
+
+                        // "port routes to sub-list": a link icon flanked by
+                        // two rules, replacing the old em-dash + emoji string.
+                        HorizontalLayout {
+                            spacing: 6px;
+                            cross-axis-alignment: center;
+
+                            Rectangle {
+                                width: 14px;
+                                height: 1px;
+                                background: Theme.primary;
+                            }
+
+                            MaestroIcon {
+                                source: Icons.link;
+                                colorize: Theme.primary;
+                                size: 13px;
+                            }
+
+                            Rectangle {
+                                width: 14px;
+                                height: 1px;
+                                background: Theme.primary;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: end;
+                            cross-axis-alignment: center;
+
+                            MaestroComboBox {
+                                width: 130px;
+                                height: parent.height / 1.75;
+                                model: SoundfontEditorState.available_sublists;
+                                current_value: pa.list_name;
+                                enabled: pa.list_name != "";
+                                selected(val, i) => {
+                                    SoundfontEditorState.update_port_assignment(pa.port, val);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,33 @@
+# Maestro virtual MIDI device service (systemd user unit).
+#
+# Installed as a *user* service because the daemon renders audio through the
+# session's audio server (PipeWire/PulseAudio), which only exists inside a
+# user session.
+#
+# Package installs should place this in /usr/lib/systemd/user/. A manual
+# install goes in ~/.config/systemd/user/, which is also where the GUI's
+# Repair action writes it. Keep the two in step: Repair regenerates this
+# file, so a change here belongs in `unit_text()` in
+# crates/maestro-gui/src/views/system_integration/service.rs as well.
+#
+#   install -Dm644 maestrod.service ~/.config/systemd/user/maestrod.service
+#   systemctl --user daemon-reload
+
+[Unit]
+Description=Maestro virtual MIDI device service
+Documentation=https://dimms.gr/maestro
+After=pipewire.service pipewire-pulse.service pulseaudio.service jack.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/maestrod
+Restart=on-failure
+RestartSec=2
+
+# The realtime engine benefits from elevated scheduling; rtkit grants this to
+# user services on most distributions.
+LimitRTPRIO=95
+LimitMEMLOCK=64M
+
+[Install]
+WantedBy=default.target

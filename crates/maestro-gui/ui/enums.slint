@@ -1,0 +1,103 @@
+// Enumerations shared by the Slint views and the Rust side. Using real enums
+// instead of bare integers means the two halves cannot silently drift apart:
+// adding a variant is a compile error everywhere it must be handled.
+
+// Top-level navigation destination in combined mode.
+export enum Tab {
+    welcome,
+    soundfonts,
+    converter,
+    device,
+    system,
+}
+
+// Health of one entry on the System Integration tab.
+export enum IntegrationStatus {
+    ok,
+    warning,
+    missing,
+    unknown,
+}
+
+// What the daemon/driver card can do. The last two are Windows-only, where the
+// card manages the WinMM driver instead of a user service.
+export enum ServiceAction {
+    repair,
+    start,
+    stop,
+    install_files,
+    uninstall_files,
+}
+
+export enum KdmapiAction {
+    install,
+    uninstall,
+}
+
+export enum LibraryAction {
+    get,
+    reveal,
+}
+
+// How the process was launched. `edit-list` / `edit-config` open a single editor
+// full-window instead of the tabbed shell.
+export enum StandaloneMode {
+    combined,
+    edit_list,
+    edit_config,
+}
+
+// Per-queue-entry outcome of the last started render run.
+export enum RenderStatus {
+    pending,
+    rendering,
+    done,
+    failed,
+}
+
+// Which pass a single in-flight MIDI is currently in.
+export enum RenderPhase {
+    scanning,
+    rendering,
+}
+
+// Synthesizer backend selected by a component's renderer configuration.
+export enum SynthKind {
+    fluidsynth,
+    bassmidi,
+}
+
+// Which naming action the SoundFont editor's shared name-entry modal performs
+// when confirmed.
+export enum NameEntryAction {
+    new_sublist,
+    rename_sublist,
+    new_list,
+    rename_list,
+}
+
+// The two components the Virtual MIDI Device tab manages. Its cards are one
+// reusable component parameterised by this, so both behave identically.
+export enum DeviceComponent {
+    system,
+    kdmapi,
+}
+
+// Which of the event processor's four per-index lists a toggle in the
+// bypass/ignore grids edits.
+export enum EventFlagKind {
+    bypass_channel,
+    ignore_channel,
+    bypass_port,
+    ignore_port,
+}
+
+// Which page of the component settings editor is showing. The editor is split
+// into pages rather than one long scroll, so a component only ever renders the
+// handful of sections belonging to the page in view.
+export enum SettingsPage {
+    general,
+    midi,
+    synth,
+    audio,
+}

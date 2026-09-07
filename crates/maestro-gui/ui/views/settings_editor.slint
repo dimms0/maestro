@@ -1,0 +1,253 @@
+import { ScrollView } from "std-widgets.slint";
+import {
+    Theme,
+    MaestroCheckBox,
+    HorizontalSeparator,
+    TitleText,
+    DirtyBadge,
+    EditorActionBar,
+} from "../widgets.slint";
+import { SettingsEditorState } from "../globals.slint";
+import { SettingsPage } from "../enums.slint";
+import {
+    GeneralSection,
+    AudioSection,
+    RendererSection,
+    RealtimeSection,
+} from "settings_editor/general.slint";
+import {
+    EventProcessorSection,
+    PostProcessorSection,
+} from "settings_editor/processing.slint";
+import { SynthSection } from "settings_editor/synth.slint";
+import {
+    ConverterSection,
+    DeviceSection,
+} from "settings_editor/component.slint";
+
+// One destination in the editor's left rail. Styled after the top-level
+// `NavTab` in app.slint so both navigations read as the same control.
+component SettingsNavItem inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+
+    callback clicked();
+
+    height: 40px;
+    border-radius: 8px;
+    background: bgcolor();
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        cross-axis-alignment: center;
+
+        Text {
+            text: root.text;
+            font-family: Theme.font;
+            font-size: 13px;
+            font-weight: root.active ? 600 : 400;
+            color: root.active ? Theme.text_primary : Theme.text_secondary;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+
+    function bgcolor() -> color {
+        if (touch.has-hover) {
+            return root.active ? Theme.primary_hover : Theme.bg_card_hover;
+        }
+        return root.active ? Theme.primary : transparent;
+    }
+}
+
+// Component identity: the enable flag, its SoundFont list, and whichever
+// component-specific card this component owns. Those last two are small enough
+// that giving them a page of their own would be all navigation and no content.
+component GeneralPage inherits VerticalLayout {
+    spacing: 16px;
+
+    if (SettingsEditorState.current_config.has_enabled
+        || SettingsEditorState.current_config.has_sflist): GeneralSection { }
+
+    if (SettingsEditorState.current_config.has_converter_options): ConverterSection { }
+
+    if (SettingsEditorState.current_config.has_device_options): DeviceSection { }
+}
+
+// Everything that happens to MIDI events before they reach a synth.
+component MidiPage inherits VerticalLayout {
+    spacing: 16px;
+
+    EventProcessorSection { }
+}
+
+// The synth backend and how rendering is dispatched to it.
+component SynthPage inherits VerticalLayout {
+    in property <bool> show_advanced: false;
+
+    spacing: 16px;
+
+    if (SettingsEditorState.current_config.has_renderer): SynthSection {
+        show_advanced: root.show_advanced;
+    }
+
+    if (SettingsEditorState.current_config.has_renderer): RendererSection { }
+}
+
+// The output path end to end: device and format, buffering, master output.
+component AudioPage inherits VerticalLayout {
+    in property <bool> show_advanced: false;
+
+    spacing: 16px;
+
+    if (SettingsEditorState.current_config.has_audio_params): AudioSection {
+        show_advanced: root.show_advanced;
+    }
+
+    if (SettingsEditorState.current_config.has_realtime): RealtimeSection {
+        show_advanced: root.show_advanced;
+    }
+
+    PostProcessorSection { }
+}
+
+// The shared component settings editor. Which pages appear, and which sections
+// appear inside them, is decided entirely by the `has_*` flags on
+// `SettingsEditorState.current_config`, which the Rust side derives from the
+// component's profile — this view never needs to know which component it is
+// showing.
+export component SettingsEditor inherits Rectangle {
+    // True when the editor owns the whole window (`edit-config` mode) rather
+    // than being hosted in the modal overlay.
+    in property <bool> standalone: false;
+
+    property <bool> show_advanced: false;
+    property <SettingsPage> page: SettingsPage.general;
+
+    // A page whose every section is gated off would be a dead entry in the
+    // rail, so the rail only offers the ones that can render something. The
+    // MIDI and Audio pages always have content: the event and post processors
+    // are shown for every component, enabled or not.
+    property <bool> can_general: SettingsEditorState.current_config.has_enabled
+        || SettingsEditorState.current_config.has_sflist
+        || SettingsEditorState.current_config.has_converter_options
+        || SettingsEditorState.current_config.has_device_options;
+    property <bool> can_synth: SettingsEditorState.current_config.has_renderer;
+
+    // Switching the editor to another component can retire the page in view
+    // (its rail entry disappears), which would leave a blank pane behind. Every
+    // component has a General page, so returning there is always valid.
+    property <string> config_name: SettingsEditorState.current_config.name;
+    changed config_name => { root.page = SettingsPage.general; }
+
+    background: Theme.bg_main;
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 12px;
+
+        HorizontalLayout {
+            alignment: space-between;
+
+            HorizontalLayout {
+                spacing: 12px;
+                cross-axis-alignment: center;
+
+                VerticalLayout {
+                    alignment: center;
+
+                    TitleText {
+                        text: root.standalone ? "Editing Config File"
+                            : SettingsEditorState.current_config.name + " Settings";
+                        font-size: 20px;
+                    }
+
+                    if (SettingsEditorState.current_config.dirty): DirtyBadge { }
+                }
+
+                HorizontalSeparator { }
+
+                MaestroCheckBox {
+                    text: "Show advanced options";
+                    checked: root.show_advanced;
+                    toggled(v) => { root.show_advanced = v; }
+                }
+            }
+
+            EditorActionBar {
+                standalone: root.standalone;
+                closable: true;
+                save => { SettingsEditorState.save_current(); }
+                discard => { SettingsEditorState.discard_current(); }
+                close => { SettingsEditorState.close(); }
+                exit_standalone => { SettingsEditorState.exit_standalone(); }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 16px;
+
+            VerticalLayout {
+                width: 170px;
+                spacing: 4px;
+                alignment: start;
+
+                if (root.can_general): SettingsNavItem {
+                    text: "General";
+                    active: root.page == SettingsPage.general;
+                    clicked => { root.page = SettingsPage.general; }
+                }
+
+                SettingsNavItem {
+                    text: "MIDI";
+                    active: root.page == SettingsPage.midi;
+                    clicked => { root.page = SettingsPage.midi; }
+                }
+
+                if (root.can_synth): SettingsNavItem {
+                    text: "Synth";
+                    active: root.page == SettingsPage.synth;
+                    clicked => { root.page = SettingsPage.synth; }
+                }
+
+                SettingsNavItem {
+                    text: "Audio";
+                    active: root.page == SettingsPage.audio;
+                    clicked => { root.page = SettingsPage.audio; }
+                }
+            }
+
+            ScrollView {
+                horizontal-stretch: 1;
+
+                VerticalLayout {
+                    spacing: 16px;
+                    width: Math.min(820px, parent.width);
+
+                    if (root.page == SettingsPage.general): GeneralPage { }
+
+                    if (root.page == SettingsPage.midi): MidiPage { }
+
+                    if (root.page == SettingsPage.synth): SynthPage {
+                        show_advanced: root.show_advanced;
+                    }
+
+                    if (root.page == SettingsPage.audio): AudioPage {
+                        show_advanced: root.show_advanced;
+                    }
+
+                    // Bottom spacer, so the last card is not flush with the edge.
+                    Rectangle {
+                        vertical-stretch: 10;
+                        height: 100%;
+                    }
+                }
+            }
+        }
+    }
+}

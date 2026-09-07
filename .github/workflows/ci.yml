@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, arch: x86_64 }
+          - { os: ubuntu-24.04-arm, arch: aarch64 }
+          - { os: macos-latest, arch: aarch64 }
+          - { os: macos-15-intel, arch: x86_64 }
+          - { os: windows-latest, arch: x86_64 }
+          - { os: windows-11-arm, arch: aarch64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - if: startsWith(matrix.os, 'ubuntu')
+        run: sudo apt-get update && sudo apt-get install -y libjack-jackd2-dev libpulse-dev libpipewire-0.3-dev pkg-config build-essential libasound2-dev
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace
+      - run: cargo clippy --workspace -- -D warnings
+      - if: matrix.os == 'windows-latest'
+        run: rustup target add i686-pc-windows-msvc
+      - if: matrix.os == 'windows-latest'
+        run: cargo clippy --lib --target i686-pc-windows-msvc -p maestro-daemon -p maestro-kdmapi -- -D warnings
+
+  # Catches upstream layout or URL changes in the synth libraries the
+  # installers download, before a release build trips over them.
+  # fetch-libs:
+  #   name: fetch synth libraries
+  #   runs-on: ubuntu-24.04
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - run: ./packaging/fetch-libs.sh --platform linux --all
+  #     - run: ./packaging/fetch-libs.sh --platform macos --all
+  #     - run: ./packaging/fetch-libs.sh --platform windows --all

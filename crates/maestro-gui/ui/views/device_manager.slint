@@ -1,0 +1,362 @@
+import { ScrollView } from "std-widgets.slint";
+import {
+    Theme,
+    MaestroButton,
+    MaestroCard,
+    MaestroLineEdit,
+    MaestroCheckBox,
+    MaestroMidiModeBox,
+    SflistPicker,
+    HorizontalSeparator,
+    TitleText,
+    BodyText,
+    LabelText,
+    DirtyBadge,
+    Field,
+    MaestroProgressBar,
+    Icons,
+} from "../widgets.slint";
+import { DeviceManagerState, SystemIntegrationState } from "../globals.slint";
+import { DeviceComponent, IntegrationStatus } from "../enums.slint";
+import {
+    SlintComponentStats,
+    SlintComponentSummary,
+    SlintSystemCustom,
+} from "../structs.slint";
+import { MaestroSwitch } from "../widgets/inputs.slint";
+
+// One row of the live statistics card: whatever every component reports while
+// it is loaded, refreshed continuously from that process's statistics pipe.
+component StatsRow inherits MaestroCard {
+    in property <SlintComponentStats> stats;
+
+    VerticalLayout {
+        spacing: 8px;
+        padding: 12px;
+
+        HorizontalLayout {
+            spacing: 12px;
+            cross-axis-alignment: center;
+
+            Rectangle {
+                width: 8px;
+                height: 8px;
+                border-radius: 4px;
+                background: root.stats.state == 2 ? Theme.accent_green
+                    : root.stats.state == 1 ? Theme.accent_amber
+                    : Theme.text_disabled;
+            }
+
+            TitleText {
+                text: root.stats.name == "" ? "N/A" : root.stats.name;
+                color: root.stats.state == 2 ? Theme.text_primary : Theme.text_secondary;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+
+            LabelText {
+                text: root.stats.memory;
+                horizontal-alignment: right;
+            }
+        }
+
+        BodyText {
+            text: root.stats.state == 2 ? "Voice Count: " + root.stats.voices
+                : root.stats.state_text;
+        }
+
+        HorizontalLayout {
+            cross-axis-alignment: center;
+            spacing: 12px;
+
+            BodyText {
+                text: "Render Load: ";
+            }
+
+            MaestroProgressBar {
+                progress: Math.round(root.stats.render_load) / 100.0;
+                warn-after: 0.85;
+            }
+
+            LabelText {
+                horizontal-alignment: right;
+                width: 50px;
+                text: root.stats.render_load_txt;
+            }
+        }
+    }
+}
+
+// The SoundFont list picker shown on every device card.
+component SflistField inherits Field {
+    in property <DeviceComponent> component;
+    in property <int> index;
+
+    label: "SoundFont List";
+    label_font_size: 13px;
+
+    SflistPicker {
+        alignment: start;
+        current_index: root.index;
+        selected(v) => { DeviceManagerState.set_sflist(root.component, v); }
+    }
+}
+
+// A configurable component of the virtual-device stack. Both cards on this tab
+// are instances of this, so enabling, saving, discarding and opening the full
+// settings editor behave identically for each; component-specific fields are
+// passed in as children.
+component DeviceComponentCard inherits MaestroCard {
+    in property <DeviceComponent> component;
+    in property <SlintComponentSummary> summary;
+    in property <string> title;
+    in property <string> settings_text;
+    in property <string> enable_text;
+    // Only components that keep local form state need a Discard button.
+    in property <bool> discardable: false;
+
+    in property <bool> enabled: true;
+    in property <string> disabled_text;
+
+    // The switch means different things per component: for the virtual device
+    // it starts and stops a separate process, for KDMAPI it edits a config flag
+    // that only takes effect on Save. Where it means neither — the WinMM driver
+    // on Windows, which is simply on once registered — it is not shown.
+    in property <bool> switch_visible: true;
+    in property <bool> switch_on;
+    in property <bool> switch_busy: false;
+    in property <string> switch_detail;
+
+    callback switch_toggled(bool);
+    callback discarded();
+
+    VerticalLayout {
+        padding: 24px;
+        spacing: 20px;
+
+        HorizontalLayout {
+            alignment: space-between;
+
+            TitleText {
+                text: root.title;
+            }
+
+            MaestroButton {
+                icon: Icons.settings;
+                text: root.settings_text;
+                disabled: !root.enabled;
+                clicked => { DeviceManagerState.open_settings(root.component); }
+            }
+        }
+
+        if (root.switch_visible && root.enabled): VerticalLayout {
+            spacing: 4px;
+
+            MaestroSwitch {
+                text: root.enable_text;
+                checked: root.switch_on;
+                enabled: !root.switch_busy;
+                toggled(v) => { root.switch_toggled(v); }
+            }
+
+            if (root.switch_detail != ""): LabelText {
+                text: root.switch_detail;
+                font-size: 12px;
+                wrap: word-wrap;
+            }
+        }
+
+        if (!root.enabled): BodyText {
+            text: root.disabled_text;
+            wrap: word-wrap;
+        }
+
+        Rectangle {
+            height: root.enabled ? self.preferred-height : 0px;
+            clip: true;
+
+            VerticalLayout {
+                spacing: 20px;
+                @children
+            }
+        }
+
+        HorizontalLayout {
+            alignment: end;
+            spacing: 12px;
+
+            if (root.summary.dirty): DirtyBadge {
+                font-size: 13px;
+            }
+
+            if (root.discardable): MaestroButton {
+                text: "Discard";
+                disabled: !root.summary.dirty || !root.enabled;
+                clicked => { root.discarded(); }
+            }
+
+            MaestroButton {
+                text: "Save";
+                primary: true;
+                disabled: !root.summary.dirty || !root.enabled;
+                clicked => { DeviceManagerState.save(root.component); }
+            }
+        }
+    }
+}
+
+export component DeviceManagerView inherits Rectangle {
+    background: Theme.bg_main;
+
+    // Scratch copy of the System component's custom settings. It is refreshed
+    // from the authoritative global before every edit, so a Discard (which
+    // reloads the config from disk) can never be undone by a later keystroke
+    // re-sending stale values.
+    property <SlintSystemCustom> form;
+
+    ScrollView {
+        VerticalLayout {
+            padding: 24px;
+            spacing: 20px;
+            alignment: start;
+            cross-axis-alignment: center;
+
+            HorizontalLayout {
+                spacing: 16px;
+                cross-axis-alignment: center;
+
+                TitleText {
+                    overflow: TextOverflow.clip;
+                    text: "Virtual MIDI Device";
+                    font-size: 24px;
+                    font-weight: 800;
+                }
+
+                HorizontalSeparator { }
+
+                LabelText {
+                    text: "Configure and manage the system-wide virtual MIDI device";
+                    wrap: TextWrap.word-wrap;
+                    font-size: 14px;
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 16px;
+
+                VerticalLayout {
+                    spacing: 16px;
+                    width: Math.min(root.width, 1000px) * 0.55;
+
+                    DeviceComponentCard {
+                        component: DeviceComponent.system;
+                        summary: DeviceManagerState.system;
+                        title: "Virtual Device";
+                        settings_text: "Device Settings";
+                        enable_text: "Start / Stop Maestro";
+                        discardable: true;
+                        discarded => { DeviceManagerState.discard(DeviceComponent.system); }
+
+                        // On Windows the WinMM driver is on once registered and
+                        // there is nothing to switch; the System Integration
+                        // tab handles installing and repairing it instead.
+                        switch_visible: !SystemIntegrationState.windows;
+                        switch_on: DeviceManagerState.daemon_running;
+                        switch_busy: DeviceManagerState.daemon_busy;
+                        switch_detail: DeviceManagerState.daemon_state == 1
+                            ? "Starting — loading soundfonts…"
+                            : DeviceManagerState.daemon_state == 3
+                            ? "Paused after a quiet spell. Playing anything wakes it up."
+                            : DeviceManagerState.daemon_running
+                            ? "Using " + DeviceManagerState.daemon_memory
+                            + ". Maestro keeps running after you close this window."
+                            : "Devices appear in your other applications while this is on.";
+                        switch_toggled(v) => { DeviceManagerState.set_running(v); }
+
+                        MaestroCheckBox {
+                            text: "Start automatically when Maestro opens";
+                            checked: DeviceManagerState.start_on_launch;
+                            toggled(v) => { DeviceManagerState.set_start_on_launch(v); }
+                        }
+
+                        SflistField {
+                            component: DeviceComponent.system;
+                            index: DeviceManagerState.system.sflist_index;
+                        }
+
+                        Field {
+                            label: "MIDI Mode";
+                            label_font_size: 13px;
+
+                            MaestroMidiModeBox {
+                                midi2_enabled: DeviceManagerState.system_custom.midi2_enabled;
+                                num_ports: DeviceManagerState.system_custom.num_ports;
+                                mode_selected(v) => {
+                                    root.form = DeviceManagerState.system_custom;
+                                    root.form.midi2_enabled = v;
+                                    DeviceManagerState.update_system_custom(root.form);
+                                }
+                                ports_edited(v) => {
+                                    root.form = DeviceManagerState.system_custom;
+                                    root.form.num_ports = v;
+                                    DeviceManagerState.update_system_custom(root.form);
+                                }
+                            }
+                        }
+                    }
+
+                    DeviceComponentCard {
+                        enabled: SystemIntegrationState.kdmapi.status == IntegrationStatus.ok;
+                        disabled_text: "The KDMAPI bridge is not installed. Go to the System Integration tab to repair.";
+                        component: DeviceComponent.kdmapi;
+                        summary: DeviceManagerState.kdmapi;
+                        title: "KDMAPI";
+                        settings_text: "KDMAPI Settings";
+                        enable_text: "Allow applications to use KDMAPI";
+                        switch_on: DeviceManagerState.kdmapi.enabled;
+                        switch_toggled(v) => {
+                            DeviceManagerState.set_enabled(DeviceComponent.kdmapi, v);
+                        }
+
+                        SflistField {
+                            component: DeviceComponent.kdmapi;
+                            index: DeviceManagerState.kdmapi.sflist_index;
+                        }
+                    }
+                }
+
+                MaestroCard {
+                    width: Math.min(root.width, 1000px) * 0.35;
+
+                    VerticalLayout {
+                        padding: 24px;
+                        spacing: 20px;
+
+                        TitleText {
+                            text: "Active Applications";
+                        }
+
+                        if (DeviceManagerState.stats.length == 0): LabelText {
+                            text: "No application is using Maestro right now.";
+                            font-size: 13px;
+                        }
+
+                        ScrollView {
+                            VerticalLayout {
+                                spacing: 12px;
+
+                                for entry in DeviceManagerState.stats: StatsRow {
+                                    stats: entry;
+                                }
+
+                                Rectangle {
+                                    vertical-stretch: 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

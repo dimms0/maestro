@@ -1,0 +1,49 @@
+import { Theme } from "../theme.slint";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Icon registry
+//
+// Every icon in the UI is an SVG from `assets/icons/`, never a Unicode glyph.
+// A glyph like "⚙" or "✕" is drawn by whatever font the host machine happens to
+// resolve it in — colour emoji on one OS, a thin outline on another, tofu where
+// no font covers it at all. These SVGs are compiled into the binary by the
+// Slint compiler (`EmbedAllResources` is the default for Rust output), so the
+// same shape is drawn everywhere with no dependency on installed fonts.
+//
+// The artwork is monochrome black; every use site tints it via `colorize`,
+// which keeps the alpha and replaces the colour. Drawing one uncolorized would
+// paint black-on-black against the dark theme, so always go through
+// `MaestroIcon` (or set `colorize` explicitly).
+// ─────────────────────────────────────────────────────────────────────────────
+export global Icons {
+    out property <image> sflists: @image-url("../../../../assets/icons/sflists.svg");
+    out property <image> converter: @image-url("../../../../assets/icons/converter.svg");
+    out property <image> virt_device: @image-url("../../../../assets/icons/virt-device.svg");
+    out property <image> settings: @image-url("../../../../assets/icons/settings.svg");
+    out property <image> edit: @image-url("../../../../assets/icons/edit.svg");
+    out property <image> trash: @image-url("../../../../assets/icons/trash.svg");
+    out property <image> star: @image-url("../../../../assets/icons/star.svg");
+    out property <image> grip: @image-url("../../../../assets/icons/grip-dots-vertical.svg");
+    out property <image> link: @image-url("../../../../assets/icons/link.svg");
+    out property <image> plus: @image-url("../../../../assets/icons/plus-small.svg");
+    out property <image> minus: @image-url("../../../../assets/icons/minus-small.svg");
+    out property <image> help: @image-url("../../../../assets/icons/interrogation.svg");
+    out property <image> warning: @image-url("../../../../assets/icons/warning.svg");
+    out property <image> check: @image-url("../../../../assets/icons/check.svg");
+    out property <image> chevron_down: @image-url("../../../../assets/icons/angle-down.svg");
+    out property <image> arrow_left: @image-url("../../../../assets/icons/arrow-left.svg");
+    out property <image> arrow_right: @image-url("../../../../assets/icons/arrow-right.svg");
+    out property <image> refresh: @image-url("../../../../assets/icons/refresh.svg");
+    out property <image> copyright: @image-url("../../../../assets/icons/copyright.svg");
+}
+
+// A single square, tinted icon. `size` sets both edges, so call sites give one
+// number the way they used to give a `font-size`.
+export component MaestroIcon inherits Image {
+    in property <length> size: 14px;
+
+    width: root.size;
+    height: root.size;
+    image-fit: contain;
+    colorize: Theme.text_secondary;
+}

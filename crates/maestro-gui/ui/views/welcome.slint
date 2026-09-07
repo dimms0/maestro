@@ -1,0 +1,192 @@
+import {
+    Theme,
+    MaestroCard,
+    MaestroCheckBox,
+    TitleText,
+    LabelText,
+    Icons,
+    MaestroIcon,
+} from "../widgets.slint";
+import { AppState } from "../globals.slint";
+import { Tab } from "../enums.slint";
+import { BodyText } from "../widgets/text.slint";
+
+// One clickable destination on the welcome screen.
+component ModeCard inherits MaestroCard {
+    in property <image> icon;
+    in property <string> title;
+    in property <string> description;
+    in property <Tab> target;
+
+    // Declared as constraints rather than a plain `width`/`height`: a size set
+    // inside a component definition is overridden by the parent layout, while
+    // min/max pins it the same way an explicit size at the use site would.
+    min-width: 320px;
+    max-width: 320px;
+    min-height: 180px;
+    max-height: 180px;
+    background: touch.has-hover ? Theme.bg_card_hover : Theme.bg_card;
+    border-color: touch.has-hover ? Theme.primary : Theme.border_color;
+
+    VerticalLayout {
+        padding: 24px;
+        spacing: 24px;
+        alignment: center;
+
+        HorizontalLayout {
+            alignment: start;
+            cross-axis-alignment: center;
+            spacing: 12px;
+
+            MaestroIcon {
+                source: root.icon;
+                size: 32px;
+                colorize: touch.has-hover ? Theme.border_focus : Theme.text_primary;
+            }
+
+            TitleText {
+                text: root.title;
+                font-size: 18px;
+            }
+        }
+
+        LabelText {
+            text: root.description;
+            font-size: 13px;
+            wrap: word-wrap;
+            vertical-alignment: top;
+        }
+    }
+
+    touch := TouchArea {
+        clicked => { AppState.welcome_navigate(root.target); }
+    }
+}
+
+export component WelcomeView inherits Rectangle {
+    background: Theme.bg_main;
+
+    VerticalLayout {
+        Rectangle {
+            vertical-stretch: 1;
+        }
+
+        VerticalLayout {
+            padding: 60px;
+            spacing: 8px;
+            vertical-stretch: 0;
+
+            HorizontalLayout {
+                alignment: center;
+                spacing: 16px;
+                cross-axis-alignment: center;
+
+                Image {
+                    source: @image-url("../../../../assets/icons/maestro-white.png");
+                    width: 56px;
+                    height: 56px;
+                    image-fit: contain;
+                    vertical-alignment: center;
+                }
+
+                TitleText {
+                    text: "Maestro";
+                    font-size: 42px;
+                    font-weight: 800;
+                    horizontal-alignment: center;
+                    letter-spacing: 3px;
+                }
+            }
+
+            LabelText {
+                text: "Professional MIDI Synthesizer Host Control Center";
+                font-size: 16px;
+                horizontal-alignment: center;
+            }
+        }
+
+        // Mode cards: first two on the top row, third centered below.
+        VerticalLayout {
+            padding: 16px;
+            spacing: 24px;
+            vertical-stretch: 0;
+            cross-axis-alignment: center;
+
+            HorizontalLayout {
+                alignment: center;
+                spacing: 24px;
+
+                ModeCard {
+                    icon: Icons.sflists;
+                    title: "SoundFont List Editor";
+                    description: "Create and edit SoundFont lists and route list assignments to MIDI ports.";
+                    target: Tab.soundfonts;
+                }
+
+                ModeCard {
+                    icon: Icons.converter;
+                    title: "MIDI Converter";
+                    description: "Convert MIDI tracks directly to high-fidelity audio files.";
+                    target: Tab.converter;
+                }
+            }
+
+            HorizontalLayout {
+                alignment: center;
+                spacing: 24px;
+
+                ModeCard {
+                    icon: Icons.virt_device;
+                    title: "Virtual Device";
+                    description: "Manage the system-wide virtual MIDI device, ports, and soundfont lists.";
+                    target: Tab.device;
+                }
+
+                ModeCard {
+                    icon: Icons.settings;
+                    title: "System Integration";
+                    description: "Check and repair the Maestro service, audio libraries, etc.";
+                    target: Tab.system;
+                }
+            }
+
+            MaestroCheckBox {
+                text: "Remember selection";
+                checked: AppState.remember_last_tab;
+                toggled(v) => { AppState.set_remember_last_tab(v); }
+            }
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+        }
+
+        VerticalLayout {
+            padding: 24px;
+            spacing: 6px;
+            alignment: center;
+            cross-axis-alignment: center;
+            vertical-stretch: 0;
+
+            HorizontalLayout {
+                cross-axis-alignment: center;
+
+                BodyText {
+                    text: "Copyright ";
+                }
+
+                MaestroIcon {
+                    source: Icons.copyright;
+                }
+
+                BodyText {
+                    text: " 2026 dimms. " + AppState.version;
+                }
+            }
+
+            LabelText {
+                text: " Licensed under the GNU Lesser General Public License v3.0 or later.";
+            }
+        }
+    }
+}
