@@ -1,16 +1,17 @@
+pub(crate) mod sysex;
 pub(crate) mod ump;
 
 mod translator;
 
 pub(crate) use translator::MidiTranslator;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct MaestroTimedEvent {
     pub event: MaestroEvent,
     pub pos: u64,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum MaestroEvent {
     NoteOff { channel: u8, key: u8 },
     NoteOn { channel: u8, key: u8, vel: u8 },
@@ -21,5 +22,8 @@ pub(crate) enum MaestroEvent {
     PitchBendChange { channel: u8, lsb: u8, msb: u8 },
 
     SystemReset,
-    SystemExclusive(Box<[u8]>),
+    SystemExclusive { id: u16 },
 }
+
+const _: () = assert!(size_of::<MaestroEvent>() == 4);
+const _: () = assert!(size_of::<MaestroTimedEvent>() == 16);

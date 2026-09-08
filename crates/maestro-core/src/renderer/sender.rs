@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use crossbeam_channel::{Receiver, Sender};
 
 use crate::{
-    event::{MaestroEvent, MaestroTimedEvent},
+    event::{MaestroEvent, MaestroTimedEvent, sysex},
     renderer::{config::EventProcessorConfig, event_processor::PortEventProcessor},
 };
 
@@ -27,12 +27,15 @@ impl PortEventSender {
     }
 
     pub fn send(&self, event: MaestroTimedEvent) {
-        if let Some(evproc) = &self.evproc {
-            if let Some(ev) = evproc.lock().unwrap().process(event) {
-                let _ = self.tx.try_send(ev);
-            }
-        } else {
-            let _ = self.tx.try_send(event);
+        let event = match &self.evproc {
+            Some(evproc) => evproc.lock().unwrap().process(event),
+            None => Some(event),
+        };
+
+        if let Some(ev) = event
+            && let Err(err) = self.tx.try_send(ev)
+        {
+            sysex::release(&err.into_inner().event);
         }
     }
 
@@ -41,10 +44,22 @@ impl PortEventSender {
     }
 
     pub fn reset(&self) {
-        let _: Vec<_> = self.rx.try_iter().collect();
+        self.drain();
         let _ = self.tx.send(MaestroTimedEvent {
             event: MaestroEvent::SystemReset,
             pos: 0,
         });
+    }
+
+    fn drain(&self) {
+        for event in self.rx.try_iter() {
+            sysex::release(&event.event);
+        }
+    }
+}
+
+impl Drop for PortEventSender {
+    fn drop(&mut self) {
+        self.drain();
     }
 }

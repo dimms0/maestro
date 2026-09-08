@@ -6,7 +6,7 @@ use std::{
 use crate::{
     audio_params::{AudioParameters, ChannelCount},
     error::RendererError,
-    event::{MaestroEvent, MaestroTimedEvent},
+    event::{MaestroEvent, MaestroTimedEvent, sysex},
     renderer::{
         config::fluidsynth::{FluidSynthConfig, FluidSynthInterpolation},
         synth::{
@@ -297,16 +297,18 @@ impl MidiStreamState for FluidSynthSynth {
                 MaestroEvent::SystemReset => {
                     (fns.fluid_synth_system_reset)(synth);
                 }
-                MaestroEvent::SystemExclusive(data) => {
-                    (fns.fluid_synth_sysex)(
-                        synth,
-                        data.as_ptr() as *const _,
-                        data.len() as c_int,
-                        std::ptr::null_mut(),
-                        std::ptr::null_mut(),
-                        std::ptr::null_mut(),
-                        0,
-                    );
+                MaestroEvent::SystemExclusive { id } => {
+                    sysex::with(id, |data| {
+                        (fns.fluid_synth_sysex)(
+                            synth,
+                            data.as_ptr() as *const _,
+                            data.len() as c_int,
+                            std::ptr::null_mut(),
+                            std::ptr::null_mut(),
+                            std::ptr::null_mut(),
+                            0,
+                        )
+                    });
                 }
             }
         }

@@ -111,8 +111,16 @@ impl RealtimeEventSender {
         Some(event)
     }
 
-    fn push(&self, port: u8, pos: u64, event: MaestroEvent) {
+    fn push(&self, port: u8, event: MaestroEvent, delta_ticks: Option<u64>) {
         if let Some(ev) = self.filter(port, event) {
+            // only stamp the event if it passes the filters, so dropped events won't
+            // consume cycles to retrieve the clock position
+            let pos = if let Some(ticks) = delta_ticks {
+                self.tick_stamp(ticks)
+            } else {
+                self.stamp()
+            };
+
             self.ports[port as usize].send(MaestroTimedEvent { event: ev, pos });
         }
     }
@@ -156,38 +164,20 @@ impl RealtimeEventSender {
     }
 
     pub fn process_short(&self, port: u8, short: u32, delta_ticks: Option<u64>) {
-        let pos = if let Some(ticks) = delta_ticks {
-            self.tick_stamp(ticks)
-        } else {
-            self.stamp()
-        };
-
         self.translator.short(port, short, |event| {
-            self.push(port, pos, event);
+            self.push(port, event, delta_ticks);
         });
     }
 
     pub fn process_long(&self, port: u8, long: &[u8], delta_ticks: Option<u64>) {
-        let pos = if let Some(ticks) = delta_ticks {
-            self.tick_stamp(ticks)
-        } else {
-            self.stamp()
-        };
-
         self.translator.long(port, long, |event| {
-            self.push(port, pos, event);
+            self.push(port, event, delta_ticks);
         });
     }
 
     pub fn process_ump(&self, words: &[u32], delta_ticks: Option<u64>) {
-        let pos = if let Some(ticks) = delta_ticks {
-            self.tick_stamp(ticks)
-        } else {
-            self.stamp()
-        };
-
         self.translator.ump(words, |group, event| {
-            self.push(group, pos, event);
+            self.push(group, event, delta_ticks);
         });
     }
 

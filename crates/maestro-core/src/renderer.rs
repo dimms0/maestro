@@ -5,7 +5,7 @@ use midi_parser::Division;
 use crate::{
     audio_params::AudioParameters,
     error::RendererError,
-    event::{MaestroEvent, MaestroTimedEvent},
+    event::{MaestroEvent, MaestroTimedEvent, sysex},
     helpers::{Jitter, prepapre_cache_vec, sum_buffer},
     renderer::{
         clock::RendererClock,
@@ -170,10 +170,13 @@ impl MaestroRenderer {
     where
         I: Iterator<Item = MaestroTimedEvent>,
     {
-        let portmgr = self
-            .ports
-            .get_mut(port as usize)
-            .ok_or(RendererError::InvalidPort(port))?;
+        let Some(portmgr) = self.ports.get_mut(port as usize) else {
+            for event in events {
+                sysex::release(&event.event);
+            }
+
+            return Err(RendererError::InvalidPort(port));
+        };
 
         for event in events {
             portmgr.process_event(event);

@@ -8,7 +8,7 @@ use midi_parser::{EventRef, FileKind, MidiFile};
 use crate::{
     audio_params::AudioParameters,
     error::{FileRendererError, MaestroComponentError},
-    event::{MaestroEvent, MidiTranslator},
+    event::{MaestroEvent, MidiTranslator, sysex},
     renderer::{
         MaestroRenderer,
         config::{EventProcessorConfig, PostProcessorConfig, RendererConfig},
@@ -176,7 +176,9 @@ impl MaestroFileRenderer {
                         }
 
                         EventRef::SysEx(data) => {
-                            events.push(MaestroEvent::SystemExclusive(data.into()));
+                            if let Some(id) = sysex::store(data) {
+                                events.push(MaestroEvent::SystemExclusive { id });
+                            }
                         }
 
                         EventRef::Meta(m) => {

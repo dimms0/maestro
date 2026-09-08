@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use crate::{
     error::RendererError,
-    event::{MaestroEvent, MaestroTimedEvent},
+    event::{MaestroEvent, MaestroTimedEvent, sysex},
     renderer::config::SynthConfig,
     soundfont::{SoundFont, SoundFontType},
 };
@@ -80,8 +80,17 @@ impl EventBuffer {
     }
 
     pub fn clear(&mut self) {
-        self.events.clear();
+        for event in self.events.drain(..) {
+            sysex::release(&event.event);
+        }
+
         self.sorted = true;
+    }
+}
+
+impl Drop for EventBuffer {
+    fn drop(&mut self) {
+        self.clear();
     }
 }
 
@@ -124,6 +133,7 @@ pub(super) trait RenderableMidiStream: MidiStreamState {
                 curr = offset;
             }
             self.flush_event(event.event);
+            sysex::release(&event.event);
         }
 
         if curr < render_len {

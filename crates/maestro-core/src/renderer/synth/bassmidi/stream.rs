@@ -4,7 +4,7 @@ use super::{BASSMIDILib, consts::*};
 use crate::{
     audio_params::{AudioParameters, ChannelCount},
     error::RendererError,
-    event::{MaestroEvent, MaestroTimedEvent},
+    event::{MaestroEvent, MaestroTimedEvent, sysex},
     renderer::{
         config::bassmidi::BASSMIDIConfig,
         synth::{EventBuffer, MidiStreamState, RenderableMidiStream, SoundFontHandle, SynthModule},
@@ -239,20 +239,22 @@ impl MidiStreamState for BASSMIDIStream {
                 ev = MIDI_EVENT_SYSTEM;
                 param = 0;
             }
-            MaestroEvent::SystemExclusive(data) => {
-                let mut ev = Vec::with_capacity(data.len() + 2);
-                ev.push(0xF0);
-                ev.extend_from_slice(&data);
-                ev.push(0xF7);
+            MaestroEvent::SystemExclusive { id } => {
+                sysex::with(id, |data| {
+                    let mut ev = Vec::with_capacity(data.len() + 2);
+                    ev.push(0xF0);
+                    ev.extend_from_slice(data);
+                    ev.push(0xF7);
 
-                unsafe {
-                    (self.lib.bassmidi.BASS_MIDI_StreamEvents)(
-                        self.stream,
-                        BASS_MIDI_EVENTS_RAW | BASS_MIDI_EVENTS_NORSTATUS,
-                        ev.as_ptr() as *const c_void,
-                        ev.len() as u32,
-                    );
-                }
+                    unsafe {
+                        (self.lib.bassmidi.BASS_MIDI_StreamEvents)(
+                            self.stream,
+                            BASS_MIDI_EVENTS_RAW | BASS_MIDI_EVENTS_NORSTATUS,
+                            ev.as_ptr() as *const c_void,
+                            ev.len() as u32,
+                        );
+                    }
+                });
                 return;
             }
         }

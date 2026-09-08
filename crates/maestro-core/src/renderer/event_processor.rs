@@ -1,5 +1,5 @@
 use crate::{
-    event::{MaestroEvent, MaestroTimedEvent},
+    event::{MaestroEvent, MaestroTimedEvent, sysex},
     renderer::config::EventProcessorConfig,
 };
 
@@ -180,8 +180,9 @@ impl PortEventProcessor {
                 Some(event)
             }
 
-            MaestroEvent::SystemExclusive(_) => {
+            MaestroEvent::SystemExclusive { .. } => {
                 if self.ignore_sysex {
+                    sysex::release(&event.event);
                     None
                 } else {
                     Some(event)

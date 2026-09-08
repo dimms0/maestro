@@ -5,7 +5,7 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelI
 use crate::{
     audio_params::AudioParameters,
     error::RendererError,
-    event::{MaestroEvent, MaestroTimedEvent},
+    event::{MaestroEvent, MaestroTimedEvent, sysex},
     helpers::{prepapre_cache_vec, sum_buffer},
     renderer::{
         SoundFontHandle,
@@ -85,12 +85,16 @@ impl BASSMIDISynth {
             | MaestroEvent::PolyphonicAftertouch { channel, .. } => {
                 for i in 0..self.kbdiv {
                     let idx = channel as usize * self.kbdiv + i;
-                    self.streams[idx].process_event(event.clone());
+                    self.streams[idx].process_event(event);
                 }
             }
             _ => {
+                if let MaestroEvent::SystemExclusive { id } = event.event {
+                    sysex::retain(id, self.streams.len() - 1);
+                }
+
                 for stream in &mut self.streams {
-                    stream.process_event(event.clone());
+                    stream.process_event(event);
                 }
             }
         }

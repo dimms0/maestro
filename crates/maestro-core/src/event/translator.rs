@@ -4,7 +4,7 @@ use std::sync::{
 };
 
 use crate::event::{
-    MaestroEvent,
+    MaestroEvent, sysex,
     ump::{ParseError, UMP_GROUPS, UMP_MT_WORDS, Ump, midi2_cv_events, parse_ump},
 };
 
@@ -114,9 +114,11 @@ impl MidiTranslator {
                 // Any other status byte ends a SysEx: 0xF7 delivers it, and
                 // anything else aborts it, dropping what was gathered.
                 if stream.in_sysex {
-                    let payload = stream.finish_sysex();
-                    if byte == 0xF7 {
-                        emit(MaestroEvent::SystemExclusive(payload));
+                    stream.in_sysex = false;
+                    if byte == 0xF7
+                        && let Some(id) = sysex::store(&stream.sysex)
+                    {
+                        emit(MaestroEvent::SystemExclusive { id });
                     }
                 }
 
@@ -215,7 +217,11 @@ impl MidiTranslator {
 
                 // SysEx7 status: 0x0 complete, 0x1 start, 0x2 continue, 0x3 end.
                 match m.status {
-                    0x0 => emit(m.group, MaestroEvent::SystemExclusive(bytes.into())),
+                    0x0 => {
+                        if let Some(id) = sysex::store(bytes) {
+                            emit(m.group, MaestroEvent::SystemExclusive { id });
+                        }
+                    }
                     0x1 => {
                         stream.sysex.clear();
                         stream.in_sysex = true;
@@ -224,10 +230,13 @@ impl MidiTranslator {
                     0x2 if stream.in_sysex => stream.push_sysex(bytes),
                     0x3 if stream.in_sysex => {
                         stream.push_sysex(bytes);
-                        let payload = stream.finish_sysex();
+                        stream.in_sysex = false;
+                        let id = sysex::store(&stream.sysex);
                         drop(stream);
 
-                        emit(m.group, MaestroEvent::SystemExclusive(payload));
+                        if let Some(id) = id {
+                            emit(m.group, MaestroEvent::SystemExclusive { id });
+                        }
                     }
                     _ => {}
                 }
@@ -244,12 +253,6 @@ impl StreamState {
         let room = MAX_SYSEX.saturating_sub(self.sysex.len());
         self.sysex
             .extend_from_slice(&bytes[..bytes.len().min(room)]);
-    }
-
-    #[inline]
-    fn finish_sysex(&mut self) -> Box<[u8]> {
-        self.in_sysex = false;
-        self.sysex.as_slice().into()
     }
 }
 
@@ -331,6 +334,20 @@ mod tests {
         let mut out = Vec::new();
         t.ump(words, |group, event| out.push((group, event)));
         out
+    }
+
+    fn sysex_data(events: &[MaestroEvent]) -> Vec<u8> {
+        match events {
+            [MaestroEvent::SystemExclusive { id }] => sysex::with(*id, |d| d.to_vec()).unwrap(),
+            other => panic!("expected one SysEx event, got {other:?}"),
+        }
+    }
+
+    fn ump_sysex_data(events: &[(u8, MaestroEvent)]) -> (u8, Vec<u8>) {
+        match events {
+            [(group, event)] => (*group, sysex_data(std::slice::from_ref(event))),
+            other => panic!("expected one SysEx event, got {other:?}"),
+        }
     }
 
     fn note_on(channel: u8, key: u8, vel: u8) -> MaestroEvent {
@@ -456,12 +473,7 @@ mod tests {
     #[test]
     fn long_sysex_with_terminator_is_delivered_without_its_framing() {
         let t = translator();
-        assert_eq!(
-            long(&t, &[0xF0, 0x7E, 0x7F, 0xF7]),
-            vec![MaestroEvent::SystemExclusive(
-                vec![0x7E, 0x7F].into_boxed_slice()
-            )]
-        );
+        assert_eq!(sysex_data(&long(&t, &[0xF0, 0x7E, 0x7F, 0xF7])), [0x7E, 0x7F]);
     }
 
     #[test]
@@ -470,22 +482,15 @@ mod tests {
         assert_eq!(long(&t, &[0xF0, 0x01, 0x02]), Vec::new());
         assert_eq!(long(&t, &[0x03, 0x04]), Vec::new());
         assert_eq!(
-            long(&t, &[0x05, 0xF7]),
-            vec![MaestroEvent::SystemExclusive(
-                vec![0x01, 0x02, 0x03, 0x04, 0x05].into_boxed_slice()
-            )]
+            sysex_data(&long(&t, &[0x05, 0xF7])),
+            [0x01, 0x02, 0x03, 0x04, 0x05]
         );
     }
 
     #[test]
     fn long_real_time_inside_a_sysex_does_not_corrupt_it() {
         let t = translator();
-        assert_eq!(
-            long(&t, &[0xF0, 0x01, 0xF8, 0x02, 0xF7]),
-            vec![MaestroEvent::SystemExclusive(
-                vec![0x01, 0x02].into_boxed_slice()
-            )]
-        );
+        assert_eq!(sysex_data(&long(&t, &[0xF0, 0x01, 0xF8, 0x02, 0xF7])), [0x01, 0x02]);
     }
 
     #[test]
@@ -545,12 +550,7 @@ mod tests {
         bytes.extend(std::iter::repeat_n(0x01, MAX_SYSEX + 64));
         bytes.push(0xF7);
 
-        let events = long(&t, &bytes);
-        assert_eq!(events.len(), 1);
-        match &events[0] {
-            MaestroEvent::SystemExclusive(data) => assert_eq!(data.len(), MAX_SYSEX),
-            other => panic!("unexpected event: {other:?}"),
-        }
+        assert_eq!(sysex_data(&long(&t, &bytes)).len(), MAX_SYSEX);
     }
 
     #[test]
@@ -636,14 +636,11 @@ mod tests {
         // Start (6 bytes) + end (2 bytes) on group 1.
         let t = translator();
         assert_eq!(
-            ump(
+            ump_sysex_data(&ump(
                 &t,
                 &[0x31_16_01_02, 0x03_04_05_06, 0x31_32_07_08, 0x00_00_00_00]
-            ),
-            vec![(
-                1,
-                MaestroEvent::SystemExclusive(vec![1, 2, 3, 4, 5, 6, 7, 8].into_boxed_slice())
-            )]
+            )),
+            (1, vec![1, 2, 3, 4, 5, 6, 7, 8])
         );
     }
 
@@ -651,11 +648,8 @@ mod tests {
     fn ump_sysex7_complete_in_one_packet() {
         let t = translator();
         assert_eq!(
-            ump(&t, &[0x30_03_7E_7F, 0x09_00_00_00]),
-            vec![(
-                0,
-                MaestroEvent::SystemExclusive(vec![0x7E, 0x7F, 0x09].into_boxed_slice())
-            )]
+            ump_sysex_data(&ump(&t, &[0x30_03_7E_7F, 0x09_00_00_00])),
+            (0, vec![0x7E, 0x7F, 0x09])
         );
     }
 
