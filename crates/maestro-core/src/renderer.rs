@@ -162,7 +162,7 @@ impl MaestroRenderer {
         I: Iterator<Item = MaestroEvent>,
     {
         self.clock.advance_by_ticks(ticks);
-        let pos = self.clock.get_position();
+        let pos = self.clock.get_position() as u32;
         self.process_timed_events(port, events.map(|e| MaestroTimedEvent { event: e, pos }))
     }
 

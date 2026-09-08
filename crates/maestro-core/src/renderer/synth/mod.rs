@@ -56,7 +56,7 @@ impl EventBuffer {
 
     pub fn push(&mut self, event: MaestroTimedEvent) {
         if let Some(back) = self.events.back()
-            && event.pos < back.pos
+            && (event.pos.wrapping_sub(back.pos) as i32) < 0
         {
             self.sorted = false;
         }
@@ -64,14 +64,16 @@ impl EventBuffer {
         self.events.push_back(event);
     }
 
-    pub fn sort(&mut self) {
+    pub fn sort(&mut self, base: u32) {
         if !self.sorted {
-            self.events.make_contiguous().sort_by_key(|e| e.pos);
+            self.events
+                .make_contiguous()
+                .sort_by_key(|e| e.pos.wrapping_sub(base) as i32);
             self.sorted = true;
         }
     }
 
-    pub fn front_pos(&self) -> Option<u64> {
+    pub fn front_pos(&self) -> Option<u32> {
         self.events.front().map(|e| e.pos)
     }
 
@@ -96,8 +98,7 @@ impl Drop for EventBuffer {
 
 pub(super) trait MidiStreamState {
     fn event_buf(&mut self) -> &mut EventBuffer;
-    fn last_pos(&self) -> u64;
-    fn set_last_pos(&mut self, pos: u64);
+    fn last_pos(&mut self) -> &mut u32;
     fn write_to(&mut self, buffer: &mut [f32]);
     fn flush_event(&mut self, event: MaestroEvent);
 }
@@ -105,15 +106,18 @@ pub(super) trait MidiStreamState {
 pub(super) trait RenderableMidiStream: MidiStreamState {
     fn render(&mut self, buffer: &mut [f32], precision_threshold: usize) {
         let render_len = buffer.len();
-        let block_start = self.last_pos();
-        let block_end = block_start + render_len as u64;
+        let block_start = *self.last_pos();
+        let block_end = block_start.wrapping_add(render_len as u32);
         let mut curr = 0usize;
 
-        self.event_buf().sort();
+        self.event_buf().sort(block_start);
 
         while let Some(event_pos) = self.event_buf().front_pos() {
-            // Anything past this block is handled by a later render call.
-            if event_pos >= block_end {
+            // positions wrap, so the distance is a wrapping one read as signed
+            // negative for an event the block has already gone past
+            let delta = event_pos.wrapping_sub(block_start) as i32;
+
+            if delta >= render_len as i32 {
                 break;
             }
 
@@ -126,7 +130,7 @@ pub(super) trait RenderableMidiStream: MidiStreamState {
             // are played as early as this block allows instead of rewinding
             // the stream position. Timestamps are whole frames, so the split
             // never lands in the middle of one.
-            let offset = (event_pos.saturating_sub(block_start) as usize).clamp(curr, render_len);
+            let offset = (delta.max(0) as usize).clamp(curr, render_len);
 
             if offset > curr && offset - curr >= precision_threshold {
                 self.write_to(&mut buffer[curr..offset]);
@@ -140,7 +144,7 @@ pub(super) trait RenderableMidiStream: MidiStreamState {
             self.write_to(&mut buffer[curr..render_len]);
         }
 
-        self.set_last_pos(block_end);
+        *self.last_pos() = block_end;
     }
 }
 

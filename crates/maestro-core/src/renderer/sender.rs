@@ -45,10 +45,6 @@ impl PortEventSender {
 
     pub fn reset(&self) {
         self.drain();
-        let _ = self.tx.send(MaestroTimedEvent {
-            event: MaestroEvent::SystemReset,
-            pos: 0,
-        });
     }
 
     fn drain(&self) {

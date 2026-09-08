@@ -125,22 +125,22 @@ impl RealtimeEventSender {
         }
     }
 
-    fn stamp(&self) -> u64 {
+    fn stamp(&self) -> u32 {
         if self.precision {
-            self.clock.get_position()
+            self.clock.get_position() as u32
         } else {
-            0
+            self.clock.unstamped_position()
         }
     }
 
-    fn tick_stamp(&self, ticks: u64) -> u64 {
+    fn tick_stamp(&self, ticks: u64) -> u32 {
         let mut tick = self.tick.lock().unwrap();
         let anchor = *tick.anchor.get_or_insert_with(|| self.clock.get_position());
 
         let samples = tick.tempo.advance(ticks);
         tick.pos += samples;
 
-        anchor + tick.pos * self.channels
+        (anchor + tick.pos * self.channels) as u32
     }
 
     pub fn set_tick_division(&self, division: Division) {

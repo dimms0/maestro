@@ -1,5 +1,5 @@
 use std::{
-    sync::atomic::{AtomicI64, AtomicU64, Ordering},
+    sync::atomic::{AtomicI64, AtomicU32, AtomicU64, Ordering},
     time::Instant,
 };
 
@@ -106,6 +106,8 @@ pub(crate) struct RealtimeClock {
     /// threshold that tells a desync from the render thread's normal swing.
     max_lookahead: AtomicU64,
 
+    unstamped: AtomicU32,
+
     /// Closest and furthest the timeline came to the renderer in the current
     /// window, and the frame the window runs out at.
     window_min: AtomicI64,
@@ -133,6 +135,7 @@ impl RealtimeClock {
             cap: AtomicU64::new(min_lookahead),
             committed: AtomicU64::new(0),
             max_lookahead: AtomicU64::new(min_lookahead),
+            unstamped: AtomicU32::new(0),
             window_min: AtomicI64::new(i64::MAX),
             window_max: AtomicI64::new(i64::MIN),
             window_end: AtomicU64::new(sync_window),
@@ -173,6 +176,10 @@ impl RealtimeClock {
         let committed = self.committed.load(Ordering::Relaxed) + frames;
         self.committed.store(committed, Ordering::Relaxed);
         self.cap.store(committed + lookahead, Ordering::Relaxed);
+        self.unstamped.store(
+            (committed.saturating_sub(self.sample_rate) * self.channels) as u32,
+            Ordering::Relaxed,
+        );
 
         let offset = self.offset.load(Ordering::Relaxed);
         let target = (TARGET_LEAD_BLOCKS * frames) as i64;
@@ -225,6 +232,10 @@ impl RealtimeClock {
         let frames = (timeline.max(0) as u64).min(self.cap.load(Ordering::Relaxed));
 
         frames * self.channels
+    }
+
+    pub fn unstamped_position(&self) -> u32 {
+        self.unstamped.load(Ordering::Relaxed)
     }
 }
 

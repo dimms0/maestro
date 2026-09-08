@@ -8,7 +8,7 @@ pub(crate) use translator::MidiTranslator;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct MaestroTimedEvent {
     pub event: MaestroEvent,
-    pub pos: u64,
+    pub pos: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -26,4 +26,4 @@ pub(crate) enum MaestroEvent {
 }
 
 const _: () = assert!(size_of::<MaestroEvent>() == 4);
-const _: () = assert!(size_of::<MaestroTimedEvent>() == 16);
+const _: () = assert!(size_of::<MaestroTimedEvent>() == 8);

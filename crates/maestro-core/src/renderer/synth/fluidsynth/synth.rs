@@ -37,7 +37,7 @@ pub(crate) struct FluidSynthSynth {
     stereo_scratch: Vec<f32>,
 
     event_buf: EventBuffer,
-    last_pos: u64,
+    last_pos: u32,
 }
 
 // SAFETY: the settings/synth handles are owned exclusively by this instance
@@ -207,12 +207,8 @@ impl MidiStreamState for FluidSynthSynth {
         &mut self.event_buf
     }
 
-    fn last_pos(&self) -> u64 {
-        self.last_pos
-    }
-
-    fn set_last_pos(&mut self, pos: u64) {
-        self.last_pos = pos;
+    fn last_pos(&mut self) -> &mut u32 {
+        &mut self.last_pos
     }
 
     fn write_to(&mut self, buffer: &mut [f32]) {
