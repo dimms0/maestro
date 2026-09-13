@@ -94,7 +94,9 @@ fn notes(bytes: &[u8]) -> Vec<(u64, u8, u8, bool)> {
             EventRef::Midi(m) if m.kind() == 0x90 => {
                 Some((event.tick, m.channel(), m.data1, m.data2 > 0))
             }
-            EventRef::Midi(m) if m.kind() == 0x80 => Some((event.tick, m.channel(), m.data1, false)),
+            EventRef::Midi(m) if m.kind() == 0x80 => {
+                Some((event.tick, m.channel(), m.data1, false))
+            }
             _ => None,
         })
         .collect();
@@ -201,7 +203,10 @@ fn a_scan_falls_back_to_the_tempo_the_spec_names() {
     // No Set Tempo event anywhere, so RP-001's 120 bpm applies: 384 ticks at
     // 96 ppq is four quarter notes, which is two seconds.
     let mut file = header(0, 1, 96);
-    chunk(&mut file, &[0x00, 0x90, 0x40, 0x40, 0x83, 0x00, 0xFF, 0x2F, 0x00]);
+    chunk(
+        &mut file,
+        &[0x00, 0x90, 0x40, 0x40, 0x83, 0x00, 0xFF, 0x2F, 0x00],
+    );
 
     let info = MidiFile::from_slice(&file).unwrap().scan().unwrap();
     assert_eq!(info.tempo_changes, 0);
@@ -283,8 +288,7 @@ fn what_the_writer_produces_reads_back_the_same() {
 
     let mut written = Vec::new();
     {
-        let mut writer =
-            SmfWriter::new(&mut written, 0, file.division(), 1).unwrap();
+        let mut writer = SmfWriter::new(&mut written, 0, file.division(), 1).unwrap();
         writer.begin_track();
 
         // Four tracks collapse into one, so only the writer's own End of Track

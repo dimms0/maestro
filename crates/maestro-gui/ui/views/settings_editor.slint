@@ -96,7 +96,11 @@ component SynthPage inherits VerticalLayout {
         show_advanced: root.show_advanced;
     }
 
-    if (SettingsEditorState.current_config.has_renderer): RendererSection { }
+    // KDMAPI only ever uses a single port, so the port-thread controls are
+    // hidden for it (`has_port_threads` comes from the component profile).
+    // TODO: remove has_pory_threads if another option is added for renderer
+    if (SettingsEditorState.current_config.has_renderer
+        && SettingsEditorState.current_config.has_port_threads): RendererSection { }
 }
 
 // The output path end to end: device and format, buffering, master output.

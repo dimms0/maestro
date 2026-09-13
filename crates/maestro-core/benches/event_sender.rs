@@ -38,10 +38,10 @@ fn rig(config: RealtimeConfig, event_processor: Option<EventProcessorConfig>) ->
         }
     };
 
-    if let Some(path) = env::var_os("MAESTRO_BENCH_SF2") {
-        if let Err(err) = engine.set_soundfonts(SoundFontList::from(PathBuf::from(path))) {
-            eprintln!("warning: soundfont failed to load ({err}), the render thread will idle");
-        }
+    if let Some(path) = env::var_os("MAESTRO_BENCH_SF2")
+        && let Err(err) = engine.set_soundfonts(SoundFontList::from(PathBuf::from(path)))
+    {
+        eprintln!("warning: soundfont failed to load ({err}), the render thread will idle");
     }
 
     let sender = engine.get_event_sender();
@@ -150,10 +150,10 @@ fn send_path(c: &mut Criterion) {
         group.bench_function(name, |b| drive(b, &rig.sender, &events));
     }
 
-    if let Some(mut rig) = rig(bare, None) {
-        if rig.engine.pause().is_ok() {
-            group.bench_function("bare_stream_paused", |b| drive(b, &rig.sender, &events));
-        }
+    if let Some(mut rig) = rig(bare, None)
+        && rig.engine.pause().is_ok()
+    {
+        group.bench_function("bare_stream_paused", |b| drive(b, &rig.sender, &events));
     }
 
     group.finish();

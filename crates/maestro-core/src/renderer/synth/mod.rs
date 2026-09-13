@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use crate::{
     error::RendererError,
-    event::{MaestroEvent, MaestroTimedEvent, sysex},
+    event::{MaestroTimedEvent, sysex},
     renderer::config::SynthConfig,
     soundfont::{SoundFont, SoundFontType},
 };
@@ -28,7 +28,7 @@ pub(super) trait SynthModule: Send + Sync {
 
     fn process_event(&mut self, event: MaestroTimedEvent);
 
-    fn read_audio(&mut self, buffer: &mut [f32], precision_threshold: usize);
+    fn read_audio(&mut self, buffer: &mut [f32]);
 
     fn reset(&mut self);
 
@@ -73,10 +73,6 @@ impl EventBuffer {
         }
     }
 
-    pub fn front_pos(&self) -> Option<u32> {
-        self.events.front().map(|e| e.pos)
-    }
-
     pub fn pop_front(&mut self) -> Option<MaestroTimedEvent> {
         self.events.pop_front()
     }
@@ -96,56 +92,56 @@ impl Drop for EventBuffer {
     }
 }
 
-pub(super) trait MidiStreamState {
-    fn event_buf(&mut self) -> &mut EventBuffer;
-    fn last_pos(&mut self) -> &mut u32;
-    fn write_to(&mut self, buffer: &mut [f32]);
-    fn flush_event(&mut self, event: MaestroEvent);
-}
+// pub(super) trait MidiStreamState {
+//     fn event_buf(&mut self) -> &mut EventBuffer;
+//     fn last_pos(&mut self) -> &mut u32;
+//     fn write_to(&mut self, buffer: &mut [f32]);
+//     fn flush_event(&mut self, event: MaestroEvent);
+// }
 
-pub(super) trait RenderableMidiStream: MidiStreamState {
-    fn render(&mut self, buffer: &mut [f32], precision_threshold: usize) {
-        let render_len = buffer.len();
-        let block_start = *self.last_pos();
-        let block_end = block_start.wrapping_add(render_len as u32);
-        let mut curr = 0usize;
+// pub(super) trait RenderableMidiStream: MidiStreamState {
+//     fn render(&mut self, buffer: &mut [f32], precision_threshold: usize) {
+//         let render_len = buffer.len();
+//         let block_start = *self.last_pos();
+//         let block_end = block_start.wrapping_add(render_len as u32);
+//         let mut curr = 0usize;
 
-        self.event_buf().sort(block_start);
+//         self.event_buf().sort(block_start);
 
-        while let Some(event_pos) = self.event_buf().front_pos() {
-            // positions wrap, so the distance is a wrapping one read as signed
-            // negative for an event the block has already gone past
-            let delta = event_pos.wrapping_sub(block_start) as i32;
+//         while let Some(event_pos) = self.event_buf().front_pos() {
+//             // positions wrap, so the distance is a wrapping one read as signed
+//             // negative for an event the block has already gone past
+//             let delta = event_pos.wrapping_sub(block_start) as i32;
 
-            if delta >= render_len as i32 {
-                break;
-            }
+//             if delta >= render_len as i32 {
+//                 break;
+//             }
 
-            let Some(event) = self.event_buf().pop_front() else {
-                break;
-            };
+//             let Some(event) = self.event_buf().pop_front() else {
+//                 break;
+//             };
 
-            // Offset of the event inside this block. Events stamped before the
-            // block started, or before something that was already rendered,
-            // are played as early as this block allows instead of rewinding
-            // the stream position. Timestamps are whole frames, so the split
-            // never lands in the middle of one.
-            let offset = (delta.max(0) as usize).clamp(curr, render_len);
+//             // Offset of the event inside this block. Events stamped before the
+//             // block started, or before something that was already rendered,
+//             // are played as early as this block allows instead of rewinding
+//             // the stream position. Timestamps are whole frames, so the split
+//             // never lands in the middle of one.
+//             let offset = (delta.max(0) as usize).clamp(curr, render_len);
 
-            if offset > curr && offset - curr >= precision_threshold {
-                self.write_to(&mut buffer[curr..offset]);
-                curr = offset;
-            }
-            self.flush_event(event.event);
-            sysex::release(&event.event);
-        }
+//             if offset > curr && offset - curr >= precision_threshold {
+//                 self.write_to(&mut buffer[curr..offset]);
+//                 curr = offset;
+//             }
+//             self.flush_event(event.event);
+//             sysex::release(&event.event);
+//         }
 
-        if curr < render_len {
-            self.write_to(&mut buffer[curr..render_len]);
-        }
+//         if curr < render_len {
+//             self.write_to(&mut buffer[curr..render_len]);
+//         }
 
-        *self.last_pos() = block_end;
-    }
-}
+//         *self.last_pos() = block_end;
+//     }
+// }
 
-impl<T: MidiStreamState> RenderableMidiStream for T {}
+// impl<T: MidiStreamState> RenderableMidiStream for T {}

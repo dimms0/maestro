@@ -27,7 +27,9 @@ impl<W: Write> SmfWriter<W> {
     pub fn new(mut out: W, format: u16, division: Division, tracks: u16) -> Result<Self> {
         let raw = match division {
             Division::Ppq(ppq) => ppq & 0x7FFF,
-            Division::Smpte { fps, subframes } => 0x8000 | u16::from(fps) << 8 | u16::from(subframes),
+            Division::Smpte { fps, subframes } => {
+                0x8000 | u16::from(fps) << 8 | u16::from(subframes)
+            }
         };
 
         out.write_all(b"MThd")?;
@@ -114,11 +116,13 @@ impl<W: Write> SmfWriter<W> {
         }
 
         if !self.track.ends_with(&[0xFF, meta::END_OF_TRACK, 0x00]) {
-            self.track.extend_from_slice(&[0x00, 0xFF, meta::END_OF_TRACK, 0x00]);
+            self.track
+                .extend_from_slice(&[0x00, 0xFF, meta::END_OF_TRACK, 0x00]);
         }
 
         self.out.write_all(b"MTrk")?;
-        self.out.write_all(&(self.track.len() as u32).to_be_bytes())?;
+        self.out
+            .write_all(&(self.track.len() as u32).to_be_bytes())?;
         self.out.write_all(&self.track)?;
 
         self.open = false;

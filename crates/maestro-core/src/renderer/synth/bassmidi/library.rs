@@ -5,6 +5,7 @@ use std::ffi::c_char;
 use std::ffi::c_void;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::OnceLock;
 use std::sync::RwLock;
 use std::sync::Weak;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -123,7 +124,23 @@ impl BASSMIDILib {
         }
     }
 
+    // used to completely get rid of bassmidi before reloading to avoid
+    // segfaults when reloading immediately
+    fn pin_shared_objects() {
+        static PINNED: OnceLock<()> = OnceLock::new();
+
+        PINNED.get_or_init(|| {
+            for name in [BASS_LIB_FILENAME, BASSMIDI_LIB_FILENAME] {
+                if let Ok((lib, _)) = crate::paths::load_library(name) {
+                    std::mem::forget(lib);
+                }
+            }
+        });
+    }
+
     pub fn load_inner() -> Result<Self, RendererError> {
+        Self::pin_shared_objects();
+
         let load_hint = |name: &str, e: libloading::Error| {
             RendererError::SynthInit(format!(
                 "The BASSMIDI synthesizer requires the '{name}' shared library, which could not \

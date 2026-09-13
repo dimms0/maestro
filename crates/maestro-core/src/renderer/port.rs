@@ -26,10 +26,10 @@ impl PortRenderer {
         }
     }
 
-    pub fn read_audio(&mut self, dest: &mut [f32], precision_threshold: usize) -> usize {
+    pub fn read_audio(&mut self, dest: &mut [f32]) -> usize {
         match self {
-            Self::BASSMIDI(mgr) => mgr.read_audio(dest, precision_threshold),
-            Self::FluidSynth(mgr) => mgr.read_audio(dest, precision_threshold),
+            Self::BASSMIDI(mgr) => mgr.read_audio(dest),
+            Self::FluidSynth(mgr) => mgr.read_audio(dest),
         }
     }
 
@@ -79,14 +79,14 @@ impl<T: SynthModule + 'static> PortSynthManager<T> {
         self.event_snd.send(event);
     }
 
-    pub fn read_audio(&mut self, dest: &mut [f32], precision_threshold: usize) -> usize {
+    pub fn read_audio(&mut self, dest: &mut [f32]) -> usize {
         dest.fill(0.0);
 
         for event in self.event_snd.iter() {
             self.synth.process_event(event);
         }
 
-        self.synth.read_audio(dest, precision_threshold);
+        self.synth.read_audio(dest);
 
         dest.len()
     }

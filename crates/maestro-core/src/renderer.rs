@@ -6,7 +6,7 @@ use crate::{
     audio_params::AudioParameters,
     error::RendererError,
     event::{MaestroEvent, MaestroTimedEvent, sysex},
-    helpers::{Jitter, prepapre_cache_vec, sum_buffer},
+    helpers::{prepapre_cache_vec, sum_buffer},
     renderer::{
         clock::RendererClock,
         config::{EventProcessorConfig, PostProcessorConfig, RendererConfig, SynthConfig},
@@ -50,8 +50,6 @@ pub(crate) struct MaestroRenderer {
     stats: Arc<MaestroRenderStatistics>,
     audio_dur_div: f32,
     audio_channels: usize,
-    precision_threshold: usize,
-    precision_jitter: Jitter,
 
     threadpool: Option<rayon::ThreadPool>,
 }
@@ -111,12 +109,6 @@ impl MaestroRenderer {
             None
         };
 
-        let precision_threshold = config
-            .render_fps
-            .map(|t| (audio_dur_div as f64 * (1.0 / t)) as usize)
-            .unwrap_or(0);
-        let precision_jitter = Jitter::new(config.render_fps_variation);
-
         Ok(Self {
             library,
             ports: ports.into_boxed_slice(),
@@ -130,8 +122,6 @@ impl MaestroRenderer {
             stats: Arc::new(MaestroRenderStatistics::new()),
             audio_dur_div,
             audio_channels: audio_params.channels as usize,
-            precision_threshold,
-            precision_jitter,
             threadpool,
         })
     }
@@ -185,16 +175,6 @@ impl MaestroRenderer {
         Ok(())
     }
 
-    fn block_precision_threshold(&mut self) -> usize {
-        if self.precision_threshold == 0 || !self.precision_jitter.active() {
-            return self.precision_threshold;
-        }
-
-        self.precision_jitter
-            .apply(self.precision_threshold as f32)
-            .max(0.0) as usize
-    }
-
     pub fn render(&mut self, buffer: &mut [f32]) -> usize {
         let start = Instant::now();
 
@@ -208,8 +188,6 @@ impl MaestroRenderer {
             clock.begin_block(render_len as u64);
         }
 
-        let precision_threshold = self.block_precision_threshold();
-
         if let Some(pool) = &self.threadpool {
             let ports = &mut self.ports;
             let buffers = &mut self.render_buffers;
@@ -220,7 +198,7 @@ impl MaestroRenderer {
                     .zip(buffers.par_iter_mut())
                     .for_each(|(port, buf)| {
                         prepapre_cache_vec(buf, render_len, 0.0);
-                        port.read_audio(buf, precision_threshold);
+                        port.read_audio(buf);
                     });
 
                 for buf in buffers {
@@ -230,7 +208,7 @@ impl MaestroRenderer {
         } else {
             for (port, port_buffer) in self.ports.iter_mut().zip(self.render_buffers.iter_mut()) {
                 prepapre_cache_vec(port_buffer, render_len, 0.0);
-                port.read_audio(port_buffer, precision_threshold);
+                port.read_audio(port_buffer);
             }
 
             for buf in self.render_buffers.iter_mut() {

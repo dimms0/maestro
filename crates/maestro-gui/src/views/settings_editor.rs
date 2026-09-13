@@ -140,8 +140,6 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
             actions::edit_selected_config(ui, data, |f| {
                 f.renderer.port_threads =
                     r.has_port_threads.then(|| r.port_threads.max(1) as usize);
-                f.renderer.render_fps = r.has_render_fps.then_some(r.render_fps as f64);
-                f.renderer.render_fps_variation = r.render_fps_variation.clamp(0.0, 100.0);
             })
         });
     });

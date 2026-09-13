@@ -28,7 +28,7 @@ impl MaestroRenderStatistics {
         let mut lock = self.render_time_history.write().unwrap();
 
         lock.push_back(render_time);
-        if lock.len() > 100 {
+        if lock.len() > 20 {
             lock.pop_front();
         }
     }

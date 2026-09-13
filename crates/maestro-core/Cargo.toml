@@ -57,6 +57,10 @@ criterion = { version = "0.8", default-features = false, features = [
 name = "event_sender"
 harness = false
 
+[[bench]]
+name = "file_render"
+harness = false
+
 [features]
 config-watcher = ["dep:notify"]
 encoders = ["dep:flacenc", "dep:mp3lame-encoder", "dep:vorbis_rs"]

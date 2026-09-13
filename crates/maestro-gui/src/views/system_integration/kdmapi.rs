@@ -27,7 +27,10 @@ pub fn probe() -> KdmapiState {
 
     if !target.exists() {
         let hint = match paths::resolve_lib(KDMAPI_FILENAME) {
-            Some(_) => format!("Not installed. Installing links it into {}.", target.display()),
+            Some(_) => format!(
+                "Not installed. Installing links it into {}.",
+                target.display()
+            ),
             None => format!("{KDMAPI_FILENAME} was not found in the Maestro program folder."),
         };
         return KdmapiState {
@@ -67,6 +70,8 @@ pub fn act(action: KdmapiAction) -> Result<(), String> {
         Ok(0) => Ok(()),
         Ok(2) => Err(FOREIGN_HINT.to_string()),
         Ok(_) => Err("The KDMAPI library could not be linked into the system path.".to_string()),
-        Err(e) => Err(format!("Could not run the operation with elevated rights: {e}")),
+        Err(e) => Err(format!(
+            "Could not run the operation with elevated rights: {e}"
+        )),
     }
 }

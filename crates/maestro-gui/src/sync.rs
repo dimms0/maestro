@@ -286,9 +286,6 @@ pub fn build_slint_component_config(state: &AppData) -> Option<SlintComponentCon
         renderer: SlintRendererConfig {
             port_threads: file.renderer.port_threads.unwrap_or(4) as i32,
             has_port_threads: file.renderer.port_threads.is_some(),
-            render_fps: file.renderer.render_fps.unwrap_or(0.0) as f32,
-            has_render_fps: file.renderer.render_fps.is_some(),
-            render_fps_variation: file.renderer.render_fps_variation,
         },
 
         synth: synth_to_slint(&file.renderer.synth),

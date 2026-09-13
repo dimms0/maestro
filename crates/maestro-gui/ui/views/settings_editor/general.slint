@@ -25,41 +25,41 @@ import { MaestroCard, VerticalSeparator } from "../../widgets/controls.slint";
 import { TitleText } from "../../widgets/text.slint";
 
 // A labelled slider with a live read-out of its current value.
-component ReadoutSlider inherits VerticalLayout {
-    in property <string> label;
-    in property <string> unit;
-    in property <float> value;
-    in property <float> minimum;
-    in property <float> maximum;
-    in property <bool> enabled: true;
+// component ReadoutSlider inherits VerticalLayout {
+//     in property <string> label;
+//     in property <string> unit;
+//     in property <float> value;
+//     in property <float> minimum;
+//     in property <float> maximum;
+//     in property <bool> enabled: true;
 
-    callback changed(float);
+//     callback changed(float);
 
-    horizontal-stretch: 1;
-    spacing: 6px;
+//     horizontal-stretch: 1;
+//     spacing: 6px;
 
-    HorizontalLayout {
-        alignment: space-between;
+//     HorizontalLayout {
+//         alignment: space-between;
 
-        LabelText {
-            text: root.label;
-            font-size: 13px;
-        }
+//         LabelText {
+//             text: root.label;
+//             font-size: 13px;
+//         }
 
-        BodyText {
-            text: round(root.value) + root.unit;
-            font-weight: 600;
-        }
-    }
+//         BodyText {
+//             text: round(root.value) + root.unit;
+//             font-weight: 600;
+//         }
+//     }
 
-    Slider {
-        enabled: root.enabled;
-        minimum: root.minimum;
-        maximum: root.maximum;
-        value: root.value;
-        changed(v) => { root.changed(v); }
-    }
-}
+//     Slider {
+//         enabled: root.enabled;
+//         minimum: root.minimum;
+//         maximum: root.maximum;
+//         value: root.value;
+//         changed(v) => { root.changed(v); }
+//     }
+// }
 
 // Component enable flag and SoundFont list assignment.
 export component GeneralSection inherits SectionCard {
@@ -257,9 +257,7 @@ export component RendererSection inherits SectionCard {
 
     title: "Renderer";
 
-    // KDMAPI only ever uses a single port, so the port-thread controls are
-    // hidden for it (`has_port_threads` comes from the component profile).
-    if (SettingsEditorState.current_config.has_port_threads): HorizontalLayout {
+    HorizontalLayout {
         spacing: 24px;
         cross-axis-alignment: center;
 
@@ -289,58 +287,58 @@ export component RendererSection inherits SectionCard {
         }
     }
 
-    VerticalLayout {
-        spacing: 16px;
+    // VerticalLayout {
+    //     spacing: 16px;
 
-        HorizontalLayout {
-            spacing: 24px;
-            cross-axis-alignment: center;
+    //     HorizontalLayout {
+    //         spacing: 24px;
+    //         cross-axis-alignment: center;
 
-            MaestroCheckBox {
-                horizontal-stretch: 0;
-                text: "Enforce render accuracy (FPS)";
-                checked: SettingsEditorState.current_config.renderer.has_render_fps;
-                toggled(v) => {
-                    root.edit = SettingsEditorState.current_config.renderer;
-                    root.edit.has_render_fps = v;
-                    SettingsEditorState.update_renderer(root.edit);
-                }
-            }
+    //         MaestroCheckBox {
+    //             horizontal-stretch: 0;
+    //             text: "Enforce render accuracy (FPS)";
+    //             checked: SettingsEditorState.current_config.renderer.has_render_fps;
+    //             toggled(v) => {
+    //                 root.edit = SettingsEditorState.current_config.renderer;
+    //                 root.edit.has_render_fps = v;
+    //                 SettingsEditorState.update_renderer(root.edit);
+    //             }
+    //         }
 
-            MaestroLineEdit {
-                horizontal-stretch: 0;
-                width: 150px;
-                text: SettingsEditorState.current_config.renderer.render_fps;
-                enabled: SettingsEditorState.current_config.renderer.has_render_fps;
-                edited(v) => {
-                    root.edit = SettingsEditorState.current_config.renderer;
-                    root.edit.render_fps = v.to-float();
-                    SettingsEditorState.update_renderer(root.edit);
-                }
-            }
-        }
+    //         MaestroLineEdit {
+    //             horizontal-stretch: 0;
+    //             width: 150px;
+    //             text: SettingsEditorState.current_config.renderer.render_fps;
+    //             enabled: SettingsEditorState.current_config.renderer.has_render_fps;
+    //             edited(v) => {
+    //                 root.edit = SettingsEditorState.current_config.renderer;
+    //                 root.edit.render_fps = v.to-float();
+    //                 SettingsEditorState.update_renderer(root.edit);
+    //             }
+    //         }
+    //     }
 
-        // Wobbles the accuracy grid instead of holding it exactly, the same
-        // knob the realtime engine offers for its render buffer.
-        VerticalLayout {
-            spacing: 4px;
-            opacity: SettingsEditorState.current_config.renderer.has_render_fps ? 1.0 : 0.4;
+    //     // Wobbles the accuracy grid instead of holding it exactly, the same
+    //     // knob the realtime engine offers for its render buffer.
+    //     VerticalLayout {
+    //         spacing: 4px;
+    //         opacity: SettingsEditorState.current_config.renderer.has_render_fps ? 1.0 : 0.4;
 
-            ReadoutSlider {
-                label: "FPS Jitter/Variation (%)";
-                unit: "%";
-                minimum: 0.0;
-                maximum: 100.0;
-                enabled: SettingsEditorState.current_config.renderer.has_render_fps;
-                value: SettingsEditorState.current_config.renderer.render_fps_variation;
-                changed(v) => {
-                    root.edit = SettingsEditorState.current_config.renderer;
-                    root.edit.render_fps_variation = v;
-                    SettingsEditorState.update_renderer(root.edit);
-                }
-            }
-        }
-    }
+    //         ReadoutSlider {
+    //             label: "FPS Jitter/Variation (%)";
+    //             unit: "%";
+    //             minimum: 0.0;
+    //             maximum: 100.0;
+    //             enabled: SettingsEditorState.current_config.renderer.has_render_fps;
+    //             value: SettingsEditorState.current_config.renderer.render_fps_variation;
+    //             changed(v) => {
+    //                 root.edit = SettingsEditorState.current_config.renderer;
+    //                 root.edit.render_fps_variation = v;
+    //                 SettingsEditorState.update_renderer(root.edit);
+    //             }
+    //         }
+    //     }
+    // }
 }
 
 export component RealtimeSection inherits SectionCard {

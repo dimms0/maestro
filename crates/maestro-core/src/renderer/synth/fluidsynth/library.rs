@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 
-use std::ffi::{CString, c_char, c_int, c_void};
+use std::ffi::{CString, c_char, c_int, c_short, c_uint, c_void};
 use std::sync::{Arc, RwLock};
 
 use crate::{
@@ -17,7 +17,8 @@ use crate::{
 pub(crate) const FLUIDSYNTH_LIB_CANDIDATES: &[&str] =
     &["libfluidsynth-3.dll", "fluidsynth.dll", "libfluidsynth.dll"];
 #[cfg(target_os = "macos")]
-pub(crate) const FLUIDSYNTH_LIB_CANDIDATES: &[&str] = &["libfluidsynth.3.dylib", "libfluidsynth.dylib"];
+pub(crate) const FLUIDSYNTH_LIB_CANDIDATES: &[&str] =
+    &["libfluidsynth.3.dylib", "libfluidsynth.dylib"];
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 pub(crate) const FLUIDSYNTH_LIB_CANDIDATES: &[&str] = &["libfluidsynth.so.3", "libfluidsynth.so"];
 
@@ -44,13 +45,6 @@ define_lib_wrapper!(FluidSynthSharedLib, {
     fluid_synth_sfunload: unsafe extern "C" fn(*mut c_void, c_int, c_int) -> c_int,
     fluid_synth_set_bank_offset: unsafe extern "C" fn(*mut c_void, c_int, c_int) -> c_int,
 
-    fluid_synth_noteon: unsafe extern "C" fn(*mut c_void, c_int, c_int, c_int) -> c_int,
-    fluid_synth_noteoff: unsafe extern "C" fn(*mut c_void, c_int, c_int) -> c_int,
-    fluid_synth_cc: unsafe extern "C" fn(*mut c_void, c_int, c_int, c_int) -> c_int,
-    fluid_synth_key_pressure: unsafe extern "C" fn(*mut c_void, c_int, c_int, c_int) -> c_int,
-    fluid_synth_channel_pressure: unsafe extern "C" fn(*mut c_void, c_int, c_int) -> c_int,
-    fluid_synth_pitch_bend: unsafe extern "C" fn(*mut c_void, c_int, c_int) -> c_int,
-    fluid_synth_program_change: unsafe extern "C" fn(*mut c_void, c_int, c_int) -> c_int,
     fluid_synth_system_reset: unsafe extern "C" fn(*mut c_void) -> c_int,
     fluid_synth_sysex: unsafe extern "C" fn(
         *mut c_void,
@@ -74,6 +68,31 @@ define_lib_wrapper!(FluidSynthSharedLib, {
     ) -> c_int,
     fluid_synth_get_active_voice_count: unsafe extern "C" fn(*mut c_void) -> c_int,
     fluid_synth_set_interp_method: unsafe extern "C" fn(*mut c_void, c_int, c_int) -> c_int,
+
+    new_fluid_sequencer2: unsafe extern "C" fn(c_int) -> *mut c_void,
+    delete_fluid_sequencer: unsafe extern "C" fn(*mut c_void),
+    fluid_sequencer_register_fluidsynth: unsafe extern "C" fn(*mut c_void, *mut c_void) -> c_short,
+    fluid_sequencer_set_time_scale: unsafe extern "C" fn(*mut c_void, f64),
+    fluid_sequencer_send_at:
+        unsafe extern "C" fn(*mut c_void, *mut c_void, c_uint, c_int) -> c_int,
+    fluid_sequencer_remove_events: unsafe extern "C" fn(*mut c_void, c_short, c_short, c_int),
+
+    new_fluid_event: unsafe extern "C" fn() -> *mut c_void,
+    delete_fluid_event: unsafe extern "C" fn(*mut c_void),
+    fluid_event_from_midi_event: unsafe extern "C" fn(*mut c_void, *const c_void),
+    fluid_event_set_dest: unsafe extern "C" fn(*mut c_void, c_short),
+    fluid_event_noteon: unsafe extern "C" fn(*mut c_void, c_int, c_short, c_short),
+    fluid_event_noteoff: unsafe extern "C" fn(*mut c_void, c_int, c_short),
+    fluid_event_control_change: unsafe extern "C" fn(*mut c_void, c_int, c_short, c_int),
+    fluid_event_key_pressure: unsafe extern "C" fn(*mut c_void, c_int, c_short, c_int),
+    fluid_event_channel_pressure: unsafe extern "C" fn(*mut c_void, c_int, c_int),
+    fluid_event_pitch_bend: unsafe extern "C" fn(*mut c_void, c_int, c_int),
+    fluid_event_program_change: unsafe extern "C" fn(*mut c_void, c_int, c_int),
+    fluid_event_system_reset: unsafe extern "C" fn(*mut c_void),
+
+    new_fluid_midi_event: unsafe extern "C" fn() -> *mut c_void,
+    delete_fluid_midi_event: unsafe extern "C" fn(*mut c_void),
+    fluid_midi_event_set_sysex: unsafe extern "C" fn(*mut c_void, *mut c_void, c_int, c_int),
 });
 
 /// What a [`SoundFontHandle`] resolves to for FluidSynth. Fonts are loaded

@@ -473,7 +473,10 @@ mod tests {
     #[test]
     fn long_sysex_with_terminator_is_delivered_without_its_framing() {
         let t = translator();
-        assert_eq!(sysex_data(&long(&t, &[0xF0, 0x7E, 0x7F, 0xF7])), [0x7E, 0x7F]);
+        assert_eq!(
+            sysex_data(&long(&t, &[0xF0, 0x7E, 0x7F, 0xF7])),
+            [0x7E, 0x7F]
+        );
     }
 
     #[test]
@@ -490,7 +493,10 @@ mod tests {
     #[test]
     fn long_real_time_inside_a_sysex_does_not_corrupt_it() {
         let t = translator();
-        assert_eq!(sysex_data(&long(&t, &[0xF0, 0x01, 0xF8, 0x02, 0xF7])), [0x01, 0x02]);
+        assert_eq!(
+            sysex_data(&long(&t, &[0xF0, 0x01, 0xF8, 0x02, 0xF7])),
+            [0x01, 0x02]
+        );
     }
 
     #[test]

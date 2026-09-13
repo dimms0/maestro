@@ -11,6 +11,4 @@ pub use synth::*;
 pub struct RendererConfig {
     pub synth: SynthConfig,
     pub port_threads: Option<usize>,
-    pub render_fps: Option<f64>,
-    pub render_fps_variation: f32,
 }

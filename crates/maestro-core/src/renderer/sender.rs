@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use crossbeam_channel::{Receiver, Sender};
 
 use crate::{
-    event::{MaestroEvent, MaestroTimedEvent, sysex},
+    event::{MaestroTimedEvent, sysex},
     renderer::{config::EventProcessorConfig, event_processor::PortEventProcessor},
 };
 
@@ -22,7 +22,7 @@ impl PortEventSender {
         Self {
             tx,
             rx,
-            evproc: evproc.map(|e| Mutex::new(e)),
+            evproc: evproc.map(Mutex::new),
         }
     }
 

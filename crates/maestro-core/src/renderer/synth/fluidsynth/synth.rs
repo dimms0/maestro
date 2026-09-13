@@ -1,5 +1,5 @@
 use std::{
-    ffi::{CStr, c_int, c_void},
+    ffi::{CStr, c_int, c_short, c_void},
     sync::Arc,
 };
 
@@ -9,10 +9,7 @@ use crate::{
     event::{MaestroEvent, MaestroTimedEvent, sysex},
     renderer::{
         config::fluidsynth::{FluidSynthConfig, FluidSynthInterpolation},
-        synth::{
-            EventBuffer, MidiStreamState, RenderableMidiStream, SoundFontHandle, SynthModule,
-            fluidsynth::FluidSynthLib,
-        },
+        synth::{SoundFontHandle, SynthModule, fluidsynth::FluidSynthLib},
     },
 };
 
@@ -31,12 +28,14 @@ pub(crate) struct FluidSynthSynth {
     lib: Arc<FluidSynthLib>,
     settings: *mut c_void,
     synth: *mut c_void,
+    seq: *mut c_void,
+    seq_event: *mut c_void,
 
     loaded_fonts: Vec<c_int>,
     channels: ChannelCount,
     stereo_scratch: Vec<f32>,
 
-    event_buf: EventBuffer,
+    rendered: u64,
     last_pos: u32,
 }
 
@@ -83,14 +82,24 @@ impl FluidSynthSynth {
             )
         };
 
+        let seq = unsafe { (lib.fns.new_fluid_sequencer2)(0) };
+        let seq_event = unsafe { (lib.fns.new_fluid_event)() };
+        unsafe {
+            (lib.fns.fluid_sequencer_set_time_scale)(seq, audio_params.sample_rate as f64);
+            let id = (lib.fns.fluid_sequencer_register_fluidsynth)(seq, synth);
+            (lib.fns.fluid_event_set_dest)(seq_event, id);
+        }
+
         Ok(Self {
             lib,
             settings,
             synth,
+            seq,
+            seq_event,
             loaded_fonts: Vec::new(),
             channels: audio_params.channels,
             stereo_scratch: Vec::new(),
-            event_buf: EventBuffer::new(),
+            rendered: 0,
             last_pos: 0,
         })
     }
@@ -185,16 +194,98 @@ impl SynthModule for FluidSynthSynth {
     }
 
     fn reset(&mut self) {
-        self.event_buf.clear();
-        unsafe { (self.lib.fns.fluid_synth_system_reset)(self.synth) };
+        unsafe {
+            (self.lib.fns.fluid_sequencer_remove_events)(self.seq, -1, -1, -1);
+            (self.lib.fns.fluid_synth_system_reset)(self.synth);
+        }
     }
 
     fn process_event(&mut self, event: MaestroTimedEvent) {
-        self.event_buf.push(event);
+        let channels = u16::from(self.channels) as u64;
+        let delta = (event.pos.wrapping_sub(self.last_pos) as i32).max(0) as u64 / channels;
+        let tick = self.rendered.wrapping_add(delta) as u32;
+        let fns = &self.lib.fns;
+        let evt = self.seq_event;
+
+        unsafe {
+            match event.event {
+                MaestroEvent::NoteOff { channel, key } => {
+                    (fns.fluid_event_noteoff)(evt, channel as c_int, key as c_short);
+                }
+                MaestroEvent::NoteOn { channel, key, vel } => {
+                    (fns.fluid_event_noteon)(evt, channel as c_int, key as c_short, vel as c_short);
+                }
+                MaestroEvent::ControlChange {
+                    channel,
+                    param,
+                    val,
+                } => {
+                    (fns.fluid_event_control_change)(
+                        evt,
+                        channel as c_int,
+                        param as c_short,
+                        val as c_int,
+                    );
+                }
+                MaestroEvent::PitchBendChange { channel, lsb, msb } => {
+                    let value = ((msb as c_int) << 7) | (lsb as c_int);
+                    (fns.fluid_event_pitch_bend)(evt, channel as c_int, value);
+                }
+                MaestroEvent::ProgramChange { channel, program } => {
+                    (fns.fluid_event_program_change)(evt, channel as c_int, program as c_int);
+                }
+                MaestroEvent::ChannelAftertouch { channel, pressure } => {
+                    (fns.fluid_event_channel_pressure)(evt, channel as c_int, pressure as c_int);
+                }
+                MaestroEvent::PolyphonicAftertouch {
+                    channel,
+                    key,
+                    pressure,
+                } => {
+                    (fns.fluid_event_key_pressure)(
+                        evt,
+                        channel as c_int,
+                        key as c_short,
+                        pressure as c_int,
+                    );
+                }
+                MaestroEvent::SystemReset => (fns.fluid_event_system_reset)(evt),
+                MaestroEvent::SystemExclusive { id } => {
+                    sysex::with(id, |data| {
+                        let ev = (fns.new_fluid_midi_event)();
+                        (fns.fluid_synth_sysex)(
+                            self.synth,
+                            data.as_ptr() as *const _,
+                            data.len() as c_int,
+                            std::ptr::null_mut(),
+                            std::ptr::null_mut(),
+                            std::ptr::null_mut(),
+                            0,
+                        );
+                        (fns.fluid_midi_event_set_sysex)(
+                            ev,
+                            data.as_ptr() as *mut _,
+                            data.len() as c_int,
+                            0,
+                        );
+                        (fns.fluid_event_from_midi_event)(evt, ev);
+                        (fns.delete_fluid_midi_event)(ev);
+                    });
+                    sysex::release(&event.event);
+                    return;
+                }
+            }
+
+            (fns.fluid_sequencer_send_at)(self.seq, evt, tick, 1);
+        }
+
+        sysex::release(&event.event);
     }
 
-    fn read_audio(&mut self, buffer: &mut [f32], precision_threshold: usize) {
-        self.render(buffer, precision_threshold);
+    fn read_audio(&mut self, buffer: &mut [f32]) {
+        self.write_to(buffer);
+        self.rendered += (buffer.len() / u16::from(self.channels) as usize) as u64;
+        self.last_pos = self.last_pos.wrapping_add(buffer.len() as u32);
     }
 
     fn voice_count(&self) -> u64 {
@@ -202,15 +293,7 @@ impl SynthModule for FluidSynthSynth {
     }
 }
 
-impl MidiStreamState for FluidSynthSynth {
-    fn event_buf(&mut self) -> &mut EventBuffer {
-        &mut self.event_buf
-    }
-
-    fn last_pos(&mut self) -> &mut u32 {
-        &mut self.last_pos
-    }
-
+impl FluidSynthSynth {
     fn write_to(&mut self, buffer: &mut [f32]) {
         match self.channels {
             ChannelCount::Stereo => {
@@ -248,72 +331,13 @@ impl MidiStreamState for FluidSynthSynth {
             }
         }
     }
-
-    fn flush_event(&mut self, event: MaestroEvent) {
-        let fns = &self.lib.fns;
-        let synth = self.synth;
-
-        unsafe {
-            match event {
-                MaestroEvent::NoteOff { channel, key } => {
-                    (fns.fluid_synth_noteoff)(synth, channel as c_int, key as c_int);
-                }
-                MaestroEvent::NoteOn { channel, key, vel } => {
-                    (fns.fluid_synth_noteon)(synth, channel as c_int, key as c_int, vel as c_int);
-                }
-                MaestroEvent::ControlChange {
-                    channel,
-                    param,
-                    val,
-                } => {
-                    (fns.fluid_synth_cc)(synth, channel as c_int, param as c_int, val as c_int);
-                }
-                MaestroEvent::PitchBendChange { channel, lsb, msb } => {
-                    let value = ((msb as c_int) << 7) | (lsb as c_int);
-                    (fns.fluid_synth_pitch_bend)(synth, channel as c_int, value);
-                }
-                MaestroEvent::ProgramChange { channel, program } => {
-                    (fns.fluid_synth_program_change)(synth, channel as c_int, program as c_int);
-                }
-                MaestroEvent::ChannelAftertouch { channel, pressure } => {
-                    (fns.fluid_synth_channel_pressure)(synth, channel as c_int, pressure as c_int);
-                }
-                MaestroEvent::PolyphonicAftertouch {
-                    channel,
-                    key,
-                    pressure,
-                } => {
-                    (fns.fluid_synth_key_pressure)(
-                        synth,
-                        channel as c_int,
-                        key as c_int,
-                        pressure as c_int,
-                    );
-                }
-                MaestroEvent::SystemReset => {
-                    (fns.fluid_synth_system_reset)(synth);
-                }
-                MaestroEvent::SystemExclusive { id } => {
-                    sysex::with(id, |data| {
-                        (fns.fluid_synth_sysex)(
-                            synth,
-                            data.as_ptr() as *const _,
-                            data.len() as c_int,
-                            std::ptr::null_mut(),
-                            std::ptr::null_mut(),
-                            std::ptr::null_mut(),
-                            0,
-                        )
-                    });
-                }
-            }
-        }
-    }
 }
 
 impl Drop for FluidSynthSynth {
     fn drop(&mut self) {
         unsafe {
+            (self.lib.fns.delete_fluid_event)(self.seq_event);
+            (self.lib.fns.delete_fluid_sequencer)(self.seq);
             (self.lib.fns.delete_fluid_synth)(self.synth);
             (self.lib.fns.delete_fluid_settings)(self.settings);
         }

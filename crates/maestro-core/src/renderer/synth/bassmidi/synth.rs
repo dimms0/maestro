@@ -11,7 +11,7 @@ use crate::{
         SoundFontHandle,
         config::bassmidi::BASSMIDIConfig,
         synth::{
-            RenderableMidiStream, SynthModule,
+            SynthModule,
             bassmidi::{BASSMIDILib, BASSMIDIStream},
         },
     },
@@ -124,7 +124,7 @@ impl SynthModule for BASSMIDISynth {
         }
     }
 
-    fn read_audio(&mut self, buffer: &mut [f32], precision_threshold: usize) {
+    fn read_audio(&mut self, buffer: &mut [f32]) {
         let render_len = buffer.len();
 
         if let Some(pool) = &self.threadpool {
@@ -137,7 +137,7 @@ impl SynthModule for BASSMIDISynth {
                     .zip(buffers.par_iter_mut())
                     .for_each(|(s, b)| {
                         prepapre_cache_vec(b, render_len, 0.0);
-                        s.render(b, precision_threshold);
+                        s.read_audio(b);
                     });
 
                 for buf in buffers.iter_mut() {
@@ -145,7 +145,7 @@ impl SynthModule for BASSMIDISynth {
                 }
             });
         } else {
-            self.streams[0].render(buffer, precision_threshold);
+            self.streams[0].read_audio(buffer);
         }
     }
 

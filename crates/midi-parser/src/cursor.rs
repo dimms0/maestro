@@ -126,7 +126,8 @@ impl<'a> SmfCursor<'a> {
                 };
             }
 
-            let delta = varlen::read(self.bytes, &mut self.pos).ok_or(Error::Truncated(self.pos))?;
+            let delta =
+                varlen::read(self.bytes, &mut self.pos).ok_or(Error::Truncated(self.pos))?;
             self.tick += u64::from(delta);
 
             let head = *self.byte(self.pos)?;
