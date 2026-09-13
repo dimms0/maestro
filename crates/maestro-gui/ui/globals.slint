@@ -92,6 +92,11 @@ export global AudioDeviceState {
     // it may not support.
     in-out property <[string]> sample_rates;
 
+    // Every rate the renderer can produce. Components that never open a device
+    // (the file converter) pick from this instead, as nothing constrains them
+    // to what the current output hardware happens to support.
+    in-out property <[string]> common_sample_rates;
+
     // Device period bounds in frames, 0 when the device does not report them.
     in-out property <int> buffer_min;
     in-out property <int> buffer_max;
@@ -179,6 +184,12 @@ export global SettingsEditorState {
     callback toggle_post_processor(bool);
     callback update_post_processor(SlintPostProcessorConfig);
     callback update_converter_custom(SlintConverterCustom);
+    // Folder picker for the converter's output directory. Returns the chosen
+    // path, or "" if the dialog was dismissed.
+    callback browse_output_dir() -> string;
+    // True when the path names a directory that exists. Pure so the editor can
+    // flag a bad path straight from a binding as it is typed.
+    pure callback output_dir_valid(string) -> bool;
     callback update_system_custom(SlintSystemCustom);
     callback save_current();
     callback discard_current();

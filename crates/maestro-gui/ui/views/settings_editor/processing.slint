@@ -1,8 +1,7 @@
-import { Slider } from "std-widgets.slint";
 import {
     Theme,
     MaestroCheckBox,
-    MaestroLineEdit,
+    MaestroKnob,
     MaestroSpinBox,
     BodyText,
     SectionCard,
@@ -12,6 +11,9 @@ import {
     MaestroCard,
     MaestroIcon,
     Icons,
+    MaestroSwitch,
+    TitleText,
+    LabelText,
 } from "../../widgets.slint";
 import { SettingsEditorState } from "../../globals.slint";
 import { EventFlagKind } from "../../enums.slint";
@@ -19,6 +21,7 @@ import {
     SlintEventProcessorConfig,
     SlintPostProcessorConfig,
 } from "../../structs.slint";
+import { Setting } from "../../widgets/layout.slint";
 
 // Plots the final velocity mapping y(x) produced by PortEventProcessor's
 // velocity_table (see crates/maestro-core/src/renderer/port/event_processor.rs):
@@ -291,10 +294,13 @@ export component EventProcessorSection inherits SectionCard {
 
     title: "Event Processor";
 
-    MaestroCheckBox {
+    Setting {
         text: "Enable MIDI event processing";
-        checked: root.on;
-        toggled(v) => { SettingsEditorState.toggle_event_processor(v); }
+
+        MaestroSwitch {
+            checked: root.on;
+            toggled(v) => { SettingsEditorState.toggle_event_processor(v); }
+        }
     }
 
     // Switched off, the settings stay on screen greyed out rather than being
@@ -389,6 +395,17 @@ export component EventProcessorSection inherits SectionCard {
                 }
 
                 MaestroButton {
+                    text: "88 Keys";
+                    disabled: !root.on;
+                    clicked => {
+                        root.edit = SettingsEditorState.current_config.event_processor;
+                        root.edit.key_range_low = 21;
+                        root.edit.key_range_high = 108;
+                        SettingsEditorState.update_event_processor(root.edit);
+                    }
+                }
+
+                MaestroButton {
                     text: "Full keyboard";
                     disabled: !root.on;
                     clicked => {
@@ -418,103 +435,93 @@ export component EventProcessorSection inherits SectionCard {
                     spacing: 12px;
                     alignment: center;
 
-                    HorizontalLayout {
-                        spacing: 16px;
+                    Setting {
+                        text: "Velocity Multiplier";
+                        subtext: "All note velocities will be multiplied with this value.";
 
-                        Field {
-                            label: "Velocity Multiplier";
-
-                            MaestroSpinBox {
-                                width: 120px;
-                                enabled: root.on;
-                                value: SettingsEditorState.current_config.event_processor.velocity_multiplier;
-                                decimals: 1;
-                                step: 0.1;
-                                maximum: 127;
-                                minimum: 0;
-                                edited(v) => {
-                                    root.edit = SettingsEditorState.current_config.event_processor;
-                                    root.edit.velocity_multiplier = v;
-                                    SettingsEditorState.update_event_processor(root.edit);
-                                }
-                            }
-                        }
-
-                        Field {
-                            label: "Velocity Curve";
-
-                            MaestroSpinBox {
-                                width: 120px;
-                                enabled: root.on;
-                                value: SettingsEditorState.current_config.event_processor.velocity_curve;
-                                decimals: 2;
-                                step: 0.1;
-                                maximum: 5;
-                                minimum: 0.01;
-                                edited(v) => {
-                                    root.edit = SettingsEditorState.current_config.event_processor;
-                                    root.edit.velocity_curve = v;
-                                    SettingsEditorState.update_event_processor(root.edit);
-                                }
+                        MaestroSpinBox {
+                            width: 120px;
+                            enabled: root.on;
+                            value: SettingsEditorState.current_config.event_processor.velocity_multiplier;
+                            decimals: 1;
+                            step: 0.1;
+                            maximum: 127;
+                            minimum: 0;
+                            edited(v) => {
+                                root.edit = SettingsEditorState.current_config.event_processor;
+                                root.edit.velocity_multiplier = v;
+                                SettingsEditorState.update_event_processor(root.edit);
                             }
                         }
                     }
 
-                    HorizontalLayout {
-                        Field {
-                            label: "Fixed velocity";
+                    Setting {
+                        text: "Velocity Curve";
+                        subtext: "A standard power function (x^y, where y is this value) is applied to all note velocities.";
 
-                            HorizontalLayout {
-                                alignment: start;
-                                cross-axis-alignment: center;
-
-                                MaestroCheckBox {
-                                    enabled: root.on;
-                                    checked: SettingsEditorState.current_config.event_processor.fixed_velocity != 0;
-                                    toggled(v) => {
-                                        root.edit = SettingsEditorState.current_config.event_processor;
-                                        root.edit.fixed_velocity = v ? 127 : 0;
-                                        SettingsEditorState.update_event_processor(root.edit);
-                                    }
-                                }
-
-                                MaestroSpinBox {
-                                    width: 90px;
-                                    minimum: 1;
-                                    maximum: 127;
-                                    value: SettingsEditorState.current_config.event_processor.fixed_velocity;
-                                    enabled: root.on && SettingsEditorState.current_config.event_processor.fixed_velocity != 0;
-                                    edited(v) => {
-                                        root.edit = SettingsEditorState.current_config.event_processor;
-                                        root.edit.fixed_velocity = v;
-                                        SettingsEditorState.update_event_processor(root.edit);
-                                    }
-                                }
+                        MaestroSpinBox {
+                            width: 120px;
+                            enabled: root.on;
+                            value: SettingsEditorState.current_config.event_processor.velocity_curve;
+                            decimals: 2;
+                            step: 0.1;
+                            maximum: 5;
+                            minimum: 0.01;
+                            edited(v) => {
+                                root.edit = SettingsEditorState.current_config.event_processor;
+                                root.edit.velocity_curve = v;
+                                SettingsEditorState.update_event_processor(root.edit);
                             }
                         }
+                    }
 
-                        Field {
-                            label: "Velocity Threshold";
+                    Setting {
+                        text: "Fixed Velocity";
+                        subtext: "If enabled, all note velocities will be overriden by this set value.";
+                        enabled: root.on;
 
-                            MaestroSpinBox {
-                                width: 120px;
-                                enabled: root.on;
-                                minimum: 0;
-                                maximum: 127;
-                                value: SettingsEditorState.current_config.event_processor.velocity_threshold;
-                                edited(v) => {
-                                    root.edit = SettingsEditorState.current_config.event_processor;
-                                    root.edit.velocity_threshold = v;
-                                    SettingsEditorState.update_event_processor(root.edit);
-                                }
+                        has-switch: true;
+                        checked: SettingsEditorState.current_config.event_processor.fixed_velocity != 0;
+                        toggled(v) => {
+                            root.edit = SettingsEditorState.current_config.event_processor;
+                            root.edit.fixed_velocity = v ? 127 : 0;
+                            SettingsEditorState.update_event_processor(root.edit);
+                        }
+
+                        MaestroSpinBox {
+                            width: 120px;
+                            minimum: 1;
+                            maximum: 127;
+                            value: SettingsEditorState.current_config.event_processor.fixed_velocity;
+                            enabled: root.on && SettingsEditorState.current_config.event_processor.fixed_velocity != 0;
+                            edited(v) => {
+                                root.edit = SettingsEditorState.current_config.event_processor;
+                                root.edit.fixed_velocity = v;
+                                SettingsEditorState.update_event_processor(root.edit);
+                            }
+                        }
+                    }
+
+                    Setting {
+                        text: "Velocity Threshold";
+                        subtext: "All notes with velocities below this value will be completely ignored.";
+
+                        MaestroSpinBox {
+                            width: 120px;
+                            enabled: root.on;
+                            minimum: 0;
+                            maximum: 127;
+                            value: SettingsEditorState.current_config.event_processor.velocity_threshold;
+                            edited(v) => {
+                                root.edit = SettingsEditorState.current_config.event_processor;
+                                root.edit.velocity_threshold = v;
+                                SettingsEditorState.update_event_processor(root.edit);
                             }
                         }
                     }
                 }
 
-                MaestroIcon {
-                    source: Icons.arrow_right;
-                }
+                HorizontalSeparator { }
 
                 VelocityCurveGraph {
                     multiplier: SettingsEditorState.current_config.event_processor.velocity_multiplier;
@@ -528,70 +535,53 @@ export component EventProcessorSection inherits SectionCard {
         SectionCard {
             title: "Miscellaneous";
 
-            HorizontalLayout {
-                spacing: 16px;
-                cross-axis-alignment: center;
+            Setting {
+                text: "Transpose";
+                subtext: "In semitones. Will transpose all MIDI notes according to the set value including drums. To exclude drums set channel 10 to \"Bypass\" mode.";
 
-                Field {
-                    label: "Transpose (semi.)";
-
-                    MaestroSpinBox {
-                        width: 120px;
-                        enabled: root.on;
-                        minimum: -24;
-                        maximum: 24;
-                        value: SettingsEditorState.current_config.event_processor.transpose;
-                        edited(v) => {
-                            root.edit = SettingsEditorState.current_config.event_processor;
-                            root.edit.transpose = v;
-                            SettingsEditorState.update_event_processor(root.edit);
-                        }
+                MaestroSpinBox {
+                    width: 120px;
+                    enabled: root.on;
+                    minimum: -24;
+                    maximum: 24;
+                    value: SettingsEditorState.current_config.event_processor.transpose;
+                    edited(v) => {
+                        root.edit = SettingsEditorState.current_config.event_processor;
+                        root.edit.transpose = v;
+                        SettingsEditorState.update_event_processor(root.edit);
                     }
                 }
+            }
 
-                HorizontalSeparator { }
+            Setting {
+                text: "Ignore Program Change messages";
+                subtext: "This will force all channel (excluding channel 10 which is always percussion) to use the default patch (acoustic piano).";
 
-                VerticalLayout {
-                    spacing: 8px;
-
-                    MaestroCheckBox {
-                        enabled: root.on;
-                        text: "Ignore Program Change messages";
-                        checked: SettingsEditorState.current_config.event_processor.ignore_program_change;
-                        toggled(v) => {
-                            root.edit = SettingsEditorState.current_config.event_processor;
-                            root.edit.ignore_program_change = v;
-                            SettingsEditorState.update_event_processor(root.edit);
-                        }
+                MaestroSwitch {
+                    enabled: root.on;
+                    checked: SettingsEditorState.current_config.event_processor.ignore_program_change;
+                    toggled(v) => {
+                        root.edit = SettingsEditorState.current_config.event_processor;
+                        root.edit.ignore_program_change = v;
+                        SettingsEditorState.update_event_processor(root.edit);
                     }
+                }
+            }
 
-                    MaestroCheckBox {
-                        enabled: root.on;
-                        text: "Ignore System Exclusive messages";
-                        checked: SettingsEditorState.current_config.event_processor.ignore_sysex;
-                        toggled(v) => {
-                            root.edit = SettingsEditorState.current_config.event_processor;
-                            root.edit.ignore_sysex = v;
-                            SettingsEditorState.update_event_processor(root.edit);
-                        }
+            Setting {
+                text: "Ignore System Exclusive messages";
+
+                MaestroSwitch {
+                    enabled: root.on;
+                    checked: SettingsEditorState.current_config.event_processor.ignore_sysex;
+                    toggled(v) => {
+                        root.edit = SettingsEditorState.current_config.event_processor;
+                        root.edit.ignore_sysex = v;
+                        SettingsEditorState.update_event_processor(root.edit);
                     }
                 }
             }
         }
-    }
-}
-
-// One of the limiter's millisecond parameters.
-component LimiterField inherits Field {
-    in property <float> value;
-    in property <bool> enabled;
-    callback value_edited(float);
-
-    MaestroLineEdit {
-        width: 80px;
-        text: root.value;
-        enabled: enabled;
-        edited(v) => { root.value_edited(v.to-float()); }
     }
 }
 
@@ -602,80 +592,108 @@ export component PostProcessorSection inherits SectionCard {
     // than a component capability.
     property <bool> on: SettingsEditorState.current_config.has_post_processor;
 
+    property <bool> limiting: root.on && SettingsEditorState.current_config.post_processor.has_limiter;
+
     title: "Post Processor";
 
-    MaestroCheckBox {
+    Setting {
         text: "Enable audio post processing";
-        checked: root.on;
-        toggled(v) => { SettingsEditorState.toggle_post_processor(v); }
+
+        MaestroSwitch {
+            checked: root.on;
+            toggled(v) => { SettingsEditorState.toggle_post_processor(v); }
+        }
     }
 
     VerticalLayout {
         spacing: 12px;
         opacity: root.on ? 1.0 : 0.4;
 
-        Field {
-            label: "Master Volume";
-
-            HorizontalLayout {
-                spacing: 12px;
-
-                Slider {
-                    enabled: root.on;
-                    minimum: 0.0;
-                    maximum: 4.0;
-                    value: SettingsEditorState.current_config.post_processor.volume;
-                    changed(v) => {
-                        root.edit = SettingsEditorState.current_config.post_processor;
-                        root.edit.volume = v;
-                        SettingsEditorState.update_post_processor(root.edit);
-                    }
-                }
-
-                BodyText {
-                    text: round(SettingsEditorState.current_config.post_processor.volume * 100) / 100 + "x";
-                    width: 50px;
-                }
-            }
+        LabelText {
+            text: "Drag a knob up or down to set it — hold Shift for fine steps, scroll to nudge it, double-click to go back to the default.";
+            color: Theme.text_secondary;
+            font_size: 12px;
+            wrap: word-wrap;
         }
 
         HorizontalLayout {
             spacing: 16px;
-            cross-axis-alignment: center;
-            alignment: start;
+            padding-bottom: 8px;
+            alignment: space-evenly;
 
-            MaestroCheckBox {
+            MaestroKnob {
+                label: "Master Volume";
                 enabled: root.on;
-                text: "Enable Limiter";
-                checked: SettingsEditorState.current_config.post_processor.has_limiter;
-                toggled(v) => {
+                minimum: 0;
+                maximum: 4;
+                default_value: 1;
+                step: 0.05;
+                decimals: 2;
+                unit: "x";
+                size: 120px;
+                value: SettingsEditorState.current_config.post_processor.volume;
+                edited(v) => {
                     root.edit = SettingsEditorState.current_config.post_processor;
-                    root.edit.has_limiter = v;
+                    root.edit.volume = v;
                     SettingsEditorState.update_post_processor(root.edit);
                 }
             }
 
             HorizontalSeparator { }
 
-            LimiterField {
-                label: "Attack (ms)";
-                value: SettingsEditorState.current_config.post_processor.limiter_attack_ms;
-                enabled: root.on && SettingsEditorState.current_config.post_processor.has_limiter;
-                value_edited(v) => {
-                    root.edit = SettingsEditorState.current_config.post_processor;
-                    root.edit.limiter_attack_ms = v;
-                    SettingsEditorState.update_post_processor(root.edit);
+            VerticalLayout {
+                MaestroSwitch {
+                    text: "Audio Limiter";
+                    enabled: root.on;
+                    checked: SettingsEditorState.current_config.post_processor.has_limiter;
+                    toggled(v) => {
+                        root.edit = SettingsEditorState.current_config.post_processor;
+                        root.edit.has_limiter = v;
+                        SettingsEditorState.update_post_processor(root.edit);
+                    }
                 }
-            }
 
-            LimiterField {
-                label: "Release (ms)";
-                value: SettingsEditorState.current_config.post_processor.limiter_release_ms;
-                enabled: root.on && SettingsEditorState.current_config.post_processor.has_limiter;
-                value_edited(v) => {
-                    root.edit = SettingsEditorState.current_config.post_processor;
-                    root.edit.limiter_release_ms = v;
-                    SettingsEditorState.update_post_processor(root.edit);
+                HorizontalLayout {
+                    spacing: 24px;
+                    alignment: center;
+                    cross-axis-alignment: center;
+
+                    // Both times are dialled on a logarithmic taper: the short end is
+                    // where the audible difference is, and a linear dial would bunch it
+                    // all into the first few degrees.
+                    MaestroKnob {
+                        label: "Attack";
+                        enabled: root.limiting;
+                        logarithmic: true;
+                        minimum: 0.1;
+                        maximum: 500;
+                        default_value: 20;
+                        decimals: 1;
+                        unit: " ms";
+                        value: SettingsEditorState.current_config.post_processor.limiter_attack_ms;
+                        edited(v) => {
+                            root.edit = SettingsEditorState.current_config.post_processor;
+                            root.edit.limiter_attack_ms = v;
+                            SettingsEditorState.update_post_processor(root.edit);
+                        }
+                    }
+
+                    MaestroKnob {
+                        label: "Release";
+                        enabled: root.limiting;
+                        logarithmic: true;
+                        minimum: 1;
+                        maximum: 5000;
+                        default_value: 400;
+                        decimals: 0;
+                        unit: " ms";
+                        value: SettingsEditorState.current_config.post_processor.limiter_release_ms;
+                        edited(v) => {
+                            root.edit = SettingsEditorState.current_config.post_processor;
+                            root.edit.limiter_release_ms = v;
+                            SettingsEditorState.update_post_processor(root.edit);
+                        }
+                    }
                 }
             }
         }

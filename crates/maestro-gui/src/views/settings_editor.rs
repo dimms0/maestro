@@ -10,7 +10,7 @@ use crate::{
         slint_to_converter_custom, slint_to_evproc, slint_to_postproc, slint_to_synth,
         slint_to_system_custom,
     },
-    state::index_of,
+    state::{index_of, is_valid_output_dir},
     sync::{sync_audio_devices_to_slint, sync_device_to_slint},
     views::device_manager::WINDOWS_COMPAT_TEXT,
 };
@@ -213,6 +213,9 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
             })
         });
     });
+
+    state.on_browse_output_dir(actions::pick_folder);
+    state.on_output_dir_valid(|path| is_valid_output_dir(path.as_str()));
 
     let c = cx.clone();
     state.on_update_system_custom(move |custom: SlintSystemCustom| {

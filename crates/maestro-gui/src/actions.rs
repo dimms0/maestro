@@ -224,6 +224,13 @@ pub fn pick_file(filter_name: &str, extensions: &[&str]) -> SharedString {
         .unwrap_or_default()
 }
 
+pub fn pick_folder() -> SharedString {
+    rfd::FileDialog::new()
+        .pick_folder()
+        .and_then(|p| p.to_str().map(SharedString::from))
+        .unwrap_or_default()
+}
+
 pub fn sync_after_sflist_change(ui: &MainWindow, data: &AppData) {
     sync_sflist_to_slint(ui, data);
     sync_renderer_to_slint(ui, data);

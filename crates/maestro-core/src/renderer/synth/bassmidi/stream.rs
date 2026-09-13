@@ -85,9 +85,9 @@ impl BASSMIDIStream {
         config: &BASSMIDIConfig,
         audio_params: &AudioParameters,
     ) -> Result<Self, RendererError> {
-        let flags = BASS_MIDI_DECAYEND | BASS_SAMPLE_FLOAT | BASS_STREAM_DECODE;
+        let flags = BASS_MIDI_DECAYEND | BASS_SAMPLE_FLOAT | BASS_STREAM_DECODE | BASS_MIDI_ASYNC;
         let flags = flags
-            | if config.follow_overlaps {
+            | if config.note_off1 {
                 BASS_MIDI_NOTEOFF1
             } else {
                 0
@@ -128,12 +128,17 @@ impl BASSMIDIStream {
             (lib.bass.BASS_ChannelSetAttribute)(
                 stream,
                 BASS_ATTRIB_MIDI_KILL,
-                if config.fade_out_killing { 0.0 } else { 1.0 },
+                if config.fade_out_killing { 1.0 } else { 0.0 },
             );
             (lib.bass.BASS_ChannelSetAttribute)(
                 stream,
                 BASS_ATTRIB_MIDI_CPU,
                 config.render_time_limit,
+            );
+            (lib.bass.BASS_ChannelSetAttribute)(
+                stream,
+                BASS_ATTRIB_MIDI_EXCKEYS,
+                config.exclusive_keys.clamp(0, 2) as f32,
             );
         }
 

@@ -6,6 +6,8 @@ import {
     TitleText,
     DirtyBadge,
     EditorActionBar,
+    BodyText,
+    LabelText,
 } from "../widgets.slint";
 import { SettingsEditorState } from "../globals.slint";
 import { SettingsPage } from "../enums.slint";
@@ -156,22 +158,18 @@ export component SettingsEditor inherits Rectangle {
         spacing: 12px;
 
         HorizontalLayout {
-            alignment: space-between;
+            // alignment: space-between;
+            spacing: 12px;
 
             HorizontalLayout {
                 spacing: 12px;
                 cross-axis-alignment: center;
+                alignment: start;
 
-                VerticalLayout {
-                    alignment: center;
-
-                    TitleText {
-                        text: root.standalone ? "Editing Config File"
-                            : SettingsEditorState.current_config.name + " Settings";
-                        font-size: 20px;
-                    }
-
-                    if (SettingsEditorState.current_config.dirty): DirtyBadge { }
+                TitleText {
+                    text: root.standalone ? "Editing Config File"
+                        : SettingsEditorState.current_config.name + " Settings";
+                    font-size: 20px;
                 }
 
                 HorizontalSeparator { }
@@ -183,7 +181,14 @@ export component SettingsEditor inherits Rectangle {
                 }
             }
 
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+
+            if (SettingsEditorState.current_config.dirty): DirtyBadge { }
+
             EditorActionBar {
+                horizontal-stretch: 0;
                 standalone: root.standalone;
                 closable: true;
                 save => { SettingsEditorState.save_current(); }

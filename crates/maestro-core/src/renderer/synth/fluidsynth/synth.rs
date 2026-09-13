@@ -1,5 +1,5 @@
 use std::{
-    ffi::{CStr, c_int, c_short, c_void},
+    ffi::{CStr, CString, c_int, c_short, c_void},
     sync::Arc,
 };
 
@@ -116,6 +116,11 @@ impl FluidSynthSynth {
         let setnum = |name: &CStr, val: f64| unsafe {
             (lib.fns.fluid_settings_setnum)(settings, name.as_ptr(), val)
         };
+        let setstr = |name: &CStr, val: &str| unsafe {
+            let c_string = CString::new(val).unwrap_or_default();
+            let c_str: &CStr = &c_string;
+            (lib.fns.fluid_settings_setstr)(settings, name.as_ptr(), c_str.as_ptr())
+        };
 
         // it only supports 8kHz..96kHz, failing here beats rendering detuned audio at the default rate.
         let sample_rate = audio_params.sample_rate;
@@ -129,13 +134,25 @@ impl FluidSynthSynth {
             c"synth.polyphony",
             config.voice_limit.clamp(1, 65535) as c_int,
         );
+        setint(c"synth.cpu-cores", config.cpu_cores.clamp(1, 256) as c_int);
         setint(
             c"synth.min-note-length",
             config.minimum_note_length.min(65535) as c_int,
         );
-        setint(c"synth.device-id", config.system_id.clamp(0, 126));
+        setint(c"synth.device-id", config.system_id.clamp(0, 127));
+        setint(c"synth.note-cut", config.note_cut.clamp(0, 2));
+
         setint(c"synth.chorus.active", config.chorus_active as c_int);
+        setnum(c"synth.chorus.depth", config.chorus_depth as f64);
+        setnum(c"synth.chorus.level", config.chorus_level as f64);
+        setnum(c"synth.chorus.speed", config.chorus_speed as f64);
+
         setint(c"synth.reverb.active", config.reverb_active as c_int);
+        setnum(c"synth.reverb.damp", config.reverb_damp as f64);
+        setnum(c"synth.reverb.level", config.reverb_level as f64);
+        setnum(c"synth.reverb.room-size", config.reverb_roomsize as f64);
+        setnum(c"synth.reverb.width", config.reverb_width as f64);
+        setstr(c"synth.reverb.engine", config.reverb_engine.into());
 
         let overflow = |v: f64| v.clamp(-10000.0, 10000.0);
         setnum(c"synth.overflow.age", overflow(config.overflow_age));

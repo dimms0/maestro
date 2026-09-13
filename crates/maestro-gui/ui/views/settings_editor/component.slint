@@ -6,14 +6,17 @@ import {
     MaestroCheckBox,
     MaestroComboBox,
     MaestroLineEdit,
+    MaestroButton,
     MaestroMidiModeBox,
     MaestroSpinBox,
     SectionCard,
     Field,
     LabelText,
+    MaestroSwitch,
 } from "../../widgets.slint";
 import { SettingsEditorState } from "../../globals.slint";
 import { SlintConverterCustom, SlintSystemCustom } from "../../structs.slint";
+import { Setting } from "../../widgets/layout.slint";
 
 export component ConverterSection inherits SectionCard {
     property <SlintConverterCustom> edit;
@@ -23,6 +26,14 @@ export component ConverterSection inherits SectionCard {
     property <int> format: SettingsEditorState.current_config.converter_custom.output_format;
     property <bool> is_wav: root.format == 0;
     property <bool> is_lossy: root.format == 2 || root.format == 3;
+
+    property <bool> custom_dir: SettingsEditorState.current_config.converter_custom.use_custom_output_dir;
+    // Re-checked on every keystroke, since the renderer falls back to the
+    // MIDI's own folder for a path that is not a directory.
+    property <bool> dir_exists: SettingsEditorState.output_dir_valid(
+        SettingsEditorState.current_config.converter_custom.output_path);
+    // Scratch for the folder picker's result.
+    property <string> picked;
 
     title: "Converter Options";
 
@@ -93,22 +104,15 @@ export component ConverterSection inherits SectionCard {
         }
     }
 
-    HorizontalLayout {
-        spacing: 12px;
-        cross-axis-alignment: center;
-
-        MaestroCheckBox {
-            text: "Multi-threaded queue export";
-            checked: SettingsEditorState.current_config.converter_custom.multithreaded_export;
-            toggled(v) => {
-                root.edit = SettingsEditorState.current_config.converter_custom;
-                root.edit.multithreaded_export = v;
-                SettingsEditorState.update_converter_custom(root.edit);
-            }
-        }
-
-        Rectangle {
-            horizontal-stretch: 1;
+    Setting {
+        text: "Multi-threaded queue export";
+        subtext: "When enabled, Maestro will render multiple MIDIs simultaneously according to the number of threads set. When set to 0 (automatic), Maestro will create as many threads as the CPU core count. It is not recommended to use this option with BASSMIDI multithreading enabled.";
+        has-switch: true;
+        checked: SettingsEditorState.current_config.converter_custom.multithreaded_export;
+        toggled(v) => {
+            root.edit = SettingsEditorState.current_config.converter_custom;
+            root.edit.multithreaded_export = v;
+            SettingsEditorState.update_converter_custom(root.edit);
         }
 
         MaestroSpinBox {
@@ -133,18 +137,60 @@ export component ConverterSection inherits SectionCard {
         }
     }
 
-    Field {
-        label: "Output Directory (empty = next to each MIDI)";
+    Setting {
+        text: "Save to a custom output directory";
+        subtext: "When disabled, the output audio file will be saved in the same directory as the MIDI file.";
+        has-switch: true;
+        checked: root.custom_dir;
+        toggled(v) => {
+            root.edit = SettingsEditorState.current_config.converter_custom;
+            root.edit.use_custom_output_dir = v;
+            SettingsEditorState.update_converter_custom(root.edit);
+        }
+    }
 
-        MaestroLineEdit {
-            placeholder: "/path/to/output";
-            text: SettingsEditorState.current_config.converter_custom.output_path;
-            edited(v) => {
-                root.edit = SettingsEditorState.current_config.converter_custom;
-                root.edit.output_path = v;
-                SettingsEditorState.update_converter_custom(root.edit);
+    // Hidden while the switch is off: the path is still kept in the config, so
+    // turning it back on brings the directory back rather than a blank box.
+    if (root.custom_dir): Field {
+        label: "Output Directory";
+
+        HorizontalLayout {
+            spacing: 8px;
+
+            MaestroLineEdit {
+                horizontal-stretch: 1;
+                placeholder: "/path/to/output";
+                text: SettingsEditorState.current_config.converter_custom.output_path;
+                invalid: !root.dir_exists;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.converter_custom;
+                    root.edit.output_path = v;
+                    SettingsEditorState.update_converter_custom(root.edit);
+                }
+            }
+
+            MaestroButton {
+                horizontal-stretch: 0;
+                text: "Browse…";
+                clicked => {
+                    root.picked = SettingsEditorState.browse_output_dir();
+                    // An empty result means the dialog was dismissed, which
+                    // should leave the current path alone.
+                    if (root.picked != "") {
+                        root.edit = SettingsEditorState.current_config.converter_custom;
+                        root.edit.output_path = root.picked;
+                        SettingsEditorState.update_converter_custom(root.edit);
+                    }
+                }
             }
         }
+    }
+
+    if (root.custom_dir && !root.dir_exists): BodyText {
+        text: "That folder does not exist — audio will be saved next to each MIDI until it does.";
+        color: Theme.accent_red;
+        font_size: 12px;
+        wrap: word-wrap;
     }
 }
 

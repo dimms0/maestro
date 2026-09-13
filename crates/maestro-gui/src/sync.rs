@@ -48,16 +48,22 @@ pub fn sync_audio_devices_to_slint(ui: &MainWindow, state: &AppData) {
         audio.set_devices(ModelRc::new(VecModel::from(devices)));
     }
 
+    let common_rates: Vec<SharedString> = COMMON_SAMPLE_RATES.iter().map(rate_label).collect();
+
     // Falling back to the presets keeps the box usable when a device cannot be
     // probed, rather than leaving the user with an empty dropdown.
     let rates: Vec<SharedString> = if state.audio.sample_rates.is_empty() {
-        COMMON_SAMPLE_RATES.iter().map(rate_label).collect()
+        common_rates.clone()
     } else {
         state.audio.sample_rates.iter().map(rate_label).collect()
     };
 
     if !model_matches(&audio.get_sample_rates(), &rates) {
         audio.set_sample_rates(ModelRc::new(VecModel::from(rates)));
+    }
+
+    if !model_matches(&audio.get_common_sample_rates(), &common_rates) {
+        audio.set_common_sample_rates(ModelRc::new(VecModel::from(common_rates)));
     }
 
     let (min, max) = state.audio.buffer_range.unwrap_or((0, 0));

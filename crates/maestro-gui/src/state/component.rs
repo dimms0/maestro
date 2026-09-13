@@ -1,3 +1,5 @@
+use std::path::{Path, PathBuf};
+
 use maestro_core::file_renderer::{
     DEFAULT_BITRATE_KBPS, OutputFormat, OutputSettings, WavBitDepth,
 };
@@ -78,6 +80,7 @@ pub struct ConverterCustom {
     pub wav_bit_depth: WavBitDepth,
     pub bitrate_kbps: u32,
     pub output_path: String,
+    pub use_custom_output_dir: bool,
 }
 
 impl Default for ConverterCustom {
@@ -89,11 +92,22 @@ impl Default for ConverterCustom {
             wav_bit_depth: WavBitDepth::default(),
             bitrate_kbps: DEFAULT_BITRATE_KBPS,
             output_path: String::new(),
+            use_custom_output_dir: false,
         }
     }
 }
 
+pub fn is_valid_output_dir(path: &str) -> bool {
+    let path = path.trim();
+    !path.is_empty() && Path::new(path).is_dir()
+}
+
 impl ConverterCustom {
+    pub fn output_dir(&self) -> Option<PathBuf> {
+        (self.use_custom_output_dir && is_valid_output_dir(&self.output_path))
+            .then(|| PathBuf::from(self.output_path.trim()))
+    }
+
     pub fn output_settings(&self) -> OutputSettings {
         OutputSettings {
             format: self.output_format,
@@ -138,6 +152,7 @@ struct StoredConverterCustom {
     wav_bit_depth: Option<WavBitDepth>,
     bitrate_kbps: Option<u32>,
     output_path: String,
+    use_custom_output_dir: Option<bool>,
 }
 
 impl Default for StoredConverterCustom {
@@ -150,6 +165,7 @@ impl Default for StoredConverterCustom {
             wav_bit_depth: None,
             bitrate_kbps: None,
             output_path: d.output_path,
+            use_custom_output_dir: None,
         }
     }
 }
@@ -169,6 +185,9 @@ impl<'de> Deserialize<'de> for ConverterCustom {
                 .or(legacy_depth)
                 .unwrap_or(defaults.wav_bit_depth),
             bitrate_kbps: stored.bitrate_kbps.unwrap_or(defaults.bitrate_kbps),
+            use_custom_output_dir: stored
+                .use_custom_output_dir
+                .unwrap_or(!stored.output_path.trim().is_empty()),
             output_path: stored.output_path,
         })
     }
@@ -235,6 +254,7 @@ mod tests {
             wav_bit_depth: WavBitDepth::Int24,
             bitrate_kbps: 320,
             output_path: "/tmp/out".to_string(),
+            use_custom_output_dir: true,
         };
         let back = parse(&serde_json::to_string(&c).unwrap());
         assert_eq!(back.multithreaded_export, c.multithreaded_export);
@@ -243,5 +263,35 @@ mod tests {
         assert_eq!(back.wav_bit_depth, c.wav_bit_depth);
         assert_eq!(back.bitrate_kbps, c.bitrate_kbps);
         assert_eq!(back.output_path, c.output_path);
+        assert_eq!(back.use_custom_output_dir, c.use_custom_output_dir);
+    }
+
+    #[test]
+    fn a_legacy_output_path_turns_the_custom_directory_switch_on() {
+        assert!(parse(r#"{"output_path":"/tmp/out"}"#).use_custom_output_dir);
+        assert!(!parse(r#"{"output_path":"  "}"#).use_custom_output_dir);
+        assert!(!parse("{}").use_custom_output_dir);
+    }
+
+    #[test]
+    fn an_explicit_switch_wins_over_the_legacy_reading() {
+        let c = parse(r#"{"output_path":"/tmp/out","use_custom_output_dir":false}"#);
+        assert!(!c.use_custom_output_dir);
+        assert_eq!(c.output_path, "/tmp/out");
+        assert_eq!(c.output_dir(), None);
+    }
+
+    #[test]
+    fn only_an_existing_directory_is_used_as_the_output_dir() {
+        let dir = std::env::temp_dir();
+        let mut c = ConverterCustom {
+            output_path: dir.to_string_lossy().to_string(),
+            use_custom_output_dir: true,
+            ..ConverterCustom::default()
+        };
+        assert_eq!(c.output_dir(), Some(dir));
+
+        c.output_path = "/definitely/not/a/directory".to_string();
+        assert_eq!(c.output_dir(), None);
     }
 }

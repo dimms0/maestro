@@ -36,6 +36,7 @@ define_lib_wrapper!(FluidSynthSharedLib, {
     delete_fluid_settings: unsafe extern "C" fn(*mut c_void),
     fluid_settings_setint: unsafe extern "C" fn(*mut c_void, *const c_char, c_int) -> c_int,
     fluid_settings_setnum: unsafe extern "C" fn(*mut c_void, *const c_char, f64) -> c_int,
+    fluid_settings_setstr: unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char),
 
     new_fluid_synth: unsafe extern "C" fn(*mut c_void) -> *mut c_void,
     delete_fluid_synth: unsafe extern "C" fn(*mut c_void),

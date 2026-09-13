@@ -1,0 +1,332 @@
+import { Theme } from "../theme.slint";
+import { LabelText } from "text.slint";
+
+// A DAW-style rotary control. The dial sweeps 270° (7.30 to 4.30 on a clock
+// face) and is turned by dragging vertically, the way every mixer plugin does
+// it: the pointer never has to follow the dial around, so a knob can be small
+// and still be precise. The arc around the dial reads the value at a glance,
+// and the number below reads it exactly.
+//
+// Interaction, in full:
+//   * drag up/down    — a full range over `travel` pixels
+//   * Shift + drag    — a quarter of that speed, for fine adjustment
+//   * mouse wheel     — one `step` (or 1% of the dial) per notch, Shift for a
+//                       quarter of it
+//   * arrow keys      — the same, once focused; Home/End jump to the ends
+//   * double click    — back to `default_value`
+//
+// Like the rest of the inputs the knob owns no state: it reports `edited` and
+// redraws from the `value` the host sends back.
+export component MaestroKnob inherits Rectangle {
+    in property <float> minimum: 0;
+    in property <float> maximum: 1;
+    in property <float> value;
+    // Where a double-click lands. Set it to the config default so the knob can
+    // always be put back the way it was found.
+    in property <float> default_value: 0;
+    // Wheel / arrow-key increment, in value units. 0 means "1% of the dial",
+    // which is what a logarithmic knob wants.
+    in property <float> step: 0;
+    // Digits kept in the reported value and shown in the readout. 0..3; the
+    // readout pads to a fixed width so the number doesn't jitter while turning.
+    in property <int> decimals: 2;
+    // Appended to the readout verbatim, so it carries its own leading space if
+    // it wants one (" ms" vs "x").
+    in property <string> unit;
+    in property <string> label;
+    in property <bool> enabled: true;
+    // Spaces the range geometrically rather than linearly, so the bottom of a
+    // wide range (a 0.1 ms attack next to a 500 ms one) gets as much of the
+    // dial as the top. Needs a positive minimum; ignored otherwise.
+    in property <bool> logarithmic: false;
+    in property <length> size: 60px;
+    // Pointer travel that covers the whole range in one drag.
+    in property <length> travel: 180px;
+
+    callback edited(float);
+
+    // --- Range mapping -----------------------------------------------------
+    //
+    // Everything the knob does happens in "fraction" space (0 at the left stop,
+    // 1 at the right one); only `value_at` and `fraction_of` know which taper
+    // is in use, so the drag, wheel and arc code is the same either way.
+
+    property <bool> log_taper: root.logarithmic && root.minimum > 0 && root.maximum > root.minimum;
+
+    pure function clamp01(t: float) -> float {
+        return Math.max(0, Math.min(1, t));
+    }
+
+    pure function fraction_of(v: float) -> float {
+        return root.log_taper
+            ? root.clamp01(Math.log(Math.max(v, root.minimum) / root.minimum, 2)
+                / Math.log(root.maximum / root.minimum, 2))
+            : (root.maximum > root.minimum
+                ? root.clamp01((v - root.minimum) / (root.maximum - root.minimum))
+                : 0);
+    }
+
+    pure function value_at(t: float) -> float {
+        return root.log_taper
+            ? root.minimum * Math.pow(root.maximum / root.minimum, t)
+            : root.minimum + t * (root.maximum - root.minimum);
+    }
+
+    pure function fraction() -> float {
+        return root.fraction_of(root.value);
+    }
+
+    pure function scale() -> float {
+        return Math.pow(10, root.decimals);
+    }
+
+    pure function rounded(v: float) -> float {
+        return Math.round(v * root.scale()) / root.scale();
+    }
+
+    // Clamped into range and rounded to the configured precision. Every value
+    // the knob reports goes through here.
+    pure function normalized(v: float) -> float {
+        return Math.max(root.minimum, Math.min(root.maximum, root.rounded(v)));
+    }
+
+    // --- Readout -----------------------------------------------------------
+    //
+    // Slint has no fixed-decimal formatter, so the fractional digits are built
+    // by hand to keep the readout a constant width (1.00x, not 1x then 1.05x).
+
+    // The readout is rounded but not clamped, so a config holding a value the
+    // dial can't reach (a release time from a hand-edited file, say) is shown
+    // as it really is, with the arc pinned at the stop, rather than being
+    // misreported as the limit. Touching the knob is what brings it in range.
+    pure function digits(v: float) -> float {
+        return Math.round(Math.abs(root.rounded(v)) * root.scale());
+    }
+
+    pure function whole(v: float) -> float {
+        return Math.floor(root.digits(v) / root.scale());
+    }
+
+    pure function frac(v: float) -> float {
+        return root.digits(v) - root.whole(v) * root.scale();
+    }
+
+    // Leading zeros the fractional part needs to fill `decimals` places.
+    pure function frac_pad(f: float) -> string {
+        return f < 10
+            ? (root.decimals >= 3 ? "00" : (root.decimals == 2 ? "0" : ""))
+            : (f < 100 ? (root.decimals >= 3 ? "0" : "") : "");
+    }
+
+    pure function display(v: float) -> string {
+        return (root.rounded(v) < 0 ? "-" : "") + root.whole(v)
+            + (root.decimals > 0 ? "." + root.frac_pad(root.frac(v)) + root.frac(v) : "");
+    }
+
+    // --- Dial geometry -----------------------------------------------------
+    //
+    // The arcs are SVG paths, so their coordinates are plain numbers: these are
+    // the pixel measurements of the dial as floats, with the Path viewbox set
+    // to match so one unit is one pixel.
+
+    property <float> span: 270;
+    property <float> start: -135;
+    property <float> ring: 4;
+    property <float> dim: root.size / 1px;
+    property <float> mid: root.dim / 2;
+    property <float> arc_r: root.mid - root.ring / 2;
+    property <float> body_r: root.arc_r - root.ring - 2;
+
+    pure function angle_at(t: float) -> angle {
+        return (root.start + t * root.span) * 1deg;
+    }
+
+    pure function ax(t: float, r: float) -> float {
+        return root.mid + r * Math.sin(root.angle_at(t));
+    }
+
+    pure function ay(t: float, r: float) -> float {
+        return root.mid - r * Math.cos(root.angle_at(t));
+    }
+
+    pure function arc(from: float, to: float, r: float) -> string {
+        return "M " + root.ax(from, r) + " " + root.ay(from, r)
+            + " A " + r + " " + r + " 0 " + ((to - from) * root.span > 180 ? 1 : 0)
+            + " 1 " + root.ax(to, r) + " " + root.ay(to, r);
+    }
+
+    // The indicator inside the dial: a radial line stopping short of the centre.
+    pure function pointer(t: float) -> string {
+        return "M " + root.ax(t, root.body_r * 0.3) + " " + root.ay(t, root.body_r * 0.3)
+            + " L " + root.ax(t, root.body_r * 0.82) + " " + root.ay(t, root.body_r * 0.82);
+    }
+
+    // --- Editing -----------------------------------------------------------
+
+    function commit(v: float) {
+        root.edited(root.normalized(v));
+    }
+
+    function commit_at(t: float) {
+        root.commit(root.value_at(root.clamp01(t)));
+    }
+
+    // One wheel notch or arrow key. Without a `step` the knob moves by a
+    // hundredth of its travel, which stays sensible on a logarithmic range.
+    function nudge(dir: float, fine: bool) {
+        if (root.step > 0) {
+            root.commit(root.value + dir * root.step * (fine ? 0.25 : 1));
+        } else {
+            root.commit_at(root.fraction() + dir * 0.01 * (fine ? 0.25 : 1));
+        }
+    }
+
+    // Where the drag started, so the value tracks the pointer's distance from
+    // the press rather than accumulating per move event.
+    property <float> press_fraction;
+    property <float> press_speed: 1;
+
+    forward-focus: fs;
+
+    VerticalLayout {
+        spacing: 4px;
+        alignment: center;
+
+        if (root.label != ""): LabelText {
+            text: root.label;
+            horizontal-alignment: center;
+        }
+
+        HorizontalLayout {
+            alignment: center;
+
+            dial := Rectangle {
+                width: root.size;
+                height: root.size;
+
+                // Unfilled travel.
+                Path {
+                    width: root.size;
+                    height: root.size;
+                    viewbox-x: 0;
+                    viewbox-y: 0;
+                    viewbox-width: root.dim;
+                    viewbox-height: root.dim;
+                    commands: root.arc(0, 1, root.arc_r);
+                    stroke: root.enabled ? Theme.border_color : Theme.bg_input_disabled;
+                    stroke-width: root.ring * 1px;
+                    stroke-line-cap: round;
+                }
+
+                // Filled travel. Hidden at the left stop, where the arc would
+                // collapse onto a single point.
+                if (root.fraction() > 0.004): Path {
+                    width: root.size;
+                    height: root.size;
+                    viewbox-x: 0;
+                    viewbox-y: 0;
+                    viewbox-width: root.dim;
+                    viewbox-height: root.dim;
+                    commands: root.arc(0, root.fraction(), root.arc_r);
+                    stroke: root.enabled ? Theme.border_focus : Theme.text_disabled;
+                    stroke-width: root.ring * 1px;
+                    stroke-line-cap: round;
+                }
+
+                body := Rectangle {
+                    width: root.body_r * 2 * 1px;
+                    height: self.width;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: self.width / 2;
+                    border-width: 1px;
+                    border-color: fs.has-focus
+                        ? Theme.border_focus
+                        : (touch.has-hover && root.enabled ? Theme.text_secondary : Theme.border_color);
+                    background: root.enabled
+                        ? @linear-gradient(180deg, Theme.primary 0%, Theme.bg_input 100%)
+                        : Theme.bg_input_disabled;
+                }
+
+                Path {
+                    width: root.size;
+                    height: root.size;
+                    viewbox-x: 0;
+                    viewbox-y: 0;
+                    viewbox-width: root.dim;
+                    viewbox-height: root.dim;
+                    commands: root.pointer(root.fraction());
+                    stroke: root.enabled ? Theme.text_primary : Theme.text_disabled;
+                    stroke-width: 2px;
+                    stroke-line-cap: round;
+                }
+
+                fs := FocusScope {
+                    enabled: root.enabled;
+
+                    key-pressed(e) => {
+                        if (e.text == Key.UpArrow || e.text == Key.RightArrow) {
+                            root.nudge(1, e.modifiers.shift);
+                            return EventResult.accept;
+                        }
+                        if (e.text == Key.DownArrow || e.text == Key.LeftArrow) {
+                            root.nudge(-1, e.modifiers.shift);
+                            return EventResult.accept;
+                        }
+                        if (e.text == Key.Home) {
+                            root.commit(root.minimum);
+                            return EventResult.accept;
+                        }
+                        if (e.text == Key.End) {
+                            root.commit(root.maximum);
+                            return EventResult.accept;
+                        }
+                        return EventResult.reject;
+                    }
+                }
+
+                touch := TouchArea {
+                    enabled: root.enabled;
+                    mouse-cursor: MouseCursor.ns-resize;
+
+                    pointer-event(e) => {
+                        if (e.kind == PointerEventKind.down) {
+                            fs.focus();
+                            root.press_fraction = root.fraction();
+                            // Fine mode is read once, at the press: letting
+                            // Shift flip mid-drag would rescale the travel
+                            // under the pointer and jump the value.
+                            root.press_speed = e.modifiers.shift ? 0.25 : 1;
+                        }
+                    }
+
+                    moved => {
+                        root.commit_at(root.press_fraction
+                            + (touch.pressed-y - touch.mouse-y) / root.travel * root.press_speed);
+                    }
+
+                    double-clicked => {
+                        root.commit(root.default_value);
+                    }
+
+                    scroll-event(e) => {
+                        if (e.delta-y == 0) {
+                            return EventResult.reject;
+                        }
+                        root.nudge(e.delta-y > 0 ? 1 : -1, e.modifiers.shift);
+                        return EventResult.accept;
+                    }
+                }
+            }
+        }
+
+        Text {
+            text: root.display(root.value) + root.unit;
+            color: root.enabled ? Theme.text_primary : Theme.text_secondary;
+            font-family: Theme.mono_font;
+            font-size: 12px;
+            font-weight: 600;
+            horizontal-alignment: center;
+        }
+    }
+}

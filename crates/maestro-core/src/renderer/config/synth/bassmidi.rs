@@ -9,7 +9,8 @@ pub struct BASSMIDIConfig {
 
     pub disable_effects: bool,
     pub fade_out_killing: bool,
-    pub follow_overlaps: bool,
+    pub note_off1: bool,
+    pub exclusive_keys: i8,
 
     pub sf_linear_attack_mod: bool,
     pub sf_linear_decay_vol: bool,
@@ -25,9 +26,10 @@ impl Default for BASSMIDIConfig {
         Self {
             disable_effects: false,
             fade_out_killing: true,
-            follow_overlaps: false,
+            note_off1: false,
             interpolation: Default::default(),
             multithreading: Default::default(),
+            exclusive_keys: 0,
             render_time_limit: 0.0,
             voice_limit: 1024,
             sf_linear_attack_mod: false,

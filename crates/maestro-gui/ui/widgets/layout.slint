@@ -1,6 +1,7 @@
 import { Theme } from "../theme.slint";
 import { MaestroButton, MaestroCard } from "controls.slint";
-import { TitleText, LabelText } from "text.slint";
+import { TitleText, LabelText, BodyText } from "text.slint";
+import { MaestroSwitch } from "../widgets/inputs.slint";
 
 // A titled card wrapper, for consistent section styling across every editor.
 export component SectionCard inherits MaestroCard {
@@ -143,4 +144,46 @@ export component EditorActionBar inherits HorizontalLayout {
     }
 
     @children
+}
+
+export component Setting {
+    in property <string> text;
+    in property <string> subtext;
+    in property <bool> has-switch: false;
+    in property <bool> enabled: true;
+    in-out property <bool> checked;
+
+    callback toggled(bool);
+
+    HorizontalLayout {
+        cross-axis-alignment: center;
+        spacing: 12px;
+
+        if (root.has-switch): MaestroSwitch {
+            horizontal-stretch: 0;
+            checked: root.checked;
+            toggled(v) => root.toggled(v);
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 0;
+            alignment: center;
+
+            BodyText {
+                text: text;
+            }
+
+            if (subtext != ""): LabelText {
+                font-size: 10px;
+                text: subtext;
+                wrap: word-wrap;
+            }
+        }
+
+        Rectangle {
+            horizontal-stretch: 100000000;
+        }
+
+        @children
+    }
 }

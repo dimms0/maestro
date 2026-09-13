@@ -37,7 +37,9 @@ pub struct ConverterRenderSettings {
     renderer: RendererConfig,
     audio_params: AudioParameters,
     output: OutputSettings,
-    output_dir_override: String,
+    /// `None` means "next to the MIDI": either the switch is off or the
+    /// configured directory is not there any more.
+    output_dir_override: Option<PathBuf>,
     event_processor: Option<EventProcessorConfig>,
     post_processor: Option<PostProcessorConfig>,
     pub multithreaded: bool,
@@ -54,7 +56,7 @@ impl ConverterRenderSettings {
             renderer: cfg.renderer,
             audio_params: cfg.audio_params,
             output: cfg.converter_custom.output_settings(),
-            output_dir_override: cfg.converter_custom.output_path,
+            output_dir_override: cfg.converter_custom.output_dir(),
             event_processor: cfg.has_event_processor.then_some(cfg.event_processor),
             post_processor: cfg.has_post_processor.then_some(cfg.post_processor),
             multithreaded: cfg.converter_custom.multithreaded_export,
@@ -67,11 +69,9 @@ impl ConverterRenderSettings {
         entry: &SlintMidiRenderEntry,
     ) -> Result<MaestroFileRenderer, Box<dyn std::error::Error>> {
         let midi_path = PathBuf::from(entry.midi_path.as_str());
-        let output_dir = if self.output_dir_override.trim().is_empty() {
+        let output_dir = self.output_dir_override.clone().unwrap_or_else(|| {
             midi_path.parent().unwrap_or(Path::new(".")).to_path_buf()
-        } else {
-            PathBuf::from(self.output_dir_override.as_str())
-        };
+        });
         let sflist = MaestroConfigManager::default()
             .get_soundfont_list(entry.sflist_name.as_str())
             .unwrap_or_default();

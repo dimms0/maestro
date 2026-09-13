@@ -7,12 +7,17 @@ export component MaestroLineEdit inherits Rectangle {
     in-out property <string> text <=> input.text;
     in-out property <string> placeholder;
     in-out property <bool> enabled: true;
+    // Draws the box in the error colour: the text is kept and still editable,
+    // it is only flagged as something the app cannot use.
+    in property <bool> invalid: false;
 
     callback edited(string);
 
     border-radius: 6px;
     border-width: 1px;
-    border-color: input.has-focus ? Theme.border_focus : Theme.border_color;
+    border-color: root.invalid
+        ? Theme.accent_red
+        : (input.has-focus ? Theme.border_focus : Theme.border_color);
     background: Theme.bg_input;
 
     min-height: 36px;

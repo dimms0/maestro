@@ -1,6 +1,8 @@
 mod component;
 
-pub use component::{ComponentProfile, ConfigComponent, ConverterCustom, SystemCustomSettings};
+pub use component::{
+    ComponentProfile, ConfigComponent, ConverterCustom, SystemCustomSettings, is_valid_output_dir,
+};
 
 use maestro_core::{
     audio_params::AudioParameters,

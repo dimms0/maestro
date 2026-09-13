@@ -58,10 +58,22 @@ export struct SlintSynthConfig {
     // --- FluidSynth ---
     fluid_voice_limit: int,
     fluid_interpolation: int, // 0 None, 1 Linear, 2 Sinc4th, 3 Sinc7th
+    fluid_cpu_cores: int,
+    fluid_midi_bank_select: int,
+    fluid_portamento_time: int,
     fluid_min_note_length: int,
     fluid_system_id: int,
+    fluid_note_cut: int,
     fluid_chorus: bool,
+    fluid_chorus_depth: float,
+    fluid_chorus_level: float,
+    fluid_chorus_speed: float,
     fluid_reverb: bool,
+    fluid_reverb_damp: float,
+    fluid_reverb_engine: int,
+    fluid_reverb_level: float,
+    fluid_reverb_roomsize: float,
+    fluid_reverb_width: float,
     fluid_overflow_age: float,
     fluid_overflow_percussion: float,
     fluid_overflow_released: float,
@@ -77,7 +89,8 @@ export struct SlintSynthConfig {
     bass_keyboard_divisions: int,
     bass_disable_effects: bool,
     bass_fade_out_killing: bool,
-    bass_follow_overlaps: bool,
+    bass_note_off1: bool,
+    bass_exclusive_keys: int,
     bass_sf_linear_attack_mod: bool,
     bass_sf_linear_decay_vol: bool,
     bass_sf_minfx: bool,
@@ -119,6 +132,9 @@ export struct SlintConverterCustom {
     // Index into ConverterState.bitrates, not a rate in kbps.
     bitrate_index: int,
     output_path: string,
+    // False writes each render next to its MIDI and leaves `output_path`
+    // untouched, so the path survives the switch being flipped off and on.
+    use_custom_output_dir: bool,
 }
 
 export struct SlintSystemCustom {

@@ -5,7 +5,10 @@ use maestro_core::{
     renderer::config::{
         AudioLimiterConfig, EventProcessorConfig, PostProcessorConfig, SynthConfig,
         bassmidi::{BASSMIDIConfig, BASSMIDIInterpolation, BASSMIDIThreading},
-        fluidsynth::{FluidSynthConfig, FluidSynthInterpolation},
+        fluidsynth::{
+            FluidSynthBankSelect, FluidSynthConfig, FluidSynthInterpolation,
+            FluidSynthPortamentoTime, FluidSynthReverbEngine,
+        },
     },
 };
 
@@ -97,6 +100,69 @@ pub fn bitrate_labels() -> ModelRc<slint::SharedString> {
 
 // Synth
 
+// FluidSynth's three string-valued settings are picked from combo boxes, so
+// only the UI needs a number for them — unlike the interpolation method, whose
+// numbering FluidSynth itself defines.
+
+/// keep in sync with `views/settings_editor/synth.slint`
+pub fn bank_select_to_index(sel: FluidSynthBankSelect) -> i32 {
+    match sel {
+        FluidSynthBankSelect::GS => 0,
+        FluidSynthBankSelect::GM => 1,
+        FluidSynthBankSelect::GM2 => 2,
+        FluidSynthBankSelect::XG => 3,
+        FluidSynthBankSelect::MMA => 4,
+    }
+}
+
+pub fn bank_select_from_index(idx: i32) -> FluidSynthBankSelect {
+    match idx {
+        1 => FluidSynthBankSelect::GM,
+        2 => FluidSynthBankSelect::GM2,
+        3 => FluidSynthBankSelect::XG,
+        4 => FluidSynthBankSelect::MMA,
+        _ => FluidSynthBankSelect::GS,
+    }
+}
+
+/// keep in sync with `views/settings_editor/synth.slint`
+pub fn portamento_time_to_index(time: FluidSynthPortamentoTime) -> i32 {
+    match time {
+        FluidSynthPortamentoTime::Auto => 0,
+        FluidSynthPortamentoTime::Linear => 1,
+        FluidSynthPortamentoTime::XgGs => 2,
+    }
+}
+
+pub fn portamento_time_from_index(idx: i32) -> FluidSynthPortamentoTime {
+    match idx {
+        1 => FluidSynthPortamentoTime::Linear,
+        2 => FluidSynthPortamentoTime::XgGs,
+        _ => FluidSynthPortamentoTime::Auto,
+    }
+}
+
+/// keep in sync with `views/settings_editor/synth.slint`
+pub fn reverb_engine_to_index(engine: FluidSynthReverbEngine) -> i32 {
+    match engine {
+        FluidSynthReverbEngine::Freeverb => 0,
+        FluidSynthReverbEngine::FDN => 1,
+        FluidSynthReverbEngine::Lexverb => 2,
+        FluidSynthReverbEngine::Dattorro => 3,
+        FluidSynthReverbEngine::Signalsmith => 4,
+    }
+}
+
+pub fn reverb_engine_from_index(idx: i32) -> FluidSynthReverbEngine {
+    match idx {
+        0 => FluidSynthReverbEngine::Freeverb,
+        1 => FluidSynthReverbEngine::FDN,
+        2 => FluidSynthReverbEngine::Lexverb,
+        4 => FluidSynthReverbEngine::Signalsmith,
+        _ => FluidSynthReverbEngine::Dattorro,
+    }
+}
+
 pub fn synth_to_slint(synth: &SynthConfig) -> SlintSynthConfig {
     let mut out = defaults_slint_synth();
 
@@ -105,10 +171,22 @@ pub fn synth_to_slint(synth: &SynthConfig) -> SlintSynthConfig {
             out.kind = SynthKind::Fluidsynth;
             out.fluid_voice_limit = c.voice_limit as i32;
             out.fluid_interpolation = i32::from(c.interpolation);
+            out.fluid_cpu_cores = c.cpu_cores;
+            out.fluid_midi_bank_select = bank_select_to_index(c.midi_bank_select);
+            out.fluid_portamento_time = portamento_time_to_index(c.portamento_time);
             out.fluid_min_note_length = c.minimum_note_length as i32;
             out.fluid_system_id = c.system_id;
+            out.fluid_note_cut = c.note_cut;
             out.fluid_chorus = c.chorus_active;
+            out.fluid_chorus_depth = c.chorus_depth;
+            out.fluid_chorus_level = c.chorus_level;
+            out.fluid_chorus_speed = c.chorus_speed;
             out.fluid_reverb = c.reverb_active;
+            out.fluid_reverb_damp = c.reverb_damp;
+            out.fluid_reverb_engine = reverb_engine_to_index(c.reverb_engine);
+            out.fluid_reverb_level = c.reverb_level;
+            out.fluid_reverb_roomsize = c.reverb_roomsize;
+            out.fluid_reverb_width = c.reverb_width;
             out.fluid_overflow_age = c.overflow_age as f32;
             out.fluid_overflow_percussion = c.overflow_percussion as f32;
             out.fluid_overflow_released = c.overflow_released as f32;
@@ -127,7 +205,8 @@ pub fn synth_to_slint(synth: &SynthConfig) -> SlintSynthConfig {
             }
             out.bass_disable_effects = c.disable_effects;
             out.bass_fade_out_killing = c.fade_out_killing;
-            out.bass_follow_overlaps = c.follow_overlaps;
+            out.bass_note_off1 = c.note_off1;
+            out.bass_exclusive_keys = c.exclusive_keys as i32;
             out.bass_sf_linear_attack_mod = c.sf_linear_attack_mod;
             out.bass_sf_linear_decay_vol = c.sf_linear_decay_vol;
             out.bass_sf_minfx = c.sf_minfx;
@@ -150,10 +229,22 @@ fn defaults_slint_synth() -> SlintSynthConfig {
 
         fluid_voice_limit: f.voice_limit as i32,
         fluid_interpolation: i32::from(f.interpolation),
+        fluid_cpu_cores: f.cpu_cores,
+        fluid_midi_bank_select: bank_select_to_index(f.midi_bank_select),
+        fluid_portamento_time: portamento_time_to_index(f.portamento_time),
         fluid_min_note_length: f.minimum_note_length as i32,
         fluid_system_id: f.system_id,
+        fluid_note_cut: f.note_cut,
         fluid_chorus: f.chorus_active,
+        fluid_chorus_depth: f.chorus_depth,
+        fluid_chorus_level: f.chorus_level,
+        fluid_chorus_speed: f.chorus_speed,
         fluid_reverb: f.reverb_active,
+        fluid_reverb_damp: f.reverb_damp,
+        fluid_reverb_engine: reverb_engine_to_index(f.reverb_engine),
+        fluid_reverb_level: f.reverb_level,
+        fluid_reverb_roomsize: f.reverb_roomsize,
+        fluid_reverb_width: f.reverb_width,
         fluid_overflow_age: f.overflow_age as f32,
         fluid_overflow_percussion: f.overflow_percussion as f32,
         fluid_overflow_released: f.overflow_released as f32,
@@ -168,7 +259,8 @@ fn defaults_slint_synth() -> SlintSynthConfig {
         bass_keyboard_divisions: 1,
         bass_disable_effects: b.disable_effects,
         bass_fade_out_killing: b.fade_out_killing,
-        bass_follow_overlaps: b.follow_overlaps,
+        bass_note_off1: b.note_off1,
+        bass_exclusive_keys: b.exclusive_keys as i32,
         bass_sf_linear_attack_mod: b.sf_linear_attack_mod,
         bass_sf_linear_decay_vol: b.sf_linear_decay_vol,
         bass_sf_minfx: b.sf_minfx,
@@ -185,10 +277,22 @@ pub fn slint_to_synth(sl: &SlintSynthConfig) -> SynthConfig {
             voice_limit: sl.fluid_voice_limit.max(1) as u32,
             interpolation: FluidSynthInterpolation::try_from(sl.fluid_interpolation)
                 .unwrap_or_default(),
+            cpu_cores: sl.fluid_cpu_cores.clamp(1, 256),
+            midi_bank_select: bank_select_from_index(sl.fluid_midi_bank_select),
+            portamento_time: portamento_time_from_index(sl.fluid_portamento_time),
             minimum_note_length: sl.fluid_min_note_length.max(0) as u32,
             system_id: sl.fluid_system_id,
+            note_cut: sl.fluid_note_cut.clamp(0, 2),
             chorus_active: sl.fluid_chorus,
+            chorus_depth: sl.fluid_chorus_depth.clamp(0.0, 256.0),
+            chorus_level: sl.fluid_chorus_level.clamp(0.0, 10.0),
+            chorus_speed: sl.fluid_chorus_speed.clamp(0.1, 5.0),
             reverb_active: sl.fluid_reverb,
+            reverb_damp: sl.fluid_reverb_damp.clamp(0.0, 1.0),
+            reverb_engine: reverb_engine_from_index(sl.fluid_reverb_engine),
+            reverb_level: sl.fluid_reverb_level.clamp(0.0, 1.0),
+            reverb_roomsize: sl.fluid_reverb_roomsize.clamp(0.0, 1.0),
+            reverb_width: sl.fluid_reverb_width.clamp(0.0, 100.0),
             overflow_age: sl.fluid_overflow_age as f64,
             overflow_percussion: sl.fluid_overflow_percussion as f64,
             overflow_released: sl.fluid_overflow_released as f64,
@@ -206,7 +310,8 @@ pub fn slint_to_synth(sl: &SlintSynthConfig) -> SynthConfig {
             }),
             disable_effects: sl.bass_disable_effects,
             fade_out_killing: sl.bass_fade_out_killing,
-            follow_overlaps: sl.bass_follow_overlaps,
+            note_off1: sl.bass_note_off1,
+            exclusive_keys: sl.bass_exclusive_keys as i8,
             sf_linear_attack_mod: sl.bass_sf_linear_attack_mod,
             sf_linear_decay_vol: sl.bass_sf_linear_decay_vol,
             sf_minfx: sl.bass_sf_minfx,
@@ -309,6 +414,7 @@ pub fn converter_custom_to_slint(c: &ConverterCustom) -> crate::SlintConverterCu
         wav_bit_depth: wav_bit_depth_to_index(c.wav_bit_depth),
         bitrate_index: bitrate_to_index(c.bitrate_kbps),
         output_path: c.output_path.as_str().into(),
+        use_custom_output_dir: c.use_custom_output_dir,
     }
 }
 
@@ -321,6 +427,7 @@ pub fn slint_to_converter_custom(sl: &crate::SlintConverterCustom) -> ConverterC
         wav_bit_depth: wav_bit_depth_from_index(sl.wav_bit_depth),
         bitrate_kbps: bitrate_from_index(sl.bitrate_index),
         output_path: sl.output_path.as_str().to_string(),
+        use_custom_output_dir: sl.use_custom_output_dir,
     }
 }
 

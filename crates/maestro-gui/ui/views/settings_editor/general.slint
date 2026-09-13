@@ -23,6 +23,7 @@ import {
 import { Icons } from "../../widgets/icons.slint";
 import { MaestroCard, VerticalSeparator } from "../../widgets/controls.slint";
 import { TitleText } from "../../widgets/text.slint";
+import { Setting } from "../../widgets/layout.slint";
 
 // A labelled slider with a live read-out of its current value.
 // component ReadoutSlider inherits VerticalLayout {
@@ -96,6 +97,10 @@ export component AudioSection inherits SectionCard {
     property <bool> device_params: SettingsEditorState.current_config.has_realtime
         && SettingsEditorState.current_config.realtime.device_audio_params;
 
+    // Whether this component plays through an audio device at all: the file
+    // converter does not, so the hardware's capabilities must not limit it.
+    property <bool> device_bound: SettingsEditorState.current_config.has_realtime;
+
     title: "Audio Interface Parameters";
 
     VerticalLayout {
@@ -104,102 +109,87 @@ export component AudioSection inherits SectionCard {
         if (SettingsEditorState.current_config.has-realtime): VerticalLayout {
             spacing: 12px;
 
-            HorizontalLayout {
-                spacing: 16px;
-                alignment: start;
+            Setting {
+                text: "Audio Host";
 
-                Field {
-                    label: "Audio Host";
-
-                    MaestroComboBox {
-                        width: 180px;
-                        model: AudioDeviceState.hosts;
-                        current_index: SettingsEditorState.current_config.realtime.audio_host_index;
-                        selected(v, i) => {
-                            root.realtime_edit = SettingsEditorState.current_config.realtime;
-                            root.realtime_edit.audio_host_index = i;
+                MaestroComboBox {
+                    width: 224px;
+                    model: AudioDeviceState.hosts;
+                    current_index: SettingsEditorState.current_config.realtime.audio_host_index;
+                    selected(v, i) => {
+                        root.realtime_edit = SettingsEditorState.current_config.realtime;
+                        root.realtime_edit.audio_host_index = i;
                                 // Devices belong to a host, so the previous selection
                                 // cannot carry over to a different one.
                                 root.realtime_edit.output_device_index = 0;
+                        SettingsEditorState.update_realtime(root.realtime_edit);
+                    }
+                }
+            }
+
+            Setting {
+                text: "Output Device";
+
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    MaestroComboBox {
+                        width: 180px;
+                        model: AudioDeviceState.devices;
+                        current_index: SettingsEditorState.current_config.realtime.output_device_index;
+                        selected(v, i) => {
+                            root.realtime_edit = SettingsEditorState.current_config.realtime;
+                            root.realtime_edit.output_device_index = i;
                             SettingsEditorState.update_realtime(root.realtime_edit);
                         }
                     }
-                }
 
-                HorizontalSeparator { }
-
-                Field {
-                    label: "Output Device";
-
-                    HorizontalLayout {
-                        spacing: 8px;
-
-                        MaestroComboBox {
-                            width: 180px;
-                            model: AudioDeviceState.devices;
-                            current_index: SettingsEditorState.current_config.realtime.output_device_index;
-                            selected(v, i) => {
-                                root.realtime_edit = SettingsEditorState.current_config.realtime;
-                                root.realtime_edit.output_device_index = i;
-                                SettingsEditorState.update_realtime(root.realtime_edit);
-                            }
-                        }
-
-                        MaestroButton {
-                            icon: Icons.refresh;
-                            clicked => {
-                                AudioDeviceState.refresh();
-                            }
+                    MaestroButton {
+                        icon: Icons.refresh;
+                        clicked => {
+                            AudioDeviceState.refresh();
                         }
                     }
                 }
             }
 
-            if (root.show_advanced): HorizontalLayout {
-                spacing: 12px;
-                alignment: start;
-                cross-axis-alignment: center;
+            if (root.show_advanced): Setting {
+                text: "Use Custom Buffer Size (frames)";
+                subtext: (AudioDeviceState.buffer_max > 0) ? "Min.: \{AudioDeviceState.buffer_min}, Max.: \{AudioDeviceState.buffer_max}"
+                    : "Device has not reported supported values.";
 
-                Field {
-                    label: "Device Buffer Size (frames)";
+                has-switch: true;
+                enabled: !AudioDeviceState.fixed_by_host;
+                checked: !SettingsEditorState.current_config.realtime.has_buffer_size;
 
-                    MaestroComboBox {
-                        width: 140px;
-
-                        enabled: !AudioDeviceState.fixed_by_host
-                            && SettingsEditorState.current_config.realtime.has_buffer_size;
-                        model: AudioDeviceState.buffer_sizes;
-                        current_value: SettingsEditorState.current_config.realtime.buffer_size;
-
-                        selected(v, i) => {
-                            root.realtime_edit = SettingsEditorState.current_config.realtime;
-                            root.realtime_edit.buffer_size = v.to-float();
-                            SettingsEditorState.update_realtime(root.realtime_edit);
-                        }
-                    }
+                toggled(v) => {
+                    root.realtime_edit = SettingsEditorState.current_config.realtime;
+                    root.realtime_edit.has_buffer_size = !v;
+                    SettingsEditorState.update_realtime(root.realtime_edit);
                 }
 
-                MaestroCheckBox {
-                    text: "Use the device default";
-                    enabled: !AudioDeviceState.fixed_by_host;
-                    checked: !SettingsEditorState.current_config.realtime.has_buffer_size;
+                MaestroComboBox {
+                    width: 140px;
 
-                    toggled(v) => {
+                    enabled: !AudioDeviceState.fixed_by_host
+                        && SettingsEditorState.current_config.realtime.has_buffer_size;
+                    model: AudioDeviceState.buffer_sizes;
+                    current_value: SettingsEditorState.current_config.realtime.buffer_size;
+
+                    selected(v, i) => {
                         root.realtime_edit = SettingsEditorState.current_config.realtime;
-                        root.realtime_edit.has_buffer_size = !v;
+                        root.realtime_edit.buffer_size = v.to-float();
                         SettingsEditorState.update_realtime(root.realtime_edit);
                     }
-                }
-
-                LabelText {
-                    text: (AudioDeviceState.buffer_max > 0) ? "Min.: \{AudioDeviceState.buffer_min}, Max.: \{AudioDeviceState.buffer_max}"
-                        : "Device has not reported supported values.";
                 }
             }
         }
 
-        if (SettingsEditorState.current_config.has-realtime): MaestroCheckBox {
+        if (SettingsEditorState.current_config.has-realtime): Setting {
             text: "Use the audio device's parameters";
+            subtext: "If enabled, the audio parameters (channel mode, sample rate) set below will be ignored in favor of the audio device's preferred parameters.";
+
+            has-switch: true;
             checked: SettingsEditorState.current_config.realtime.device_audio_params;
 
             toggled(v) => {
@@ -209,43 +199,40 @@ export component AudioSection inherits SectionCard {
             }
         }
 
-        HorizontalLayout {
-            spacing: 16px;
-            alignment: start;
+        Setting {
+            text: "Channel Mode";
 
-            Field {
-                label: "Channel Mode";
-
-                MaestroComboBox {
-                    enabled: !root.device_params;
-                    width: 180px;
-                    model: ["Mono", "Stereo"];
-                    current_index: SettingsEditorState.current_config.audio_params.channels == 1 ? 0 : 1;
-                    selected(v, i) => {
-                        root.edit = SettingsEditorState.current_config.audio_params;
-                        root.edit.channels = i == 0 ? 1 : 2;
-                        SettingsEditorState.update_audio_params(root.edit);
-                    }
+            MaestroComboBox {
+                enabled: !root.device_params;
+                width: 180px;
+                model: ["Mono", "Stereo"];
+                current_index: SettingsEditorState.current_config.audio_params.channels == 1 ? 0 : 1;
+                selected(v, i) => {
+                    root.edit = SettingsEditorState.current_config.audio_params;
+                    root.edit.channels = i == 0 ? 1 : 2;
+                    SettingsEditorState.update_audio_params(root.edit);
                 }
             }
+        }
 
-            HorizontalSeparator { }
+        Setting {
+            text: "Sample Rate (Hz)";
 
-            Field {
-                label: "Sample Rate (Hz)";
-
-                MaestroComboBox {
-                    enabled: !root.device_params && !AudioDeviceState.fixed_by_host;
-                    width: 180px;
-                    // Rates the selected device reports, so an unsupported one
-                    // cannot be picked in the first place.
-                    model: AudioDeviceState.sample_rates;
-                    current_value: SettingsEditorState.current_config.audio_params.sample_rate;
-                    selected(v, i) => {
-                        root.edit = SettingsEditorState.current_config.audio_params;
-                        root.edit.sample_rate = v.to-float();
-                        SettingsEditorState.update_audio_params(root.edit);
-                    }
+            MaestroComboBox {
+                enabled: !root.device_params
+                    && !(root.device_bound && AudioDeviceState.fixed_by_host);
+                width: 180px;
+                    // Device-bound components list the rates the selected device
+                    // reports, so an unsupported one cannot be picked in the
+                    // first place. The converter opens no device, so it is free
+                    // to render at any rate.
+                    model: root.device_bound ? AudioDeviceState.sample_rates
+                    : AudioDeviceState.common_sample_rates;
+                current_value: SettingsEditorState.current_config.audio_params.sample_rate;
+                selected(v, i) => {
+                    root.edit = SettingsEditorState.current_config.audio_params;
+                    root.edit.sample_rate = v.to-float();
+                    SettingsEditorState.update_audio_params(root.edit);
                 }
             }
         }
@@ -257,19 +244,15 @@ export component RendererSection inherits SectionCard {
 
     title: "Renderer";
 
-    HorizontalLayout {
-        spacing: 24px;
-        cross-axis-alignment: center;
-
-        MaestroCheckBox {
-            horizontal-stretch: 0;
-            text: "Enable multi-threading across MIDI ports/groups";
-            checked: SettingsEditorState.current_config.renderer.has_port_threads;
-            toggled(v) => {
-                root.edit = SettingsEditorState.current_config.renderer;
-                root.edit.has_port_threads = v;
-                SettingsEditorState.update_renderer(root.edit);
-            }
+    Setting {
+        text: "Multi-Threading across MIDI ports/groups";
+        subtext: "Each MIDI port/group will be rendered in a separate thread. Usually this is not needed unless excessive stress is put in each thread.";
+        has-switch: true;
+        checked: SettingsEditorState.current_config.renderer.has_port_threads;
+        toggled(v) => {
+            root.edit = SettingsEditorState.current_config.renderer;
+            root.edit.has_port_threads = v;
+            SettingsEditorState.update_renderer(root.edit);
         }
 
         MaestroSpinBox {
@@ -348,40 +331,30 @@ export component RealtimeSection inherits SectionCard {
 
     title: "Realtime Engine";
 
-    if (root.show_advanced): VerticalLayout {
-        spacing: 16px;
+    if (root.show_advanced): Setting {
+        text: "Render Buffer Size (ms)";
+        subtext: "Different from the audio device buffer setting. Maestro renders the realtime audio irrespective of the audio device/driver. This setting controls the internal render buffer size which is used to render audio from the synthesizer.";
 
-        HorizontalLayout {
-            alignment: start;
-            cross-axis-alignment: center;
-            spacing: 12px;
+        MaestroSpinBox {
+            width: 150px;
+            minimum: 0.1;
+            maximum: 100.0;
+            decimals: 1;
+            value: SettingsEditorState.current_config.realtime.render_buffer_ms;
 
-            Field {
-                label: "Render Buffer Size (ms)";
-
-                MaestroSpinBox {
-                    minimum: 0.1;
-                    maximum: 100.0;
-                    decimals: 1;
-                    value: SettingsEditorState.current_config.realtime.render_buffer_ms;
-
-                    edited(v) => {
-                        root.edit = SettingsEditorState.current_config.realtime;
-                        root.edit.render_buffer_ms = v;
-                        SettingsEditorState.update_realtime(root.edit);
-                    }
-                }
-            }
-
-            LabelText {
-                text: "Different from the audio device buffer setting. Maestro renders the realtime audio irrespective of the audio device/driver. This setting controls the";
-                wrap: word-wrap;
+            edited(v) => {
+                root.edit = SettingsEditorState.current_config.realtime;
+                root.edit.render_buffer_ms = v;
+                SettingsEditorState.update_realtime(root.edit);
             }
         }
     }
 
-    MaestroCheckBox {
+    Setting {
         text: "Use the high precision event playback clock";
+        subtext: "Events will be precisely timed according to the time they were sent to the realtime module and the playback position so they are rendered at their correct position. This is only relevant for MIDI players that send events with accurate timings. This is not perfect as the system's MIDI chain may add latency/overhead.";
+
+        has-switch: true;
         checked: SettingsEditorState.current_config.realtime.precision_playback;
         toggled(v) => {
             root.edit = SettingsEditorState.current_config.realtime;
@@ -390,19 +363,16 @@ export component RealtimeSection inherits SectionCard {
         }
     }
 
-    HorizontalLayout {
-        spacing: 24px;
-        alignment: space-between;
-        cross-axis-alignment: center;
+    Setting {
+        text: "Limit the maximum notes per second (NPS)";
+        subtext: "When the limit is reached, Maestro chooses to ignore notes with lower velocities.";
 
-        MaestroCheckBox {
-            text: "Limit the maximum notes per second (NPS)";
-            checked: SettingsEditorState.current_config.realtime.has_max_nps;
-            toggled(v) => {
-                root.edit = SettingsEditorState.current_config.realtime;
-                root.edit.has_max_nps = v;
-                SettingsEditorState.update_realtime(root.edit);
-            }
+        has-switch: true;
+        checked: SettingsEditorState.current_config.realtime.has_max_nps;
+        toggled(v) => {
+            root.edit = SettingsEditorState.current_config.realtime;
+            root.edit.has_max_nps = v;
+            SettingsEditorState.update_realtime(root.edit);
         }
 
         MaestroSpinBox {
