@@ -74,18 +74,24 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
     });
 }
 
+pub(crate) fn save_file_at(data: &mut AppData, idx: usize) -> Result<(), String> {
+    let Some(file) = data.sflist_files.get(idx) else {
+        return Ok(());
+    };
+    write_list(&file.path, &file.list)?;
+    data.sflist_files[idx].dirty = false;
+    Ok(())
+}
+
 fn save_current(ui: &MainWindow, data: &mut AppData) {
-    let Some(file) = data.selected_sflist() else {
+    let Some(idx) = index_of(data.selected_sflist_idx, data.sflist_files.len()) else {
         return;
     };
-    if let Err(msg) = write_list(&file.path, &file.list) {
+    if let Err(msg) = save_file_at(data, idx) {
         show_error(msg);
         return;
     }
 
-    if let Some(file) = data.selected_sflist_mut() {
-        file.dirty = false;
-    }
     data.refresh_available_sflists();
     actions::sync_after_sflist_change(ui, data);
 }

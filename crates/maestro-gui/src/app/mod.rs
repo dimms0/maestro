@@ -1,4 +1,5 @@
 mod panic;
+mod quit;
 mod startup;
 mod window_events;
 
@@ -111,6 +112,7 @@ pub fn run(args: &[String]) {
     views::device_manager::setup(&ui, &cx);
     views::system_integration::setup(&ui);
     views::welcome::setup(&ui);
+    quit::setup(&ui, &cx);
     window_events::setup(&ui, &cx);
 
     let ui_weak = ui.as_weak();
@@ -118,35 +120,6 @@ pub fn run(args: &[String]) {
         if let Some(ui) = ui_weak.upgrade() {
             let _ = ui.hide();
         }
-    });
-
-    let state = AppState::get(&ui);
-
-    let ui_weak = ui.as_weak();
-    state.on_quit_keep_running(move || {
-        if let Some(ui) = ui_weak.upgrade() {
-            let _ = ui.hide();
-        }
-    });
-
-    let ui_weak = ui.as_weak();
-    state.on_quit_and_stop(move || {
-        let ui_weak = ui_weak.clone();
-        std::thread::spawn(move || {
-            let failure = views::system_integration::service::stop().err();
-
-            let _ = slint::invoke_from_event_loop(move || {
-                let Some(ui) = ui_weak.upgrade() else {
-                    return;
-                };
-                match failure {
-                    Some(message) => errors::report("Virtual MIDI Device", message),
-                    None => {
-                        let _ = ui.hide();
-                    }
-                }
-            });
-        });
     });
 
     ui.run().expect("Slint event loop failed");

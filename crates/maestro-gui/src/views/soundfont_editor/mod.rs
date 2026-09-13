@@ -10,6 +10,8 @@ use crate::{
 };
 use maestro_core::soundfont::SoundFont;
 
+pub(crate) use files::save_file_at;
+
 pub(crate) const ERROR_TITLE: &str = "SoundFont List Editor";
 
 pub fn setup(ui: &MainWindow, cx: &AppContext) {

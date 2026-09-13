@@ -5,7 +5,7 @@ import {
     MaestroIcon,
     Icons,
 } from "widgets.slint";
-import { Tab, StandaloneMode } from "enums.slint";
+import { Tab, StandaloneMode, QuitStage } from "enums.slint";
 import {
     AppState,
     SoundfontEditorState,
@@ -24,7 +24,7 @@ import { RendererView } from "views/converter.slint";
 import { DeviceManagerView } from "views/device_manager.slint";
 import { SystemIntegrationView } from "views/system_integration.slint";
 import { ErrorView, ErrorDialog } from "views/error.slint";
-import { QuitConfirmModal } from "views/quit.slint";
+import { QuitConfirmModal, RenderQuitModal, UnsavedQuitModal } from "views/quit.slint";
 import { StartupIssueModal } from "views/startup_issue.slint";
 import { GetSoundfontsModal } from "views/get_soundfonts.slint";
 import { UpdateAvailableModal } from "views/update.slint";
@@ -261,15 +261,20 @@ export component MainWindow inherits Window {
         dismiss => { ErrorState.dismiss(dialog.id); }
     }
 
-    // Also at window level: the close request arrives whatever tab is showing.
-    if (!is_error && AppState.quit_prompt_open): QuitConfirmModal { }
-
     if (!is_error && AppState.combined && AppState.active_tab != Tab.system
         && SystemIntegrationState.startup_issue): StartupIssueModal { }
 
     if (!is_error && AppState.combined && AppState.no_soundfonts_prompt): GetSoundfontsModal { }
 
     if (!is_error && AppState.combined && AppState.update_available != ""): UpdateAvailableModal { }
+
+    // Also at window level: the close request arrives whatever tab is showing.
+    // At most one stage is ever live, and Rust picks which.
+    if (!is_error && AppState.quit_stage == QuitStage.render): RenderQuitModal { }
+
+    if (!is_error && AppState.quit_stage == QuitStage.unsaved): UnsavedQuitModal { }
+
+    if (!is_error && AppState.quit_stage == QuitStage.daemon): QuitConfirmModal { }
 
     if (is_error): ErrorView {
         error_msg: error_msg;

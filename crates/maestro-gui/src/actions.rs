@@ -92,17 +92,21 @@ pub fn edit_config(
     }
 }
 
-pub fn save_config_at(ui: &MainWindow, data: &mut AppData, pos: usize, error_title: &str) {
+pub fn save_config_at(ui: &MainWindow, data: &mut AppData, pos: usize, error_title: &str) -> bool {
     let Some(cfg) = data.config_files.get(pos) else {
-        return;
+        return true;
     };
     match save_config_cache(cfg) {
         Ok(()) => {
             data.config_files[pos].dirty = false;
             sync_config_to_slint(ui, data);
             sync_device_to_slint(ui, data);
+            true
         }
-        Err(e) => errors::report(error_title, format!("Failed to save configuration: {e}")),
+        Err(e) => {
+            errors::report(error_title, format!("Failed to save configuration: {e}"));
+            false
+        }
     }
 }
 

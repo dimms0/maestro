@@ -101,3 +101,17 @@ export enum SettingsPage {
     synth,
     audio,
 }
+
+// Which question the close-request gate is currently asking. Closing the window
+// walks these in order, stopping at the first one that applies, so work in
+// progress is never thrown away by a stray click on the title bar's X.
+export enum QuitStage {
+    // Nothing to ask: the window may close.
+    idle,
+    // A conversion run is still going.
+    render,
+    // Edits in one of the editors have not been written to disk.
+    unsaved,
+    // The daemon would be left running with no window to show for it.
+    daemon,
+}

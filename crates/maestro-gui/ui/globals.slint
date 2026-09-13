@@ -12,6 +12,7 @@ import {
     KdmapiAction,
     LibraryAction,
     EventFlagKind,
+    QuitStage,
 } from "enums.slint";
 import {
     SlintSoundFont,
@@ -63,15 +64,30 @@ export global AppState {
     callback welcome_navigate(Tab);
     callback set_remember_last_tab(bool);
 
-    // Closing the window while the daemon is running is intercepted so the user
-    // decides rather than forgets: the daemon keeps a soundfont bank resident
-    // with nothing on screen to show for it.
-    in-out property <bool> quit_prompt_open: false;
+    // Closing the window is intercepted whenever letting it through would throw
+    // away work or leave something running unattended. Rust owns the stage: it
+    // re-runs the gate after every answer below and either moves to the next
+    // question or closes the window, so the views never decide for themselves
+    // that quitting is safe.
+    in-out property <QuitStage> quit_stage: QuitStage.idle;
+    // Body text for whichever prompt `quit_stage` is showing.
     in-out property <string> quit_prompt_detail;
+    // True while an answer is still being carried out (stopping the daemon
+    // takes a moment), so the prompt stops taking a second answer on top of the
+    // one already running.
+    in-out property <bool> quit_busy: false;
 
-    // Close the window, leaving the daemon alone.
+    // Back out of the whole close attempt, at any stage.
+    callback cancel_quit();
+    // Render stage: stop the conversion run, then carry on closing.
+    callback cancel_render_and_quit();
+    // Unsaved stage: write every pending edit to disk, then carry on closing.
+    callback save_and_quit();
+    // Unsaved stage: leave the edits unwritten and carry on closing.
+    callback discard_and_quit();
+    // Daemon stage: close the window, leaving the daemon alone.
     callback quit_keep_running();
-    // Stop the daemon, then close.
+    // Daemon stage: stop the daemon, then close.
     callback quit_and_stop();
 }
 

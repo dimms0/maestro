@@ -17,7 +17,7 @@ use crate::{
 use maestro_core::audio_params::{AudioParameters, ChannelCount};
 
 /// Dialog title used for problems raised while saving a component config.
-const ERROR_TITLE: &str = "Settings";
+pub(crate) const ERROR_TITLE: &str = "Settings";
 
 fn set_flag(list: &[u8], index: i32, on: bool) -> Box<[u8]> {
     let Ok(index) = u8::try_from(index) else {

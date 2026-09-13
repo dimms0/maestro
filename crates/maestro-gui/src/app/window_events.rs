@@ -3,9 +3,9 @@ use std::path::Path;
 use slint::{ComponentHandle, Global};
 
 use crate::{
-    AppState, DeviceManagerState, MainWindow, RendererState, SettingsEditorState,
-    SlintMidiRenderEntry, SoundfontEditorState, StandaloneMode, Tab, actions,
-    app::AppContext,
+    AppState, MainWindow, RendererState, SettingsEditorState, SlintMidiRenderEntry,
+    SoundfontEditorState, StandaloneMode, Tab, actions,
+    app::{AppContext, quit},
     errors,
     state::AppData,
     sync::{sync_renderer_to_slint, sync_sflist_to_slint},
@@ -25,39 +25,13 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
             winit::event::WindowEvent::DroppedFile(path) => {
                 cx.with(|ui, data| handle_drop(ui, data, path));
             }
-            winit::event::WindowEvent::CloseRequested => {
-                let mut intercepted = false;
-                cx.with_ui(|ui| intercepted = confirm_quit(ui));
-                if intercepted {
-                    return EventResult::PreventDefault;
-                }
+            winit::event::WindowEvent::CloseRequested if quit::intercept_close(&cx) => {
+                return EventResult::PreventDefault;
             }
             _ => {}
         }
         EventResult::Propagate
     });
-}
-
-fn confirm_quit(ui: &MainWindow) -> bool {
-    let device = DeviceManagerState::get(ui);
-    let app = AppState::get(ui);
-
-    if app.get_quit_prompt_open() || !device.get_daemon_running() {
-        return false;
-    }
-
-    let memory = device.get_daemon_memory();
-    app.set_quit_prompt_detail(if memory.is_empty() {
-        "Maestro will keep running in the background after this window closes.".into()
-    } else {
-        format!(
-            "Maestro will keep running in the background after this window closes, \
-             holding {memory}."
-        )
-        .into()
-    });
-    app.set_quit_prompt_open(true);
-    true
 }
 
 fn handle_drop(ui: &MainWindow, data: &mut AppData, path: &Path) {

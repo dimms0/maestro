@@ -185,6 +185,40 @@ impl AppData {
     pub fn selected_config(&self) -> Option<&ComponentConfigCache> {
         index_of(self.selected_config_idx, self.config_files.len()).map(|i| &self.config_files[i])
     }
+
+    // Pending edits
+
+    pub fn unsaved_indices(&self) -> (Vec<usize>, Vec<usize>) {
+        let dirty = |(i, dirty): (usize, bool)| dirty.then_some(i);
+        (
+            self.sflist_files
+                .iter()
+                .map(|f| f.dirty)
+                .enumerate()
+                .filter_map(dirty)
+                .collect(),
+            self.config_files
+                .iter()
+                .map(|c| c.dirty)
+                .enumerate()
+                .filter_map(dirty)
+                .collect(),
+        )
+    }
+
+    pub fn unsaved_labels(&self) -> Vec<String> {
+        let (lists, configs) = self.unsaved_indices();
+        lists
+            .into_iter()
+            .map(|i| format!("SoundFont list '{}'", self.sflist_files[i].name))
+            .chain(configs.into_iter().map(|i| {
+                format!(
+                    "{} settings",
+                    self.config_files[i].profile.kind.display_name()
+                )
+            }))
+            .collect()
+    }
 }
 
 pub fn index_of(idx: i32, len: usize) -> Option<usize> {
