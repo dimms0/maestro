@@ -1,5 +1,9 @@
 use std::{
     path::{Path, PathBuf},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     thread,
 };
 
@@ -24,6 +28,12 @@ pub use encoder::{
 use helper::RendererHelper;
 mod statistics;
 pub use statistics::MaestroFileRendererStatistics;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RenderOutcome {
+    Completed,
+    Cancelled,
+}
 
 #[derive(Clone, Copy)]
 pub enum PortMode {
@@ -55,6 +65,9 @@ pub struct MaestroFileRenderer {
     evproc: Option<EventProcessorConfig>,
     postproc: Option<PostProcessorConfig>,
     port_mode: PortMode,
+
+    stats: MaestroFileRendererStatistics,
+    cancel: Option<Arc<AtomicBool>>,
 }
 
 impl MaestroFileRenderer {
@@ -83,6 +96,8 @@ impl MaestroFileRenderer {
             postproc: None,
             port_mode: PortMode::Multi { max_ports: None },
             audio_params,
+            stats: MaestroFileRendererStatistics::new(),
+            cancel: None,
         })
     }
 
@@ -112,10 +127,18 @@ impl MaestroFileRenderer {
         Self { port_mode, ..self }
     }
 
-    pub fn render(
-        self,
-        mut status_callback: Option<&mut dyn FnMut(&MaestroFileRendererStatistics)>,
-    ) -> Result<(), MaestroComponentError> {
+    pub fn with_cancel_flag(self, cancel: Arc<AtomicBool>) -> Self {
+        Self {
+            cancel: Some(cancel),
+            ..self
+        }
+    }
+
+    pub fn get_statistics(&self) -> MaestroFileRendererStatistics {
+        self.stats.clone()
+    }
+
+    pub fn render(self) -> Result<RenderOutcome, MaestroComponentError> {
         let stem = self
             .midi_path
             .file_stem()
@@ -230,8 +253,9 @@ impl MaestroFileRenderer {
         )?;
         renderer.load_soundfonts(&self.soundfonts)?;
         renderer.set_clock_division(midi.division());
+        renderer.set_statistics(self.stats.renderer_handle());
 
-        let mut stats = MaestroFileRendererStatistics::new(renderer.get_statistics());
+        let stats = &self.stats;
 
         let encoder = AudioEncoder::new(&audio_path, &self.audio_params, self.output)?;
 
@@ -242,6 +266,14 @@ impl MaestroFileRenderer {
         let mut last_render = 0.0;
 
         for batch in rcv {
+            if self
+                .cancel
+                .as_ref()
+                .is_some_and(|c| c.load(Ordering::Relaxed))
+            {
+                return Ok(RenderOutcome::Cancelled);
+            }
+
             if let Some(port) = batch.port
                 && let Some(slot) = port_maps.get_mut(batch.track as usize)
             {
@@ -275,17 +307,13 @@ impl MaestroFileRenderer {
             if pos - last_render > self.batch_size {
                 helper.render_batch()?;
                 last_render = pos;
-
-                if let Some(cb) = &mut status_callback {
-                    cb(&stats);
-                }
             }
         }
 
         helper.render_batch()?;
         helper.finalize()?;
 
-        Ok(())
+        Ok(RenderOutcome::Completed)
     }
 }
 

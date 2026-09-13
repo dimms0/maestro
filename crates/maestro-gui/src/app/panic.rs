@@ -1,16 +1,10 @@
 use slint::ComponentHandle;
 
-use crate::{MainWindow, views::renderer};
+use crate::MainWindow;
 
 pub fn install_hook(ui: &MainWindow) {
     let ui_weak = ui.as_weak();
     std::panic::set_hook(Box::new(move |panic_info| {
-        // Render cancellation is implemented by unwinding the render worker
-        // with a sentinel payload that `catch_unwind` swallows
-        if renderer::is_cancel_panic(panic_info.payload()) {
-            return;
-        }
-
         let msg = describe(panic_info);
         let _ = slint::invoke_from_event_loop({
             let ui_weak = ui_weak.clone();

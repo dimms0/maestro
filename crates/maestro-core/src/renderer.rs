@@ -318,6 +318,10 @@ impl MaestroRenderer {
         self.stats.clone()
     }
 
+    pub(crate) fn set_statistics(&mut self, stats: Arc<MaestroRenderStatistics>) {
+        self.stats = stats;
+    }
+
     pub(crate) fn get_port_senders(&self) -> Vec<Arc<PortEventSender>> {
         self.ports.iter().map(|p| p.get_buffer()).collect()
     }

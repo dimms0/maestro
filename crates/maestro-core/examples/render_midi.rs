@@ -1,9 +1,7 @@
-use std::{path::PathBuf, process::exit, time::Instant};
+use std::{path::PathBuf, process::exit, thread, time::Duration, time::Instant};
 
 use maestro_core::{
-    audio_params::AudioParameters,
-    file_renderer::{MaestroFileRenderer, MaestroFileRendererStatistics},
-    soundfont::SoundFontList,
+    audio_params::AudioParameters, file_renderer::MaestroFileRenderer, soundfont::SoundFontList,
 };
 
 fn main() {
@@ -48,21 +46,24 @@ fn main() {
     .unwrap()
     .with_batch_size(0.1);
 
-    let mut last_time = Instant::now();
-    let mut callback = |stats: &MaestroFileRendererStatistics| {
-        if last_time.elapsed().as_secs_f32() > 1.0 {
-            println!(
-                "Position: {}, Voices: {}, Time: {}",
-                stats.get_time(),
-                stats.get_renderer().read_voice_count(),
-                stats.get_renderer().get_last_render_time()
-            );
-            last_time = Instant::now();
-        }
-    };
+    // The statistics handle is shared: the render runs on its own thread and
+    // keeps it up to date per event, this thread reads it once a second.
+    let stats = renderer.get_statistics();
 
     let now = Instant::now();
-    renderer.render(Some(&mut callback)).unwrap();
+    let render = thread::spawn(move || renderer.render());
+
+    while !render.is_finished() {
+        println!(
+            "Position: {}, Voices: {}, Time: {}",
+            stats.get_time(),
+            stats.get_renderer().read_voice_count(),
+            stats.get_renderer().get_last_render_time()
+        );
+        thread::sleep(Duration::from_secs(1));
+    }
+
+    render.join().unwrap().unwrap();
     let elapsed = now.elapsed().as_secs();
     println!("Render time: {}m {}s", elapsed / 60, elapsed % 60);
 }

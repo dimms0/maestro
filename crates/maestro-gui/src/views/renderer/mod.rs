@@ -1,8 +1,6 @@
 mod jobs;
 mod worker;
 
-pub use worker::is_cancel_panic;
-
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -88,9 +86,6 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
     let flag = cancel_flag.clone();
     state.on_cancel_render(move || {
         flag.store(true, Ordering::SeqCst);
-        // Workers only observe the flag between render batches, which can take
-        // a while on heavy files — show a disabled "Cancelling…" state instead
-        // of pretending the render already stopped.
         c.with_ui(|ui| RendererState::get(ui).set_is_cancelling(true));
     });
 

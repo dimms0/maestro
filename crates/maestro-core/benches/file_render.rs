@@ -347,7 +347,7 @@ impl Rig {
         }
 
         let start = Instant::now();
-        renderer.render(None).expect("render failed");
+        renderer.render().expect("render failed");
         let elapsed = start.elapsed();
 
         let _ = fs::remove_dir_all(&out_dir);

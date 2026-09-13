@@ -649,11 +649,11 @@ component BassMidiPanel inherits SynthPanel {
                 width: 150px;
                 minimum: 0;
                 maximum: 256;
-                value: SettingsEditorState.current_config.synth.bass_thread_count;
+                value: SettingsEditorState.current_config.synth.bass_keyboard_divisions;
                 enabled: SettingsEditorState.current_config.synth.bass_multithreading;
                 edited(v) => {
                     root.edit = SettingsEditorState.current_config.synth;
-                    root.edit.bass_thread_count = v;
+                    root.edit.bass_keyboard_divisions = v;
                     root.commit();
                 }
             }

@@ -3,7 +3,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use rayon::prelude::*;
 
@@ -15,22 +15,19 @@ use crate::{
 };
 use maestro_core::{
     audio_params::AudioParameters,
-    file_renderer::{MaestroFileRenderer, OutputSettings},
+    file_renderer::{
+        MaestroFileRenderer, MaestroFileRendererStatistics, OutputSettings, RenderOutcome,
+    },
     renderer::config::{EventProcessorConfig, PostProcessorConfig, RendererConfig},
     system_cfg::{ConfigComponent, MaestroConfigManager},
 };
 
 use super::jobs::{JobRegistry, RenderJob, set_entry_status};
 
-const CANCEL_PANIC: &str = "__maestro_render_canceled__";
 const ERROR_TITLE: &str = "MIDI Conversion Failed";
 const CONVERTER_COMPONENT: &str = "converter";
 
-pub fn is_cancel_panic(payload: &(dyn std::any::Any + Send)) -> bool {
-    payload
-        .downcast_ref::<&str>()
-        .is_some_and(|s| *s == CANCEL_PANIC)
-}
+const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
 
 #[derive(Clone)]
 pub struct ConverterRenderSettings {
@@ -69,9 +66,10 @@ impl ConverterRenderSettings {
         entry: &SlintMidiRenderEntry,
     ) -> Result<MaestroFileRenderer, Box<dyn std::error::Error>> {
         let midi_path = PathBuf::from(entry.midi_path.as_str());
-        let output_dir = self.output_dir_override.clone().unwrap_or_else(|| {
-            midi_path.parent().unwrap_or(Path::new(".")).to_path_buf()
-        });
+        let output_dir = self
+            .output_dir_override
+            .clone()
+            .unwrap_or_else(|| midi_path.parent().unwrap_or(Path::new(".")).to_path_buf());
         let sflist = MaestroConfigManager::default()
             .get_soundfont_list(entry.sflist_name.as_str())
             .unwrap_or_default();
@@ -201,42 +199,40 @@ impl RenderRun<'_> {
             }
         };
 
-        let cancel = self.cancel.clone();
+        let renderer = renderer.with_cancel_flag(self.cancel.clone());
+        let stats = renderer.get_statistics();
         let registry = self.registry.clone();
         let started = Instant::now();
-        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-            let mut last_percent = -1;
-            renderer.render(Some(&mut |stats| {
-                if cancel.load(Ordering::SeqCst) {
-                    std::panic::panic_any(CANCEL_PANIC);
-                }
-                let frac = (stats.get_time() / total_pos).clamp(0.0, 1.0);
-                let percent = (frac * 100.0) as i32;
-                if percent == last_percent {
-                    return;
-                }
-                last_percent = percent;
 
-                let elapsed = started.elapsed().as_secs_f64();
-                let line = format!(
-                    "Notes: {} · Events: {} · Voices: {}\nElapsed {} · ETA {}",
-                    fmt_count(stats.get_notes()),
-                    fmt_count(stats.get_events()),
-                    fmt_count(stats.get_renderer().read_voice_count()),
-                    fmt_dur(elapsed),
-                    fmt_dur(eta(elapsed, frac)),
-                );
-                registry.update(job_id, |j| {
-                    j.progress = frac as f32;
-                    j.stats = line;
-                });
-            }))
-        }));
+        let rendering = Arc::new(AtomicBool::new(true));
+        let outcome = std::thread::scope(|scope| {
+            let progress = {
+                let rendering = rendering.clone();
+                let stats = stats.clone();
+                let registry = registry.clone();
+                scope.spawn(move || {
+                    while rendering.load(Ordering::Relaxed) {
+                        report_progress(&registry, job_id, &stats, total_pos, started);
+                        std::thread::sleep(PROGRESS_INTERVAL);
+                    }
+                })
+            };
+
+            let outcome =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| renderer.render()));
+            rendering.store(false, Ordering::Relaxed);
+            let _ = progress.join();
+            outcome
+        });
 
         match outcome {
-            Ok(Ok(())) => {
+            Ok(Ok(RenderOutcome::Completed)) => {
                 set_entry_status(self.ui, idx, RenderStatus::Done);
                 true
+            }
+            Ok(Ok(RenderOutcome::Cancelled)) => {
+                set_entry_status(self.ui, idx, RenderStatus::Pending);
+                false
             }
             // Render returned an error (e.g. a soundfont failed to load):
             // surface it and move on rather than silently producing nothing.
@@ -248,14 +244,37 @@ impl RenderRun<'_> {
                 );
                 true
             }
-            // Unwound — a cancel or an unexpected panic (a real panic also
-            // trips the fatal screen via the global hook). Stop the run.
+            // Unwound — an unexpected panic (which also trips the fatal
+            // screen via the global hook). Stop the run.
             Err(_) => {
                 set_entry_status(self.ui, idx, RenderStatus::Pending);
                 false
             }
         }
     }
+}
+
+fn report_progress(
+    registry: &JobRegistry,
+    job_id: u64,
+    stats: &MaestroFileRendererStatistics,
+    total_pos: f64,
+    started: Instant,
+) {
+    let frac = (stats.get_time() / total_pos).clamp(0.0, 1.0);
+    let elapsed = started.elapsed().as_secs_f64();
+    let line = format!(
+        "Notes: {} · Events: {} · Voices: {}\nElapsed {} · ETA {}",
+        fmt_count(stats.get_notes()),
+        fmt_count(stats.get_events()),
+        fmt_count(stats.get_renderer().read_voice_count()),
+        fmt_dur(elapsed),
+        fmt_dur(eta(elapsed, frac)),
+    );
+    registry.update(job_id, |j| {
+        j.progress = frac as f32;
+        j.stats = line;
+    });
 }
 
 /// TODO: make this more accurate
