@@ -31,6 +31,8 @@ export struct SlintRealtimeConfig {
     precision_playback: bool,
     max_nps: int,
     has_max_nps: bool,
+    coalesce_ms: int,
+    has_coalesce: bool,
 
     // Indices into AudioDeviceState.hosts / .devices. Index 0 of each is the
     // "default" entry, which maps back to `None` on the Rust side.

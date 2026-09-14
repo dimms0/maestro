@@ -123,6 +123,8 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
                 f.realtime.render_buffer_ms = rt.render_buffer_ms;
                 f.realtime.precision_playback = rt.precision_playback;
                 f.realtime.max_nps = rt.has_max_nps.then(|| rt.max_nps.max(0) as usize);
+                f.realtime.coalesce_window_ms =
+                    rt.has_coalesce.then(|| rt.coalesce_ms.max(1) as u32);
 
                 f.realtime.audio_host = host;
                 f.realtime.output_device = device;

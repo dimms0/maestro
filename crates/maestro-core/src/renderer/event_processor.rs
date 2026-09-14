@@ -10,7 +10,6 @@ pub struct PortEventProcessor {
     bypassed_channels: [bool; 16],
     ignored_channels: [bool; 16],
 
-    fixed_velocity: u8,
     transpose: i8,
     key_low: u8,
     key_high: u8,
@@ -41,9 +40,13 @@ impl PortEventProcessor {
 
         let mut velocity_table: [u8; 128] = [0; 128];
         for (i, entry) in velocity_table.iter_mut().enumerate() {
-            let norm = (i as f32 / 127.0).powf(config.velocity_curve);
-            let m = 127.0 * norm * config.velocity_multiplier;
-            *entry = (m.round() as u8).min(127);
+            if config.fixed_velocity > 0 {
+                *entry = config.fixed_velocity.min(127);
+            } else {
+                let norm = (i as f32 / 127.0).powf(config.velocity_curve);
+                let m = 127.0 * norm * config.velocity_multiplier;
+                *entry = (m.round() as u8).min(127);
+            }
         }
 
         let low = config.key_range_low.min(127);
@@ -57,7 +60,6 @@ impl PortEventProcessor {
             bypassed,
             bypassed_channels,
             ignored_channels,
-            fixed_velocity: config.fixed_velocity.min(127),
             transpose: config.transpose.clamp(-24, 24),
             key_low: low.min(high),
             key_high: low.max(high),
@@ -96,12 +98,7 @@ impl PortEventProcessor {
                     return None;
                 }
                 let newkey = newkey as u8;
-
-                let newvel = if self.fixed_velocity > 0 {
-                    self.fixed_velocity
-                } else {
-                    self.velocity_table[vel as usize]
-                };
+                let newvel = self.velocity_table[vel as usize];
 
                 if newvel >= self.velocity_threshold && newvel > 0 {
                     Some(MaestroTimedEvent {
@@ -142,7 +139,6 @@ impl PortEventProcessor {
 
                 let missed = &mut self.missed_notes[channel as usize * 128 + key as usize];
                 if *missed > 0 {
-                    // The matching NoteOn was suppressed, so swallow its NoteOff too.
                     *missed -= 1;
                     None
                 } else {

@@ -27,7 +27,7 @@ struct ChannelNpsTracker {
     current_window_sum: AtomicU64,
     total_window_sum: AtomicU64,
     cached_nps: AtomicU64,
-    skipped_notes: [AtomicU64; 128],
+    active_notes: [AtomicU64; 128],
 }
 
 impl ChannelNpsTracker {
@@ -36,29 +36,26 @@ impl ChannelNpsTracker {
             current_window_sum: AtomicU64::new(0),
             total_window_sum: AtomicU64::new(0),
             cached_nps: AtomicU64::new(0),
-            skipped_notes: [const { AtomicU64::new(0) }; 128],
+            active_notes: [const { AtomicU64::new(0) }; 128],
         }
     }
 
-    fn add_note(&self) {
+    fn add_note(&self, key: u8) {
         self.current_window_sum.fetch_add(1, Ordering::Relaxed);
         self.total_window_sum.fetch_add(1, Ordering::Relaxed);
+        self.active_notes[key as usize].fetch_add(1, Ordering::Relaxed);
     }
 
-    fn add_skipped_note(&self, key: u8) {
-        self.skipped_notes[key as usize].fetch_add(1, Ordering::Relaxed);
-    }
-
-    fn has_skipped_notes(&self, key: u8) -> bool {
-        self.skipped_notes[key as usize].load(Ordering::Relaxed) > 0
-    }
-
-    fn sub_skipped_note(&self, key: u8) {
-        self.skipped_notes[key as usize].fetch_sub(1, Ordering::Relaxed);
+    fn take_active_note(&self, key: u8) -> bool {
+        self.active_notes[key as usize]
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+                (n > 0).then(|| n - 1)
+            })
+            .is_ok()
     }
 
     fn reset(&self) {
-        for n in &self.skipped_notes {
+        for n in &self.active_notes {
             n.store(0, Ordering::Relaxed);
         }
     }
@@ -140,10 +137,9 @@ impl NpsTracker {
             let curr = ch.cached_nps.load(Ordering::Relaxed);
 
             if should_send_for_vel_and_nps(vel, curr, self.max_nps) {
-                ch.add_note();
+                ch.add_note(key);
                 true
             } else {
-                ch.add_skipped_note(key);
                 false
             }
         } else {
@@ -152,16 +148,9 @@ impl NpsTracker {
     }
 
     pub(crate) fn note_off(&self, channel: usize, key: u8) -> bool {
-        if let Some(ch) = self.channels.get(channel) {
-            if ch.has_skipped_notes(key) {
-                ch.sub_skipped_note(key);
-                false
-            } else {
-                true
-            }
-        } else {
-            false
-        }
+        self.channels
+            .get(channel)
+            .is_some_and(|ch| ch.take_active_note(key))
     }
 
     pub(crate) fn reset(&self) {

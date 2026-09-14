@@ -279,6 +279,8 @@ pub fn build_slint_component_config(state: &AppData) -> Option<SlintComponentCon
             precision_playback: file.realtime.precision_playback,
             max_nps: file.realtime.max_nps.unwrap_or(100_000) as i32,
             has_max_nps: file.realtime.max_nps.is_some(),
+            coalesce_ms: file.realtime.coalesce_window_ms.unwrap_or(10) as i32,
+            has_coalesce: file.realtime.coalesce_window_ms.is_some(),
 
             audio_host_index: state.audio.host_index(file.realtime.audio_host.as_deref()),
             output_device_index: state

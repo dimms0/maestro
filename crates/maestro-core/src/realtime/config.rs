@@ -12,6 +12,11 @@ pub struct RealtimeConfig {
 
     pub max_nps: Option<usize>,
 
+    /// Collapse bursts of CC/pitch-bend/program-change/aftertouch on the same
+    /// channel+parameter down to the latest value, flushed to the renderer
+    /// at most once per this many milliseconds. `None` disables coalescing.
+    pub coalesce_window_ms: Option<u32>,
+
     /// Audio host (backend) to open the output on, as a `cpal::HostId` string
     /// such as `"ALSA"`, `"JACK"`, `"WASAPI"` or `"ASIO"`. `None` uses the
     /// platform default host. An unavailable host falls back to the default.
@@ -37,6 +42,7 @@ impl Default for RealtimeConfig {
             render_buffer_ms: 20.0,
             precision_playback: true,
             max_nps: Some(100_000),
+            coalesce_window_ms: Some(10),
             audio_host: None,
             output_device: None,
             buffer_size: None,

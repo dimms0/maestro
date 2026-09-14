@@ -5,11 +5,15 @@ use crate::{
     audio_params::AudioParameters,
     error::RealtimeEngineError,
     event::{MaestroEvent, MaestroTimedEvent, MidiTranslator},
-    realtime::{RealtimeEngineOptions, event_sender::nps::NpsTracker},
+    realtime::{
+        RealtimeEngineOptions,
+        event_sender::{coalescer::EventCoalescer, nps::NpsTracker},
+    },
     renderer::{RealtimeClock, sender::PortEventSender},
     tempo::TempoClock,
 };
 
+mod coalescer;
 mod nps;
 
 pub use crate::event::ump::UMP_GROUPS;
@@ -35,6 +39,7 @@ impl Clone for RealtimeEventSender {
         Self {
             ports: self.ports.clone(),
             nps: self.nps.clone(),
+            coalescer: self.coalescer.clone(),
             precision: self.precision,
             clock: self.clock.clone(),
             translator: MidiTranslator::new(),
@@ -49,6 +54,7 @@ pub struct RealtimeEventSender {
     ports: Box<[Arc<PortEventSender>]>,
 
     nps: Option<NpsTracker>,
+    coalescer: Option<EventCoalescer>,
     precision: bool,
 
     clock: Arc<RealtimeClock>,
@@ -78,9 +84,19 @@ impl RealtimeEventSender {
 
         let sample_rate = params.sample_rate;
 
+        let coalescer = options.config.coalesce_window_ms.map(|ms| {
+            EventCoalescer::new(
+                port_senders.clone(),
+                clock.clone(),
+                options.config.precision_playback,
+                ms,
+            )
+        });
+
         Ok(Self {
             ports: port_senders,
             nps,
+            coalescer,
             precision: options.config.precision_playback,
             clock,
             translator: MidiTranslator::new(),
@@ -90,39 +106,43 @@ impl RealtimeEventSender {
         })
     }
 
-    fn filter(&self, port: u8, event: MaestroEvent) -> Option<MaestroEvent> {
-        if let Some(nps) = &self.nps {
-            let tracked = |channel: u8| port as usize * 16 + channel as usize;
+    fn push(&self, port: u8, event: MaestroEvent, delta_ticks: Option<u64>) {
+        // Do not filter timed events with wall-clock limiters
+        if delta_ticks.is_none() {
+            if let Some(nps) = &self.nps {
+                let tracked = |channel: u8| port as usize * 16 + channel as usize;
 
-            match event {
-                MaestroEvent::NoteOn { channel, key, vel }
-                    if !nps.note_on(tracked(channel), key, vel) =>
-                {
-                    return None;
-                }
-                MaestroEvent::NoteOff { channel, key } if !nps.note_off(tracked(channel), key) => {
-                    return None;
-                }
+                match event {
+                    MaestroEvent::NoteOn { channel, key, vel }
+                        if !nps.note_on(tracked(channel), key, vel) =>
+                    {
+                        return;
+                    }
+                    MaestroEvent::NoteOff { channel, key }
+                        if !nps.note_off(tracked(channel), key) =>
+                    {
+                        return;
+                    }
 
-                _ => {}
+                    _ => {}
+                }
+            }
+
+            if let Some(coalescer) = &self.coalescer
+                && coalescer.record(port, event)
+            {
+                return;
             }
         }
 
-        Some(event)
-    }
+        // Timestamp only if it passes the filters to reduce cycles per send
+        let pos = if let Some(ticks) = delta_ticks {
+            self.tick_stamp(ticks)
+        } else {
+            self.stamp()
+        };
 
-    fn push(&self, port: u8, event: MaestroEvent, delta_ticks: Option<u64>) {
-        if let Some(ev) = self.filter(port, event) {
-            // only stamp the event if it passes the filters, so dropped events won't
-            // consume cycles to retrieve the clock position
-            let pos = if let Some(ticks) = delta_ticks {
-                self.tick_stamp(ticks)
-            } else {
-                self.stamp()
-            };
-
-            self.ports[port as usize].send(MaestroTimedEvent { event: ev, pos });
-        }
+        self.ports[port as usize].send(MaestroTimedEvent { event, pos });
     }
 
     fn stamp(&self) -> u32 {
@@ -184,6 +204,9 @@ impl RealtimeEventSender {
     pub fn reset(&self) {
         for port in &self.ports {
             port.reset();
+        }
+        if let Some(coalescer) = &self.coalescer {
+            coalescer.reset();
         }
 
         self.translator.reset();

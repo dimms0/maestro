@@ -32,9 +32,9 @@ impl PortEventSender {
             None => Some(event),
         };
 
-        if let Some(ev) = event
-            && let Err(err) = self.tx.try_send(ev)
-        {
+        let Some(ev) = event else { return };
+
+        if let Err(err) = self.tx.try_send(ev) {
             sysex::release(&err.into_inner().event);
         }
     }
