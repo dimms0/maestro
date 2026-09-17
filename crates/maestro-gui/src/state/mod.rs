@@ -7,10 +7,15 @@ pub use component::{
 use maestro_core::{
     audio_params::AudioParameters,
     realtime::config::RealtimeConfig,
-    renderer::config::{EventProcessorConfig, PostProcessorConfig, RendererConfig},
+    renderer::config::{
+        AudioLimiterConfig, EventProcessorConfig, PostProcessorConfig, RendererConfig,
+        bassmidi::BASSMIDIThreading,
+    },
     soundfont::{DEFAULT_SOUNDFONT_LIST_NAME, SoundFontList},
 };
 use std::path::PathBuf;
+
+pub const DEFAULT_BUFFER_SIZE: u32 = 512;
 
 #[derive(Clone, Debug, Default)]
 pub struct SoundfontFileCache {
@@ -39,6 +44,38 @@ impl SoundfontFileCache {
 }
 
 #[derive(Clone, Debug)]
+pub struct RememberedSettings {
+    pub max_nps: usize,
+    pub coalesce_window_ms: u32,
+    pub buffer_size: u32,
+    pub port_threads: usize,
+    pub limiter: AudioLimiterConfig,
+    pub bass_threading: BASSMIDIThreading,
+    pub bass_thread_count: u8,
+    pub fixed_velocity: u8,
+    pub idle_timeout_minutes: u32,
+}
+
+impl Default for RememberedSettings {
+    fn default() -> Self {
+        Self {
+            max_nps: 100_000,
+            coalesce_window_ms: 10,
+            buffer_size: DEFAULT_BUFFER_SIZE,
+            port_threads: 4,
+            limiter: AudioLimiterConfig::default(),
+            bass_threading: BASSMIDIThreading {
+                thread_count: 0,
+                divide_channels: false,
+            },
+            bass_thread_count: 4,
+            fixed_velocity: 127,
+            idle_timeout_minutes: 10,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct ComponentConfigCache {
     pub path: PathBuf,
     pub name: String,
@@ -60,6 +97,8 @@ pub struct ComponentConfigCache {
 
     pub converter_custom: ConverterCustom,
     pub system_custom: SystemCustomSettings,
+
+    pub remembered: RememberedSettings,
 }
 
 pub struct AppData {

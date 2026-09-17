@@ -21,6 +21,7 @@ pub(crate) struct BASSMIDISynth {
     streams: Box<[BASSMIDIStream]>,
     buffers: Box<[Vec<f32>]>,
 
+    divisor: usize,
     kbdiv: usize,
     threadpool: Option<rayon::ThreadPool>,
 }
@@ -37,14 +38,27 @@ impl BASSMIDISynth {
         let instances;
         let threadpool;
 
-        if let Some(mtcfg) = config.multithreading {
-            kbdiv = (mtcfg.keyboard_divisions as usize).max(1);
-            instances = 16 * kbdiv;
+        if let Some(mtcfg) = config.multithreading
+            && (mtcfg.thread_count > 1 || mtcfg.thread_count == 0)
+        {
+            let threads = if mtcfg.thread_count == 0 {
+                std::thread::available_parallelism()
+                    .map(|v| v.get())
+                    .unwrap_or(4)
+            } else {
+                mtcfg.thread_count.min(128) as usize
+            };
 
-            let threadcnt = mtcfg.thread_count.unwrap_or(instances);
+            kbdiv = if mtcfg.divide_channels {
+                threads / 16
+            } else {
+                0
+            };
+            instances = if kbdiv > 0 { 16 * kbdiv } else { threads };
+
             threadpool = Some(
                 rayon::ThreadPoolBuilder::new()
-                    .num_threads(threadcnt)
+                    .num_threads(threads)
                     .build()?,
             );
         } else {
@@ -66,38 +80,10 @@ impl BASSMIDISynth {
         Ok(Self {
             streams: streams.into_boxed_slice(),
             buffers: vec![Vec::new(); instances].into_boxed_slice(),
+            divisor: if kbdiv == 0 { instances } else { kbdiv },
             kbdiv,
             threadpool,
         })
-    }
-
-    fn process_event_mt(&mut self, event: MaestroTimedEvent) {
-        match event.event {
-            MaestroEvent::NoteOn { channel, key, .. } | MaestroEvent::NoteOff { channel, key } => {
-                let idx = channel as usize * self.kbdiv + (key as usize % self.kbdiv);
-                self.streams[idx].process_event(event);
-            }
-
-            MaestroEvent::ControlChange { channel, .. }
-            | MaestroEvent::PitchBendChange { channel, .. }
-            | MaestroEvent::ProgramChange { channel, .. }
-            | MaestroEvent::ChannelAftertouch { channel, .. }
-            | MaestroEvent::PolyphonicAftertouch { channel, .. } => {
-                for i in 0..self.kbdiv {
-                    let idx = channel as usize * self.kbdiv + i;
-                    self.streams[idx].process_event(event);
-                }
-            }
-            _ => {
-                if let MaestroEvent::SystemExclusive { id } = event.event {
-                    sysex::retain(id, self.streams.len() - 1);
-                }
-
-                for stream in &mut self.streams {
-                    stream.process_event(event);
-                }
-            }
-        }
     }
 }
 
@@ -117,10 +103,31 @@ impl SynthModule for BASSMIDISynth {
     }
 
     fn process_event(&mut self, event: MaestroTimedEvent) {
-        if self.kbdiv == 0 {
-            self.streams[0].process_event(event);
-        } else {
-            self.process_event_mt(event);
+        match event.event {
+            MaestroEvent::NoteOn { channel, key, .. } | MaestroEvent::NoteOff { channel, key } => {
+                let idx = channel as usize * self.kbdiv + key as usize % self.divisor;
+                self.streams[idx].process_event(event);
+            }
+
+            MaestroEvent::ControlChange { channel, .. }
+            | MaestroEvent::PitchBendChange { channel, .. }
+            | MaestroEvent::ProgramChange { channel, .. }
+            | MaestroEvent::ChannelAftertouch { channel, .. }
+            | MaestroEvent::PolyphonicAftertouch { channel, .. } => {
+                for i in 0..self.divisor {
+                    let idx = channel as usize * self.kbdiv + i;
+                    self.streams[idx].process_event(event);
+                }
+            }
+            _ => {
+                if let MaestroEvent::SystemExclusive { id } = event.event {
+                    sysex::retain(id, self.streams.len() - 1);
+                }
+
+                for stream in &mut self.streams {
+                    stream.process_event(event);
+                }
+            }
         }
     }
 

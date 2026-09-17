@@ -161,6 +161,7 @@ export component Setting {
 
         if (root.has-switch): MaestroSwitch {
             horizontal-stretch: 0;
+            enabled: root.enabled;
             checked: root.checked;
             toggled(v) => root.toggled(v);
         }

@@ -481,10 +481,11 @@ export component EventProcessorSection inherits SectionCard {
                         enabled: root.on;
 
                         has-switch: true;
-                        checked: SettingsEditorState.current_config.event_processor.fixed_velocity != 0;
+                        checked: SettingsEditorState.current_config.event_processor.has_fixed_velocity;
+
                         toggled(v) => {
                             root.edit = SettingsEditorState.current_config.event_processor;
-                            root.edit.fixed_velocity = v ? 127 : 0;
+                            root.edit.has_fixed_velocity = v;
                             SettingsEditorState.update_event_processor(root.edit);
                         }
 
@@ -493,7 +494,7 @@ export component EventProcessorSection inherits SectionCard {
                             minimum: 1;
                             maximum: 127;
                             value: SettingsEditorState.current_config.event_processor.fixed_velocity;
-                            enabled: root.on && SettingsEditorState.current_config.event_processor.fixed_velocity != 0;
+                            enabled: root.on && SettingsEditorState.current_config.event_processor.has_fixed_velocity;
                             edited(v) => {
                                 root.edit = SettingsEditorState.current_config.event_processor;
                                 root.edit.fixed_velocity = v;
@@ -527,7 +528,9 @@ export component EventProcessorSection inherits SectionCard {
                     multiplier: SettingsEditorState.current_config.event_processor.velocity_multiplier;
                     curve: SettingsEditorState.current_config.event_processor.velocity_curve;
                     threshold: SettingsEditorState.current_config.event_processor.velocity_threshold;
-                    fixed_velocity: SettingsEditorState.current_config.event_processor.fixed_velocity;
+                    fixed_velocity: SettingsEditorState.current_config.event_processor.has_fixed_velocity
+                        ? SettingsEditorState.current_config.event_processor.fixed_velocity
+                        : 0;
                 }
             }
         }

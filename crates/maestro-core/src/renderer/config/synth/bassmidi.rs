@@ -46,15 +46,15 @@ impl Default for BASSMIDIConfig {
 #[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct BASSMIDIThreading {
-    pub thread_count: Option<usize>,
-    pub keyboard_divisions: u8,
+    pub thread_count: u8,
+    pub divide_channels: bool,
 }
 
 impl Default for BASSMIDIThreading {
     fn default() -> Self {
         Self {
-            thread_count: None,
-            keyboard_divisions: 1,
+            thread_count: 4,
+            divide_channels: false,
         }
     }
 }

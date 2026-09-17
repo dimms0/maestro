@@ -1,4 +1,4 @@
-use crate::state::{ComponentConfigCache, ComponentProfile, ConfigComponent};
+use crate::state::{ComponentConfigCache, ComponentProfile, ConfigComponent, RememberedSettings};
 use maestro_core::{
     error::ConfigError,
     soundfont::DEFAULT_SOUNDFONT_LIST_NAME,
@@ -149,6 +149,9 @@ pub fn load_config_cache(name: String, path: PathBuf) -> Option<ComponentConfigC
         post_processor: value_or_default(&val, "post_processor", &mut recovered),
         converter_custom: value_or_default(&val, "custom", &mut recovered),
         system_custom: value_or_default(&val, "custom", &mut recovered),
+        // Starts at the defaults: every setting that is switched on carries its
+        // own value, so there is nothing to remember until one is switched off.
+        remembered: RememberedSettings::default(),
         val,
         path,
     };

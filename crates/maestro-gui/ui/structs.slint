@@ -87,8 +87,9 @@ export struct SlintSynthConfig {
     bass_render_time_limit: float,
     bass_interpolation: int, // 0 None, 1 Linear, 2 Sinc8, 3 Sinc16 (UI index)
     bass_multithreading: bool,
-    bass_thread_count: int, // 0 = auto
-    bass_keyboard_divisions: int,
+    bass_custom_thread_count: bool,
+    bass_thread_count: int,
+    bass_divide_channels: bool,
     bass_disable_effects: bool,
     bass_fade_out_killing: bool,
     bass_note_off1: bool,
@@ -107,6 +108,7 @@ export struct SlintEventProcessorConfig {
     ignore_channels: [bool],
     bypass_ports: [bool],
     ignore_ports: [bool],
+    has_fixed_velocity: bool,
     fixed_velocity: int,
     transpose: int,
     velocity_multiplier: float,
@@ -143,6 +145,7 @@ export struct SlintSystemCustom {
     device_name: string,
     num_ports: int,
     midi2_enabled: bool,
+    has_idle_timeout: bool,
     idle_timeout_minutes: int,
 }
 

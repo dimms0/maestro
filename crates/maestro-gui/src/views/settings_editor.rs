@@ -122,14 +122,20 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
                 f.realtime.device_audio_params = rt.device_audio_params;
                 f.realtime.render_buffer_ms = rt.render_buffer_ms;
                 f.realtime.precision_playback = rt.precision_playback;
-                f.realtime.max_nps = rt.has_max_nps.then(|| rt.max_nps.max(0) as usize);
+
+                f.remembered.max_nps = rt.max_nps.max(0) as usize;
+                f.remembered.coalesce_window_ms = rt.coalesce_ms.max(1) as u32;
+                f.realtime.max_nps = rt.has_max_nps.then_some(f.remembered.max_nps);
                 f.realtime.coalesce_window_ms =
-                    rt.has_coalesce.then(|| rt.coalesce_ms.max(1) as u32);
+                    rt.has_coalesce.then_some(f.remembered.coalesce_window_ms);
 
                 f.realtime.audio_host = host;
                 f.realtime.output_device = device;
-                f.realtime.buffer_size =
-                    (rt.has_buffer_size && rt.buffer_size > 0).then_some(rt.buffer_size as u32);
+
+                if rt.buffer_size > 0 {
+                    f.remembered.buffer_size = rt.buffer_size as u32;
+                }
+                f.realtime.buffer_size = rt.has_buffer_size.then_some(f.remembered.buffer_size);
             })
         });
     });
@@ -140,8 +146,8 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
     state.on_update_renderer(move |r: SlintRendererConfig| {
         c.with(|ui, data| {
             actions::edit_selected_config(ui, data, |f| {
-                f.renderer.port_threads =
-                    r.has_port_threads.then(|| r.port_threads.max(1) as usize);
+                f.remembered.port_threads = r.port_threads.max(1) as usize;
+                f.renderer.port_threads = r.has_port_threads.then_some(f.remembered.port_threads);
             })
         });
     });
@@ -151,7 +157,9 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
     let c = cx.clone();
     state.on_update_synth(move |s: SlintSynthConfig| {
         c.with(|ui, data| {
-            actions::edit_selected_config(ui, data, |f| f.renderer.synth = slint_to_synth(&s))
+            actions::edit_selected_config(ui, data, |f| {
+                f.renderer.synth = slint_to_synth(&s, &mut f.remembered);
+            })
         });
     });
 
@@ -182,7 +190,7 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
     state.on_update_event_processor(move |e: SlintEventProcessorConfig| {
         c.with(|ui, data| {
             actions::edit_selected_config(ui, data, |f| {
-                f.event_processor = slint_to_evproc(&e);
+                f.event_processor = slint_to_evproc(&e, &mut f.remembered);
                 f.has_event_processor = true;
             })
         });
@@ -199,7 +207,7 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
     state.on_update_post_processor(move |p: SlintPostProcessorConfig| {
         c.with(|ui, data| {
             actions::edit_selected_config(ui, data, |f| {
-                f.post_processor = slint_to_postproc(&p);
+                f.post_processor = slint_to_postproc(&p, &mut f.remembered);
                 f.has_post_processor = true;
             })
         });
@@ -224,7 +232,7 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
         c.with(|ui, data| {
             // TODO remove when WMS are implemented
             actions::edit_selected_config(ui, data, |f| {
-                f.system_custom = slint_to_system_custom(&custom);
+                f.system_custom = slint_to_system_custom(&custom, &mut f.remembered);
                 if f.system_custom.midi2_enabled && cfg!(windows) {
                     errors::report("Not supported", WINDOWS_COMPAT_TEXT);
                     f.system_custom.midi2_enabled = false;

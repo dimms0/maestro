@@ -3,7 +3,7 @@ use slint::{Model, ModelRc, VecModel};
 use maestro_core::{
     file_renderer::{BITRATES_KBPS, DEFAULT_BITRATE_KBPS, OutputFormat, WavBitDepth},
     renderer::config::{
-        AudioLimiterConfig, EventProcessorConfig, PostProcessorConfig, SynthConfig,
+        EventProcessorConfig, PostProcessorConfig, SynthConfig,
         bassmidi::{BASSMIDIConfig, BASSMIDIInterpolation, BASSMIDIThreading},
         fluidsynth::{
             FluidSynthBankSelect, FluidSynthConfig, FluidSynthInterpolation,
@@ -14,7 +14,7 @@ use maestro_core::{
 
 use crate::{
     SlintEventProcessorConfig, SlintPostProcessorConfig, SlintSynthConfig, SynthKind, Tab,
-    state::ConverterCustom,
+    state::{ConverterCustom, RememberedSettings},
 };
 
 pub fn tab_to_key(tab: Tab) -> &'static str {
@@ -163,8 +163,24 @@ pub fn reverb_engine_from_index(idx: i32) -> FluidSynthReverbEngine {
     }
 }
 
-pub fn synth_to_slint(synth: &SynthConfig) -> SlintSynthConfig {
-    let mut out = defaults_slint_synth();
+fn threading_to_slint(
+    mt: Option<BASSMIDIThreading>,
+    rem: &RememberedSettings,
+    out: &mut SlintSynthConfig,
+) {
+    let block = mt.unwrap_or(rem.bass_threading);
+
+    out.bass_multithreading = mt.is_some();
+    out.bass_custom_thread_count = block.thread_count != 0;
+    out.bass_thread_count = i32::from(match block.thread_count {
+        0 => rem.bass_thread_count,
+        count => count,
+    });
+    out.bass_divide_channels = block.divide_channels;
+}
+
+pub fn synth_to_slint(synth: &SynthConfig, rem: &RememberedSettings) -> SlintSynthConfig {
+    let mut out = defaults_slint_synth(rem);
 
     match synth {
         SynthConfig::FluidSynth(c) => {
@@ -198,11 +214,7 @@ pub fn synth_to_slint(synth: &SynthConfig) -> SlintSynthConfig {
             out.bass_voice_limit = c.voice_limit as i32;
             out.bass_render_time_limit = c.render_time_limit;
             out.bass_interpolation = i32::from(c.interpolation) + 1;
-            out.bass_multithreading = c.multithreading.is_some();
-            if let Some(mt) = &c.multithreading {
-                out.bass_thread_count = mt.thread_count.unwrap_or(0) as i32;
-                out.bass_keyboard_divisions = mt.keyboard_divisions as i32;
-            }
+            threading_to_slint(c.multithreading, rem, &mut out);
             out.bass_disable_effects = c.disable_effects;
             out.bass_fade_out_killing = c.fade_out_killing;
             out.bass_note_off1 = c.note_off1;
@@ -220,11 +232,11 @@ pub fn synth_to_slint(synth: &SynthConfig) -> SlintSynthConfig {
     out
 }
 
-fn defaults_slint_synth() -> SlintSynthConfig {
+fn defaults_slint_synth(rem: &RememberedSettings) -> SlintSynthConfig {
     let f = FluidSynthConfig::default();
     let b = BASSMIDIConfig::default();
 
-    SlintSynthConfig {
+    let mut out = SlintSynthConfig {
         kind: SynthKind::Bassmidi,
 
         fluid_voice_limit: f.voice_limit as i32,
@@ -254,9 +266,10 @@ fn defaults_slint_synth() -> SlintSynthConfig {
         bass_voice_limit: b.voice_limit as i32,
         bass_render_time_limit: b.render_time_limit,
         bass_interpolation: i32::from(b.interpolation) + 1,
-        bass_multithreading: b.multithreading.is_some(),
+        bass_multithreading: false,
+        bass_custom_thread_count: false,
         bass_thread_count: 0,
-        bass_keyboard_divisions: 1,
+        bass_divide_channels: false,
         bass_disable_effects: b.disable_effects,
         bass_fade_out_killing: b.fade_out_killing,
         bass_note_off1: b.note_off1,
@@ -268,10 +281,23 @@ fn defaults_slint_synth() -> SlintSynthConfig {
         bass_sf_no_rampin: b.sf_no_rampin,
         bass_sf_sb_limits: b.sf_sb_limits,
         bass_sf_xg_drums: b.sf_xg_drums,
-    }
+    };
+
+    threading_to_slint(b.multithreading, rem, &mut out);
+    out
 }
 
-pub fn slint_to_synth(sl: &SlintSynthConfig) -> SynthConfig {
+pub fn slint_to_synth(sl: &SlintSynthConfig, rem: &mut RememberedSettings) -> SynthConfig {
+    rem.bass_thread_count = sl.bass_thread_count.clamp(1, 128) as u8;
+    rem.bass_threading = BASSMIDIThreading {
+        thread_count: match sl.bass_custom_thread_count {
+            true => rem.bass_thread_count,
+            // 0 asks BASSMIDI to size the pool itself.
+            false => 0,
+        },
+        divide_channels: sl.bass_divide_channels,
+    };
+
     match sl.kind {
         SynthKind::Fluidsynth => SynthConfig::FluidSynth(FluidSynthConfig {
             voice_limit: sl.fluid_voice_limit.max(1) as u32,
@@ -304,10 +330,7 @@ pub fn slint_to_synth(sl: &SlintSynthConfig) -> SynthConfig {
             render_time_limit: sl.bass_render_time_limit,
             interpolation: BASSMIDIInterpolation::try_from(sl.bass_interpolation - 1)
                 .unwrap_or_default(),
-            multithreading: sl.bass_multithreading.then(|| BASSMIDIThreading {
-                thread_count: (sl.bass_thread_count > 0).then_some(sl.bass_thread_count as usize),
-                keyboard_divisions: sl.bass_keyboard_divisions.clamp(1, 255) as u8,
-            }),
+            multithreading: sl.bass_multithreading.then_some(rem.bass_threading),
             disable_effects: sl.bass_disable_effects,
             fade_out_killing: sl.bass_fade_out_killing,
             note_off1: sl.bass_note_off1,
@@ -346,13 +369,20 @@ fn flags_to_indices(flags: &ModelRc<bool>) -> Box<[u8]> {
         .collect()
 }
 
-pub fn evproc_to_slint(e: &EventProcessorConfig) -> SlintEventProcessorConfig {
+pub fn evproc_to_slint(
+    e: &EventProcessorConfig,
+    rem: &RememberedSettings,
+) -> SlintEventProcessorConfig {
     SlintEventProcessorConfig {
         bypass_channels: indices_to_flags(&e.bypass_channels),
         ignore_channels: indices_to_flags(&e.ignore_channels),
         bypass_ports: indices_to_flags(&e.bypass_ports),
         ignore_ports: indices_to_flags(&e.ignore_ports),
-        fixed_velocity: e.fixed_velocity as i32,
+        has_fixed_velocity: e.fixed_velocity != 0,
+        fixed_velocity: i32::from(match e.fixed_velocity {
+            0 => rem.fixed_velocity,
+            velocity => velocity,
+        }),
         transpose: e.transpose as i32,
         velocity_multiplier: e.velocity_multiplier,
         velocity_threshold: e.velocity_threshold as i32,
@@ -364,13 +394,21 @@ pub fn evproc_to_slint(e: &EventProcessorConfig) -> SlintEventProcessorConfig {
     }
 }
 
-pub fn slint_to_evproc(sl: &SlintEventProcessorConfig) -> EventProcessorConfig {
+pub fn slint_to_evproc(
+    sl: &SlintEventProcessorConfig,
+    rem: &mut RememberedSettings,
+) -> EventProcessorConfig {
+    rem.fixed_velocity = sl.fixed_velocity.clamp(1, 127) as u8;
+
     EventProcessorConfig {
         bypass_ports: flags_to_indices(&sl.bypass_ports),
         ignore_ports: flags_to_indices(&sl.ignore_ports),
         bypass_channels: flags_to_indices(&sl.bypass_channels),
         ignore_channels: flags_to_indices(&sl.ignore_channels),
-        fixed_velocity: sl.fixed_velocity.clamp(0, 127) as u8,
+        fixed_velocity: match sl.has_fixed_velocity {
+            true => rem.fixed_velocity,
+            false => 0,
+        },
         transpose: sl.transpose.clamp(-127, 127) as i8,
         velocity_multiplier: sl.velocity_multiplier,
         velocity_threshold: sl.velocity_threshold.clamp(0, 127) as u8,
@@ -384,8 +422,11 @@ pub fn slint_to_evproc(sl: &SlintEventProcessorConfig) -> EventProcessorConfig {
 
 // Post processor
 
-pub fn postproc_to_slint(p: &PostProcessorConfig) -> SlintPostProcessorConfig {
-    let lim = p.limiter.unwrap_or_default();
+pub fn postproc_to_slint(
+    p: &PostProcessorConfig,
+    rem: &RememberedSettings,
+) -> SlintPostProcessorConfig {
+    let lim = p.limiter.unwrap_or(rem.limiter);
     SlintPostProcessorConfig {
         volume: p.volume,
         has_limiter: p.limiter.is_some(),
@@ -394,13 +435,16 @@ pub fn postproc_to_slint(p: &PostProcessorConfig) -> SlintPostProcessorConfig {
     }
 }
 
-pub fn slint_to_postproc(sl: &SlintPostProcessorConfig) -> PostProcessorConfig {
+pub fn slint_to_postproc(
+    sl: &SlintPostProcessorConfig,
+    rem: &mut RememberedSettings,
+) -> PostProcessorConfig {
+    rem.limiter.attack_ms = sl.limiter_attack_ms;
+    rem.limiter.release_ms = sl.limiter_release_ms;
+
     PostProcessorConfig {
         volume: sl.volume,
-        limiter: sl.has_limiter.then_some(AudioLimiterConfig {
-            attack_ms: sl.limiter_attack_ms,
-            release_ms: sl.limiter_release_ms,
-        }),
+        limiter: sl.has_limiter.then_some(rem.limiter),
     }
 }
 
@@ -433,20 +477,35 @@ pub fn slint_to_converter_custom(sl: &crate::SlintConverterCustom) -> ConverterC
 
 // System custom
 
-pub fn system_custom_to_slint(s: &crate::state::SystemCustomSettings) -> crate::SlintSystemCustom {
+pub fn system_custom_to_slint(
+    s: &crate::state::SystemCustomSettings,
+    rem: &RememberedSettings,
+) -> crate::SlintSystemCustom {
     crate::SlintSystemCustom {
         device_name: s.device_name.as_str().into(),
         num_ports: s.num_ports as i32,
         midi2_enabled: s.midi2_enabled,
-        idle_timeout_minutes: s.idle_timeout_minutes as i32,
+        has_idle_timeout: s.idle_timeout_minutes != 0,
+        idle_timeout_minutes: match s.idle_timeout_minutes {
+            0 => rem.idle_timeout_minutes,
+            minutes => minutes,
+        } as i32,
     }
 }
 
-pub fn slint_to_system_custom(sl: &crate::SlintSystemCustom) -> crate::state::SystemCustomSettings {
+pub fn slint_to_system_custom(
+    sl: &crate::SlintSystemCustom,
+    rem: &mut RememberedSettings,
+) -> crate::state::SystemCustomSettings {
+    rem.idle_timeout_minutes = sl.idle_timeout_minutes.clamp(1, 1440) as u32;
+
     crate::state::SystemCustomSettings {
         device_name: sl.device_name.as_str().to_string(),
         num_ports: sl.num_ports.max(1) as u8,
         midi2_enabled: sl.midi2_enabled,
-        idle_timeout_minutes: sl.idle_timeout_minutes.max(0) as u32,
+        idle_timeout_minutes: match sl.has_idle_timeout {
+            true => rem.idle_timeout_minutes,
+            false => 0,
+        },
     }
 }

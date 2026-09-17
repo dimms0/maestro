@@ -17,8 +17,6 @@ use maestro_core::{
 };
 use slint::{Global, Model, ModelRc, SharedString, VecModel};
 
-const DEFAULT_BUFFER_SIZE: u32 = 512;
-
 pub fn sync_all(ui: &MainWindow, state: &AppData) {
     sync_sflist_to_slint(ui, state);
     sync_config_to_slint(ui, state);
@@ -248,6 +246,7 @@ pub fn sync_sflist_to_slint(ui: &MainWindow, state: &AppData) {
 pub fn build_slint_component_config(state: &AppData) -> Option<SlintComponentConfig> {
     let file = state.selected_config()?;
     let p = &file.profile;
+    let rem = &file.remembered;
 
     Some(SlintComponentConfig {
         name: ConfigComponent::from_name(&file.name)?
@@ -277,36 +276,39 @@ pub fn build_slint_component_config(state: &AppData) -> Option<SlintComponentCon
             device_audio_params: file.realtime.device_audio_params,
             render_buffer_ms: file.realtime.render_buffer_ms,
             precision_playback: file.realtime.precision_playback,
-            max_nps: file.realtime.max_nps.unwrap_or(100_000) as i32,
+            max_nps: file.realtime.max_nps.unwrap_or(rem.max_nps) as i32,
             has_max_nps: file.realtime.max_nps.is_some(),
-            coalesce_ms: file.realtime.coalesce_window_ms.unwrap_or(10) as i32,
+            coalesce_ms: file
+                .realtime
+                .coalesce_window_ms
+                .unwrap_or(rem.coalesce_window_ms) as i32,
             has_coalesce: file.realtime.coalesce_window_ms.is_some(),
 
             audio_host_index: state.audio.host_index(file.realtime.audio_host.as_deref()),
             output_device_index: state
                 .audio
                 .device_index(file.realtime.output_device.as_deref()),
-            buffer_size: file.realtime.buffer_size.unwrap_or(DEFAULT_BUFFER_SIZE) as i32,
+            buffer_size: file.realtime.buffer_size.unwrap_or(rem.buffer_size) as i32,
             has_buffer_size: file.realtime.buffer_size.is_some(),
         },
 
         has_renderer: p.has_renderer,
         renderer: SlintRendererConfig {
-            port_threads: file.renderer.port_threads.unwrap_or(4) as i32,
+            port_threads: file.renderer.port_threads.unwrap_or(rem.port_threads) as i32,
             has_port_threads: file.renderer.port_threads.is_some(),
         },
 
-        synth: synth_to_slint(&file.renderer.synth),
+        synth: synth_to_slint(&file.renderer.synth, rem),
         has_event_processor: file.has_event_processor,
-        event_processor: evproc_to_slint(&file.event_processor),
+        event_processor: evproc_to_slint(&file.event_processor, rem),
         has_post_processor: file.has_post_processor,
-        post_processor: postproc_to_slint(&file.post_processor),
+        post_processor: postproc_to_slint(&file.post_processor, rem),
 
         has_port_threads: p.has_port_threads,
         has_converter_options: p.has_converter_options(),
         has_device_options: p.has_device_options(),
         converter_custom: converter_custom_to_slint(&file.converter_custom),
-        system_custom: system_custom_to_slint(&file.system_custom),
+        system_custom: system_custom_to_slint(&file.system_custom, rem),
     })
 }
 
@@ -337,7 +339,7 @@ pub fn sync_device_to_slint(ui: &MainWindow, state: &AppData) {
     let dev = DeviceManagerState::get(ui);
 
     if let Some(sys) = state.config(ConfigComponent::System) {
-        dev.set_system_custom(system_custom_to_slint(&sys.system_custom));
+        dev.set_system_custom(system_custom_to_slint(&sys.system_custom, &sys.remembered));
         dev.set_system(summary(state, sys));
     }
     if let Some(kd) = state.config(ConfigComponent::KDMAPI) {

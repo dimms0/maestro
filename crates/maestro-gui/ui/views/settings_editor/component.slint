@@ -240,11 +240,10 @@ export component DeviceSection inherits SectionCard {
 
         MaestroCheckBox {
             text: "Unload Maestro after inactivity";
-            checked: SettingsEditorState.current_config.system_custom.idle_timeout_minutes != 0;
-
+            checked: SettingsEditorState.current_config.system_custom.has_idle_timeout;
             toggled(v) => {
                 root.edit = SettingsEditorState.current_config.system_custom;
-                root.edit.idle_timeout_minutes = v ? 10 : 0;
+                root.edit.has_idle_timeout = v;
                 SettingsEditorState.update_system_custom(root.edit);
             }
         }
@@ -255,10 +254,10 @@ export component DeviceSection inherits SectionCard {
 
         MaestroSpinBox {
             max-width: 130px;
-            minimum: 0;
+            minimum: 1;
             maximum: 1440;
             value: SettingsEditorState.current_config.system_custom.idle_timeout_minutes;
-            enabled: SettingsEditorState.current_config.system_custom.idle_timeout_minutes != 0;
+            enabled: SettingsEditorState.current_config.system_custom.has_idle_timeout;
             edited(v) => {
                 root.edit = SettingsEditorState.current_config.system_custom;
                 root.edit.idle_timeout_minutes = Math.round(v);

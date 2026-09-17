@@ -48,10 +48,7 @@ fn main() {
         renderer: RendererConfig {
             synth: maestro_core::renderer::config::SynthConfig::BASSMIDI(BASSMIDIConfig {
                 voice_limit: 1024,
-                multithreading: Some(BASSMIDIThreading {
-                    thread_count: None,
-                    keyboard_divisions: 4,
-                }),
+                multithreading: Some(Default::default()),
                 ..Default::default()
             }),
             ..Default::default()

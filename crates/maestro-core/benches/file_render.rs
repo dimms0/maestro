@@ -272,10 +272,7 @@ fn pick_synth() -> Option<SynthConfig> {
         eprintln!("synth: BASSMIDI");
         SynthConfig::BASSMIDI(BASSMIDIConfig {
             voice_limit: 1024,
-            multithreading: Some(BASSMIDIThreading {
-                thread_count: None,
-                keyboard_divisions: 4,
-            }),
+            multithreading: Some(Default::default()),
             ..Default::default()
         })
     };

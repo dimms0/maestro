@@ -629,7 +629,7 @@ component BassMidiPanel inherits SynthPanel {
 
         Setting {
             text: "Enable Multi-Threading";
-            subtext: "Multithreading will improve performance on larger MIDIs, although some MIDI features might not always work correctly (portamento, SysEx etc.). Only enable if you know what you are doing.";
+            subtext: "Multithreading will improve performance on larger MIDIs, although some MIDI features might not always work correctly (portamento, SysEx etc.). Only enable if you know what you are doing. Each thread will have a separate BASSMIDI instance and separate voice pool, so the total voice count is the original setting x the number of threads.";
 
             MaestroSwitch {
                 checked: SettingsEditorState.current_config.synth.bass_multithreading;
@@ -642,33 +642,25 @@ component BassMidiPanel inherits SynthPanel {
         }
 
         Setting {
-            text: "Keyboard Divisions";
-            subtext: "Maestro will split the rendering into multiple BASSMIDI instances. Each of the 16 MIDI channels will be split in the given amount of instances. So the number of instances is calculated as such: (16 x keyb.divs.)";
+            text: "Custom Thread Count";
+            has-switch: true;
+            subtext: "The audio rendering of the various synthesizer instances will be split between this amount of threads. When disabled, Maestro determines the number of threads automatically.";
+            enabled: SettingsEditorState.current_config.synth.bass_multithreading;
+            checked: SettingsEditorState.current_config.synth.bass_custom_thread_count;
 
-            MaestroSpinBox {
-                width: 150px;
-                minimum: 0;
-                maximum: 256;
-                value: SettingsEditorState.current_config.synth.bass_keyboard_divisions;
-                enabled: SettingsEditorState.current_config.synth.bass_multithreading;
-                edited(v) => {
-                    root.edit = SettingsEditorState.current_config.synth;
-                    root.edit.bass_keyboard_divisions = v;
-                    root.commit();
-                }
+            toggled(v) => {
+                root.edit = SettingsEditorState.current_config.synth;
+                root.edit.bass_custom_thread_count = v;
+                root.commit();
             }
-        }
-
-        Setting {
-            text: "Thread Count";
-            subtext: "The audio rendering of the various synthesizer instances will be split between this amount of threads. Use 0 for Maestro to automatically determine the number of threads to achieve the best possible performance.";
 
             MaestroSpinBox {
                 width: 150px;
-                minimum: 0;
-                maximum: 256;
+                minimum: 1;
+                maximum: 128;
                 value: SettingsEditorState.current_config.synth.bass_thread_count;
-                enabled: SettingsEditorState.current_config.synth.bass_multithreading;
+                enabled: SettingsEditorState.current_config.synth.bass_multithreading
+                    && SettingsEditorState.current_config.synth.bass_custom_thread_count;
                 edited(v) => {
                     root.edit = SettingsEditorState.current_config.synth;
                     root.edit.bass_thread_count = v;
@@ -677,10 +669,19 @@ component BassMidiPanel inherits SynthPanel {
             }
         }
 
-        if (SettingsEditorState.current_config.synth.bass_multithreading): BodyText {
-            horizontal-alignment: center;
-            text: SettingsEditorState.current_config.synth.bass_keyboard_divisions * 16 + " BASSMIDI instances | Total voice limit: "
-                + SettingsEditorState.current_config.synth.bass_voice_limit * SettingsEditorState.current_config.synth.bass_keyboard_divisions * 16;
+        Setting {
+            text: "Divide Instances Between Channels";
+            subtext: "If enabled, Maestro will assign an equal number of instances to each of the 16 MIDI channels. This will provide complete separation of the channels for each instance. It will probably improve performance for MIDIs with a lot of control events (CC, pitch etc.) but will conceptually decrease the voice cap of each channel.";
+
+            MaestroSwitch {
+                enabled: SettingsEditorState.current_config.synth.bass_multithreading;
+                checked: SettingsEditorState.current_config.synth.bass_divide_channels;
+                toggled(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.bass_divide_channels = v;
+                    root.commit();
+                }
+            }
         }
     }
 

@@ -81,7 +81,7 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
         c.with(|ui, data| {
             // TODO remove when WMS are implemented
             actions::edit_config(ui, data, ConfigComponent::System, |f| {
-                f.system_custom = slint_to_system_custom(&custom);
+                f.system_custom = slint_to_system_custom(&custom, &mut f.remembered);
                 if f.system_custom.midi2_enabled && cfg!(windows) {
                     crate::errors::report("Not supported", WINDOWS_COMPAT_TEXT);
                     f.system_custom.midi2_enabled = false;
