@@ -85,7 +85,7 @@ impl BASSMIDIStream {
         config: &BASSMIDIConfig,
         audio_params: &AudioParameters,
     ) -> Result<Self, RendererError> {
-        let flags = BASS_MIDI_DECAYEND | BASS_SAMPLE_FLOAT | BASS_STREAM_DECODE;
+        let flags = BASS_SAMPLE_FLOAT | BASS_STREAM_DECODE;
         let flags = flags
             | if config.note_off1 {
                 BASS_MIDI_NOTEOFF1

@@ -175,7 +175,7 @@ impl RpnBoard {
 }
 
 struct PortState {
-    cc: [[Option<MaestroEvent>; 128]; 16],
+    cc: [[Option<(MaestroEvent, bool)>; 128]; 16],
     pitch: [Option<MaestroEvent>; 16],
     program: [Option<MaestroEvent>; 16],
     channel_pressure: [Option<MaestroEvent>; 16],
@@ -212,7 +212,16 @@ impl PortState {
                     38 => self.rpn[ch].write_lsb(val),
                     96 => self.rpn[ch].step(1),
                     97 => self.rpn[ch].step(-1),
-                    _ => self.cc[ch][param as usize] = Some(event),
+                    _ => {
+                        let released = (param == 64 || param == 66) && val < 64;
+                        match &mut self.cc[ch][param as usize] {
+                            Some((ev, saw_release)) => {
+                                *saw_release |= released;
+                                *ev = event;
+                            }
+                            slot => *slot = Some((event, released)),
+                        }
+                    }
                 }
                 true
             }
@@ -241,7 +250,21 @@ impl PortState {
             self.rpn[channel].drain_into(channel as u8, out);
 
             for slot in &mut self.cc[channel] {
-                if let Some(ev) = slot.take() {
+                if let Some((ev, saw_release)) = slot.take() {
+                    if saw_release
+                        && let MaestroEvent::ControlChange {
+                            channel,
+                            param,
+                            val,
+                        } = ev
+                        && val >= 64
+                    {
+                        out.push(MaestroEvent::ControlChange {
+                            channel,
+                            param,
+                            val: 0,
+                        });
+                    }
                     out.push(ev);
                 }
             }
