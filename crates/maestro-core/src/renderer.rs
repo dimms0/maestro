@@ -69,7 +69,12 @@ impl MaestroRenderer {
 
                 for i in 0..port_count {
                     let newsynth = BASSMIDISynth::new(library.clone(), &cfg, audio_params)?;
-                    let port = PortSynthManager::<BASSMIDISynth>::new(i, newsynth, evproc.clone());
+                    let port = PortSynthManager::<BASSMIDISynth>::new(
+                        i,
+                        newsynth,
+                        evproc.clone(),
+                        audio_params,
+                    );
                     ports.push(PortRenderer::BASSMIDI(port));
                 }
 
@@ -80,8 +85,12 @@ impl MaestroRenderer {
 
                 for i in 0..port_count {
                     let newsynth = FluidSynthSynth::new(library.clone(), &cfg, audio_params)?;
-                    let port =
-                        PortSynthManager::<FluidSynthSynth>::new(i, newsynth, evproc.clone());
+                    let port = PortSynthManager::<FluidSynthSynth>::new(
+                        i,
+                        newsynth,
+                        evproc.clone(),
+                        audio_params,
+                    );
                     ports.push(PortRenderer::FluidSynth(port));
                 }
 

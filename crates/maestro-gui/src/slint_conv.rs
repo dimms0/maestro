@@ -391,6 +391,7 @@ pub fn evproc_to_slint(
         key_range_high: e.key_range_high as i32,
         ignore_program_change: e.ignore_program_change,
         ignore_sysex: e.ignore_sysex,
+        note_jitter: e.note_jitter,
     }
 }
 
@@ -417,6 +418,7 @@ pub fn slint_to_evproc(
         key_range_high: sl.key_range_high.clamp(0, 127) as u8,
         ignore_program_change: sl.ignore_program_change,
         ignore_sysex: sl.ignore_sysex,
+        note_jitter: sl.note_jitter,
     }
 }
 

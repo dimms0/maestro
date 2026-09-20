@@ -19,6 +19,8 @@ pub struct EventProcessorConfig {
 
     pub ignore_program_change: bool,
     pub ignore_sysex: bool,
+
+    pub note_jitter: bool,
 }
 
 impl Default for EventProcessorConfig {
@@ -37,6 +39,7 @@ impl Default for EventProcessorConfig {
             velocity_curve: 1.0,
             ignore_program_change: false,
             ignore_sysex: false,
+            note_jitter: false,
         }
     }
 }

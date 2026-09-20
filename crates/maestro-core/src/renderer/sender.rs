@@ -3,6 +3,7 @@ use std::sync::Mutex;
 use crossbeam_channel::{Receiver, Sender};
 
 use crate::{
+    audio_params::AudioParameters,
     event::{MaestroTimedEvent, sysex},
     renderer::{config::EventProcessorConfig, event_processor::PortEventProcessor},
 };
@@ -14,10 +15,14 @@ pub(crate) struct PortEventSender {
 }
 
 impl PortEventSender {
-    pub fn new(port: u8, evproc: Option<EventProcessorConfig>) -> Self {
+    pub fn new(
+        port: u8,
+        evproc: Option<EventProcessorConfig>,
+        audio_params: &AudioParameters,
+    ) -> Self {
         let (tx, rx) = crossbeam_channel::unbounded();
 
-        let evproc = evproc.map(|c| PortEventProcessor::new(port, c));
+        let evproc = evproc.map(|c| PortEventProcessor::new(port, c, audio_params));
 
         Self {
             tx,
@@ -44,6 +49,10 @@ impl PortEventSender {
     }
 
     pub fn reset(&self) {
+        if let Some(evproc) = &self.evproc {
+            evproc.lock().unwrap().reset();
+        }
+
         self.drain();
     }
 

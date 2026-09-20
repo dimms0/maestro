@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
+    audio_params::AudioParameters,
     error::RendererError,
     event::MaestroTimedEvent,
     renderer::{
@@ -68,10 +69,15 @@ pub(crate) struct PortSynthManager<T: SynthModule> {
 }
 
 impl<T: SynthModule + 'static> PortSynthManager<T> {
-    pub fn new(port: u8, synth: T, evproc: Option<EventProcessorConfig>) -> Self {
+    pub fn new(
+        port: u8,
+        synth: T,
+        evproc: Option<EventProcessorConfig>,
+        audio_params: &AudioParameters,
+    ) -> Self {
         Self {
             synth,
-            event_snd: Arc::new(PortEventSender::new(port, evproc)),
+            event_snd: Arc::new(PortEventSender::new(port, evproc, audio_params)),
         }
     }
 
@@ -98,6 +104,7 @@ impl<T: SynthModule + 'static> PortSynthManager<T> {
     }
 
     pub fn reset(&mut self) {
+        self.event_snd.reset();
         self.synth.reset();
     }
 

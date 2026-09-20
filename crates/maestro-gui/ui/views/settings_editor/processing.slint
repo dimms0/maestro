@@ -557,6 +557,21 @@ export component EventProcessorSection inherits SectionCard {
             }
 
             Setting {
+                text: "Note Jitter";
+                subtext: "Breaks up the buzz that heavily chopped MIDIs leave on top of the music. Every note start is nudged off the grid by a few milliseconds at random, so the repeats stop stacking up into a tone at the chop rate.";
+
+                MaestroSwitch {
+                    enabled: root.on;
+                    checked: SettingsEditorState.current_config.event_processor.note_jitter;
+                    toggled(v) => {
+                        root.edit = SettingsEditorState.current_config.event_processor;
+                        root.edit.note_jitter = v;
+                        SettingsEditorState.update_event_processor(root.edit);
+                    }
+                }
+            }
+
+            Setting {
                 text: "Ignore Program Change messages";
                 subtext: "This will force all channel (excluding channel 10 which is always percussion) to use the default patch (acoustic piano).";
 
