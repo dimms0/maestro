@@ -84,10 +84,16 @@ const SYNC_WINDOW_NS: u64 = 500_000_000;
 /// Anything sudden — the first block, a render stall, a paused stream — is a
 /// desync and snaps the timeline back to the renderer in one go.
 ///
-/// Everything the render thread keeps for itself sits below `cap`. It is the
-/// only writer, so nothing here needs a read-modify-write, and no state is
+/// A correction can move the timeline backwards, and two events that cross one
+/// would come out in the wrong order: the synths place events by the position
+/// they carry, so a note off landing before its note on leaves the note playing
+/// forever. `handed_out` latches the stamps to the furthest one taken, which
+/// costs a stamp one read-modify-write and holds the timeline still for as long
+/// as the correction reaches back, instead of letting it rewind.
+///
+/// Everything else the render thread keeps for itself, and no state is
 /// published alongside these values, so nothing here needs an ordering beyond
-/// `Relaxed`: stamping an event is left with two loads.
+/// `Relaxed`.
 pub(crate) struct RealtimeClock {
     /// Frame offset between wall time and the playback timeline, and the only
     /// part of the mapping that ever moves.
@@ -107,6 +113,10 @@ pub(crate) struct RealtimeClock {
     max_lookahead: AtomicU64,
 
     unstamped: AtomicU32,
+
+    /// The furthest position any event has been stamped at. No stamp may ever
+    /// land before it, whatever the corrections do to the timeline.
+    handed_out: AtomicU64,
 
     /// Closest and furthest the timeline came to the renderer in the current
     /// window, and the frame the window runs out at.
@@ -136,6 +146,7 @@ impl RealtimeClock {
             committed: AtomicU64::new(0),
             max_lookahead: AtomicU64::new(min_lookahead),
             unstamped: AtomicU32::new(0),
+            handed_out: AtomicU64::new(0),
             window_min: AtomicI64::new(i64::MAX),
             window_max: AtomicI64::new(i64::MIN),
             window_end: AtomicU64::new(sync_window),
@@ -230,6 +241,10 @@ impl RealtimeClock {
     pub fn get_position(&self) -> u64 {
         let timeline = self.timeline(self.elapsed_frames());
         let frames = (timeline.max(0) as u64).min(self.cap.load(Ordering::Relaxed));
+
+        // Events keep the order they were sent in, even across a correction
+        // that rewound the timeline under them.
+        let frames = frames.max(self.handed_out.fetch_max(frames, Ordering::Relaxed));
 
         frames * self.channels
     }
@@ -383,6 +398,27 @@ mod tests {
         assert!(
             lookahead <= RATE * CHANNELS / 4,
             "stalled renderer stamped events {lookahead} samples ahead"
+        );
+    }
+
+    #[test]
+    fn a_stamp_never_lands_before_one_already_taken() {
+        let clock = clock();
+        run_blocks(&clock, 8, 4);
+
+        // A note on stamped while the renderer is stalled sits at the lookahead
+        // limit. The block that follows snaps the timeline back onto the
+        // renderer, and the note off that comes right after it may not land
+        // before its note on, or the note is left hanging forever.
+        sleep(Duration::from_millis(300));
+        let note_on = clock.get_position();
+
+        run_blocks(&clock, 1, 1);
+        let note_off = clock.get_position();
+
+        assert!(
+            note_off >= note_on,
+            "a stamp taken at {note_on} was followed by one at {note_off}"
         );
     }
 

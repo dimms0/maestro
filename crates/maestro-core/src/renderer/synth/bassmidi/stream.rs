@@ -69,6 +69,31 @@ fn write_event(buf: &mut Vec<u8>, event: MaestroEvent) {
     }
 }
 
+fn write_block(
+    raw: &mut Vec<u8>,
+    events: impl Iterator<Item = MaestroTimedEvent>,
+    base: u32,
+    channels: u32,
+    pending: u32,
+) -> u32 {
+    let mut prev = 0;
+    let mut floor = pending;
+
+    for event in events {
+        let delta = (event.pos.wrapping_sub(base) as i32).max(0) as u32 / channels;
+        let delta = delta.max(floor);
+
+        write_delta(raw, delta - prev);
+        write_event(raw, event.event);
+        prev = delta;
+        floor = delta;
+
+        sysex::release(&event.event);
+    }
+
+    floor
+}
+
 pub(crate) struct BASSMIDIStream {
     lib: Arc<BASSMIDILib>,
     stream: u32,
@@ -77,6 +102,7 @@ pub(crate) struct BASSMIDIStream {
     event_buf: EventBuffer,
     raw: Vec<u8>,
     last_pos: u32,
+    pending: u32,
 }
 
 impl BASSMIDIStream {
@@ -160,6 +186,7 @@ impl BASSMIDIStream {
             stream,
             channels: u16::from(audio_params.channels) as u32,
             last_pos: 0,
+            pending: 0,
             event_buf: EventBuffer::new(),
             raw: Vec::new(),
         })
@@ -205,6 +232,7 @@ impl SynthModule for BASSMIDIStream {
 
     fn reset(&mut self) {
         self.event_buf.clear();
+        self.pending = 0;
         unsafe {
             (self.lib.bassmidi.BASS_MIDI_StreamEvents)(
                 self.stream,
@@ -225,16 +253,20 @@ impl SynthModule for BASSMIDIStream {
         self.event_buf.sort(base);
         self.raw.clear();
 
-        let mut prev = 0;
-        while let Some(event) = self.event_buf.pop_front() {
-            let delta = (event.pos.wrapping_sub(base) as i32).max(0) as u32 / self.channels;
-
-            write_delta(&mut self.raw, delta - prev);
-            write_event(&mut self.raw, event.event);
-            prev = delta;
-
-            sysex::release(&event.event);
-        }
+        let Self {
+            raw,
+            event_buf,
+            channels,
+            pending,
+            ..
+        } = self;
+        let reach = write_block(
+            raw,
+            std::iter::from_fn(|| event_buf.pop_front()),
+            base,
+            *channels,
+            *pending,
+        );
 
         unsafe {
             if !self.raw.is_empty() {
@@ -253,6 +285,7 @@ impl SynthModule for BASSMIDIStream {
             );
         }
 
+        self.pending = reach.saturating_sub(buffer.len() as u32 / self.channels);
         self.last_pos = base.wrapping_add(buffer.len() as u32);
     }
 

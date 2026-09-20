@@ -37,6 +37,7 @@ pub(crate) struct FluidSynthSynth {
 
     rendered: u64,
     last_pos: u32,
+    scheduled: u64,
 }
 
 // SAFETY: the settings/synth handles are owned exclusively by this instance
@@ -101,6 +102,7 @@ impl FluidSynthSynth {
             stereo_scratch: Vec::new(),
             rendered: 0,
             last_pos: 0,
+            scheduled: 0,
         })
     }
 
@@ -211,6 +213,7 @@ impl SynthModule for FluidSynthSynth {
     }
 
     fn reset(&mut self) {
+        self.scheduled = self.rendered;
         unsafe {
             (self.lib.fns.fluid_sequencer_remove_events)(self.seq, -1, -1, -1);
             (self.lib.fns.fluid_synth_system_reset)(self.synth);
@@ -220,7 +223,8 @@ impl SynthModule for FluidSynthSynth {
     fn process_event(&mut self, event: MaestroTimedEvent) {
         let channels = u16::from(self.channels) as u64;
         let delta = (event.pos.wrapping_sub(self.last_pos) as i32).max(0) as u64 / channels;
-        let tick = self.rendered.wrapping_add(delta) as u32;
+        self.scheduled = (self.rendered + delta).max(self.scheduled);
+        let tick = self.scheduled as u32;
         let fns = &self.lib.fns;
         let evt = self.seq_event;
 
