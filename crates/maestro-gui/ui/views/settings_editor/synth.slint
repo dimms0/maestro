@@ -13,6 +13,7 @@ import {
     LabelText,
     MaestroSwitch,
     Setting,
+    SectionCard,
 } from "../../widgets.slint";
 import { SettingsEditorState } from "../../globals.slint";
 import { SynthKind } from "../../enums.slint";
@@ -45,330 +46,320 @@ component FluidSynthPanel inherits SynthPanel {
 
     edit: SettingsEditorState.current_config.synth;
 
-    TitleText {
-        text: "General";
-    }
+    SectionCard {
+        title: "General";
 
-    Setting {
-        text: "Polyphony";
-        subtext: "The polyphony defines how many voices can be played in parallel. A note event produces one or more voices. Its good to set this to a value which the system can handle and will thus limit FluidSynth's CPU usage. When FluidSynth runs out of voices it will begin terminating lower priority voices for new note events.";
+        Setting {
+            text: "Polyphony";
+            subtext: "The polyphony defines how many voices can be played in parallel. A note event produces one or more voices. Its good to set this to a value which the system can handle and will thus limit FluidSynth's CPU usage. When FluidSynth runs out of voices it will begin terminating lower priority voices for new note events.";
 
-        MaestroSpinBox {
-            width: 150px;
-            minimum: 1;
-            maximum: 65535;
-            value: SettingsEditorState.current_config.synth.fluid_voice_limit;
-            edited(v) => {
-                root.edit = SettingsEditorState.current_config.synth;
-                root.edit.fluid_voice_limit = v;
-                root.commit();
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 1;
+                maximum: 65535;
+                value: SettingsEditorState.current_config.synth.fluid_voice_limit;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.fluid_voice_limit = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Interpolation Method";
+            subtext: "Sets the default interpolation method, used to resample the SoundFont's samples to the notes being played. Higher orders sound cleaner (less aliasing) at the cost of CPU time.";
+
+            MaestroComboBox {
+                width: 150px;
+                model: ["None", "Linear", "Sinc 4th Order", "Sinc 7th Order"];
+                current_index: SettingsEditorState.current_config.synth.fluid_interpolation;
+                selected(v, i) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.fluid_interpolation = i;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "MIDI Bank Select";
+            subtext: "How bank select messages (CC0 / CC32) are interpreted. \"GS\" uses CC0 as the bank, \"XG\" uses CC32 and reserves CC0 values 120, 126 and 127 for drum kits, \"GM\" ignores bank selects entirely, and \"MMA\" combines both controllers into one bank number (CC0 * 128 + CC32).";
+
+            MaestroComboBox {
+                width: 150px;
+                model: ["GS", "GM", "GM2", "XG", "MMA"];
+                current_index: SettingsEditorState.current_config.synth.fluid_midi_bank_select;
+                selected(v, i) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.fluid_midi_bank_select = i;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Portamento Time";
+            subtext: "How the portamento time controller (CC5) is converted to a duration. \"Automatic\" follows whichever MIDI standard the file identifies itself as, \"Linear\" maps the controller straight onto milliseconds, and \"XG / GS\" uses the curve those standards define.";
+
+            MaestroComboBox {
+                width: 150px;
+                model: ["Automatic", "Linear", "XG / GS"];
+                current_index: SettingsEditorState.current_config.synth.fluid_portamento_time;
+                selected(v, i) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.fluid_portamento_time = i;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Minimum Note Length (ms)";
+            subtext: "Sets the minimum note duration in milliseconds. This ensures that really short duration note events, such as percussion notes, have a better chance of sounding as intended. Set to 0 to disable this feature.";
+
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 0;
+                maximum: 65535;
+                value: SettingsEditorState.current_config.synth.fluid_min_note_length;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.fluid_min_note_length = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Device ID";
+            subtext: "Device identifier used for SYSEX commands, such as MIDI Tuning Standard commands. Fluidsynth will only process those SYSEX commands destined for this ID (except when this setting is set to 127, which causes fluidsynth to process all SYSEX commands, regardless of the device ID). Broadcast commands (with ID=127) will always be processed. It has been observed that setting this ID to 16 provides best compatibility when playing MIDI files which contain SYSEX commands that you want to have honored.";
+
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 0;
+                maximum: 127;
+                value: SettingsEditorState.current_config.synth.fluid_system_id;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.fluid_system_id = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Repeated Note Handling";
+            subtext: "What happens when a note-on arrives for a key that is already sounding on the same channel: the notes can be left to overlap, or the older voice can be released (letting its volume envelope fade out) or cut off at once.";
+
+            MaestroComboBox {
+                width: 150px;
+                model: ["Overlap", "Release Previous", "Cut Previous"];
+                current_index: SettingsEditorState.current_config.synth.fluid_note_cut;
+                selected(v, i) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.fluid_note_cut = i;
+                    root.commit();
+                }
             }
         }
     }
 
-    Setting {
-        text: "Interpolation Method";
-        subtext: "Sets the default interpolation method, used to resample the SoundFont's samples to the notes being played. Higher orders sound cleaner (less aliasing) at the cost of CPU time.";
+    SectionCard {
+        title: "Chorus";
 
-        MaestroComboBox {
-            width: 150px;
-            model: ["None", "Linear", "Sinc 4th Order", "Sinc 7th Order"];
-            current_index: SettingsEditorState.current_config.synth.fluid_interpolation;
-            selected(v, i) => {
-                root.edit = SettingsEditorState.current_config.synth;
-                root.edit.fluid_interpolation = i;
-                root.commit();
+        Setting {
+            text: "Enable Chorus";
+            subtext: "When enabled the chorus effects module is activated. Otherwise, no chorus will be added to the output signal. The amount of signal sent to the chorus module depends on the \"chorus send\" generator defined in the SoundFont.";
+
+            MaestroSwitch {
+                checked: SettingsEditorState.current_config.synth.fluid_chorus;
+                toggled(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.fluid_chorus = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Depth";
+            subtext: "Specifies the modulation depth of the chorus.";
+
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 0;
+                maximum: 256;
+                step: 0.25;
+                decimals: 2;
+                enabled: SettingsEditorState.current_config.synth.fluid_chorus;
+                value: SettingsEditorState.current_config.synth.fluid_chorus_depth;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.fluid_chorus_depth = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Level";
+            subtext: "Specifies the output amplitude of the chorus signal.";
+
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 0;
+                maximum: 10;
+                step: 0.1;
+                decimals: 2;
+                enabled: SettingsEditorState.current_config.synth.fluid_chorus;
+                value: SettingsEditorState.current_config.synth.fluid_chorus_level;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.fluid_chorus_level = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Speed";
+            subtext: "Sets the modulation speed in Hz.";
+
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 0.1;
+                maximum: 5;
+                step: 0.1;
+                decimals: 2;
+                enabled: SettingsEditorState.current_config.synth.fluid_chorus;
+                value: SettingsEditorState.current_config.synth.fluid_chorus_speed;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.fluid_chorus_speed = v;
+                    root.commit();
+                }
             }
         }
     }
 
-    Setting {
-        text: "MIDI Bank Select";
-        subtext: "How bank select messages (CC0 / CC32) are interpreted. \"GS\" uses CC0 as the bank, \"XG\" uses CC32 and reserves CC0 values 120, 126 and 127 for drum kits, \"GM\" ignores bank selects entirely, and \"MMA\" combines both controllers into one bank number (CC0 * 128 + CC32).";
+    SectionCard {
+        title: "Reverb";
 
-        MaestroComboBox {
-            width: 150px;
-            model: ["GS", "GM", "GM2", "XG", "MMA"];
-            current_index: SettingsEditorState.current_config.synth.fluid_midi_bank_select;
-            selected(v, i) => {
-                root.edit = SettingsEditorState.current_config.synth;
-                root.edit.fluid_midi_bank_select = i;
-                root.commit();
+        Setting {
+            text: "Enable Reverb";
+            subtext: "When enabled the reverb effects module is activated. Otherwise, no reverb will be added to the output signal. The amount of signal sent to the reverb module depends on the \"reverb send\" generator defined in the SoundFont.";
+
+            MaestroSwitch {
+                checked: SettingsEditorState.current_config.synth.fluid_reverb;
+                toggled(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.fluid_reverb = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Reverb Engine";
+            subtext: "The algorithm that produces the reverb. More information at https://www.fluidsynth.org/wiki/reverbators/";
+
+            MaestroComboBox {
+                width: 150px;
+                model: ["Freeverb", "FDN", "Lexverb", "Dattorro", "Signalsmith"];
+                enabled: SettingsEditorState.current_config.synth.fluid_reverb;
+                current_index: SettingsEditorState.current_config.synth.fluid_reverb_engine;
+                selected(v, i) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.fluid_reverb_engine = i;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Room Size";
+            subtext: "Sets the room size (i.e. decay duration of wet) reverb.";
+
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 0;
+                maximum: 1;
+                step: 0.05;
+                decimals: 2;
+                enabled: SettingsEditorState.current_config.synth.fluid_reverb;
+                value: SettingsEditorState.current_config.synth.fluid_reverb_roomsize;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.fluid_reverb_roomsize = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Damping";
+            subtext: "Sets how much the high frequencies are damped as the reverb decays. Higher values make the tail darker and shorter.";
+
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 0;
+                maximum: 1;
+                step: 0.05;
+                decimals: 2;
+                enabled: SettingsEditorState.current_config.synth.fluid_reverb;
+                value: SettingsEditorState.current_config.synth.fluid_reverb_damp;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.fluid_reverb_damp = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Width";
+            subtext: "Sets the stereo spread of the reverb signal, i.e. how much the wet-left signal contributes to the wet-right signal and vice versa. A value of 0 indicates no stereo-spread causing the reverb to sound like a monophonic signal. A value of 1 indicates maximum spread between the uncorrelated left and right channels. This subrange [0;1] is recommended for general usage. Values bigger than 1 increase (or exaggerate) the perception of the uncorrelated left and right signals.";
+
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 0;
+                maximum: 100;
+                step: 1;
+                decimals: 2;
+                enabled: SettingsEditorState.current_config.synth.fluid_reverb;
+                value: SettingsEditorState.current_config.synth.fluid_reverb_width;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.fluid_reverb_width = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Level";
+            subtext: "Specifies the output amplitude of the reverb signal.";
+
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 0;
+                maximum: 1;
+                step: 0.05;
+                decimals: 2;
+                enabled: SettingsEditorState.current_config.synth.fluid_reverb;
+                value: SettingsEditorState.current_config.synth.fluid_reverb_level;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.fluid_reverb_level = v;
+                    root.commit();
+                }
             }
         }
     }
 
-    Setting {
-        text: "Portamento Time";
-        subtext: "How the portamento time controller (CC5) is converted to a duration. \"Automatic\" follows whichever MIDI standard the file identifies itself as, \"Linear\" maps the controller straight onto milliseconds, and \"XG / GS\" uses the curve those standards define.";
-
-        MaestroComboBox {
-            width: 150px;
-            model: ["Automatic", "Linear", "XG / GS"];
-            current_index: SettingsEditorState.current_config.synth.fluid_portamento_time;
-            selected(v, i) => {
-                root.edit = SettingsEditorState.current_config.synth;
-                root.edit.fluid_portamento_time = i;
-                root.commit();
-            }
-        }
-    }
-
-    Setting {
-        text: "Minimum Note Length (ms)";
-        subtext: "Sets the minimum note duration in milliseconds. This ensures that really short duration note events, such as percussion notes, have a better chance of sounding as intended. Set to 0 to disable this feature.";
-
-        MaestroSpinBox {
-            width: 150px;
-            minimum: 0;
-            maximum: 65535;
-            value: SettingsEditorState.current_config.synth.fluid_min_note_length;
-            edited(v) => {
-                root.edit = SettingsEditorState.current_config.synth;
-                root.edit.fluid_min_note_length = v;
-                root.commit();
-            }
-        }
-    }
-
-    Setting {
-        text: "Device ID";
-        subtext: "Device identifier used for SYSEX commands, such as MIDI Tuning Standard commands. Fluidsynth will only process those SYSEX commands destined for this ID (except when this setting is set to 127, which causes fluidsynth to process all SYSEX commands, regardless of the device ID). Broadcast commands (with ID=127) will always be processed. It has been observed that setting this ID to 16 provides best compatibility when playing MIDI files which contain SYSEX commands that you want to have honored.";
-
-        MaestroSpinBox {
-            width: 150px;
-            minimum: 0;
-            maximum: 127;
-            value: SettingsEditorState.current_config.synth.fluid_system_id;
-            edited(v) => {
-                root.edit = SettingsEditorState.current_config.synth;
-                root.edit.fluid_system_id = v;
-                root.commit();
-            }
-        }
-    }
-
-    Setting {
-        text: "Repeated Note Handling";
-        subtext: "What happens when a note-on arrives for a key that is already sounding on the same channel: the notes can be left to overlap, or the older voice can be released (letting its volume envelope fade out) or cut off at once.";
-
-        MaestroComboBox {
-            width: 150px;
-            model: ["Overlap", "Release Previous", "Cut Previous"];
-            current_index: SettingsEditorState.current_config.synth.fluid_note_cut;
-            selected(v, i) => {
-                root.edit = SettingsEditorState.current_config.synth;
-                root.edit.fluid_note_cut = i;
-                root.commit();
-            }
-        }
-    }
-
-    Rectangle { }
-
-    TitleText {
-        text: "Chorus";
-    }
-
-    Setting {
-        text: "Enable Chorus";
-        subtext: "When enabled the chorus effects module is activated. Otherwise, no chorus will be added to the output signal. The amount of signal sent to the chorus module depends on the \"chorus send\" generator defined in the SoundFont.";
-
-        MaestroSwitch {
-            checked: SettingsEditorState.current_config.synth.fluid_chorus;
-            toggled(v) => {
-                root.edit = SettingsEditorState.current_config.synth;
-                root.edit.fluid_chorus = v;
-                root.commit();
-            }
-        }
-    }
-
-    Setting {
-        text: "Depth";
-        subtext: "Specifies the modulation depth of the chorus.";
-
-        MaestroSpinBox {
-            width: 150px;
-            minimum: 0;
-            maximum: 256;
-            step: 0.25;
-            decimals: 2;
-            enabled: SettingsEditorState.current_config.synth.fluid_chorus;
-            value: SettingsEditorState.current_config.synth.fluid_chorus_depth;
-            edited(v) => {
-                root.edit = SettingsEditorState.current_config.synth;
-                root.edit.fluid_chorus_depth = v;
-                root.commit();
-            }
-        }
-    }
-
-    Setting {
-        text: "Level";
-        subtext: "Specifies the output amplitude of the chorus signal.";
-
-        MaestroSpinBox {
-            width: 150px;
-            minimum: 0;
-            maximum: 10;
-            step: 0.1;
-            decimals: 2;
-            enabled: SettingsEditorState.current_config.synth.fluid_chorus;
-            value: SettingsEditorState.current_config.synth.fluid_chorus_level;
-            edited(v) => {
-                root.edit = SettingsEditorState.current_config.synth;
-                root.edit.fluid_chorus_level = v;
-                root.commit();
-            }
-        }
-    }
-
-    Setting {
-        text: "Speed";
-        subtext: "Sets the modulation speed in Hz.";
-
-        MaestroSpinBox {
-            width: 150px;
-            minimum: 0.1;
-            maximum: 5;
-            step: 0.1;
-            decimals: 2;
-            enabled: SettingsEditorState.current_config.synth.fluid_chorus;
-            value: SettingsEditorState.current_config.synth.fluid_chorus_speed;
-            edited(v) => {
-                root.edit = SettingsEditorState.current_config.synth;
-                root.edit.fluid_chorus_speed = v;
-                root.commit();
-            }
-        }
-    }
-
-    Rectangle { }
-
-    TitleText {
-        text: "Reverb";
-    }
-
-    Setting {
-        text: "Enable Reverb";
-        subtext: "When enabled the reverb effects module is activated. Otherwise, no reverb will be added to the output signal. The amount of signal sent to the reverb module depends on the \"reverb send\" generator defined in the SoundFont.";
-
-        MaestroSwitch {
-            checked: SettingsEditorState.current_config.synth.fluid_reverb;
-            toggled(v) => {
-                root.edit = SettingsEditorState.current_config.synth;
-                root.edit.fluid_reverb = v;
-                root.commit();
-            }
-        }
-    }
-
-    Setting {
-        text: "Reverb Engine";
-        subtext: "The algorithm that produces the reverb. More information at https://www.fluidsynth.org/wiki/reverbators/";
-
-        MaestroComboBox {
-            width: 150px;
-            model: ["Freeverb", "FDN", "Lexverb", "Dattorro", "Signalsmith"];
-            enabled: SettingsEditorState.current_config.synth.fluid_reverb;
-            current_index: SettingsEditorState.current_config.synth.fluid_reverb_engine;
-            selected(v, i) => {
-                root.edit = SettingsEditorState.current_config.synth;
-                root.edit.fluid_reverb_engine = i;
-                root.commit();
-            }
-        }
-    }
-
-    Setting {
-        text: "Room Size";
-        subtext: "Sets the room size (i.e. decay duration of wet) reverb.";
-
-        MaestroSpinBox {
-            width: 150px;
-            minimum: 0;
-            maximum: 1;
-            step: 0.05;
-            decimals: 2;
-            enabled: SettingsEditorState.current_config.synth.fluid_reverb;
-            value: SettingsEditorState.current_config.synth.fluid_reverb_roomsize;
-            edited(v) => {
-                root.edit = SettingsEditorState.current_config.synth;
-                root.edit.fluid_reverb_roomsize = v;
-                root.commit();
-            }
-        }
-    }
-
-    Setting {
-        text: "Damping";
-        subtext: "Sets how much the high frequencies are damped as the reverb decays. Higher values make the tail darker and shorter.";
-
-        MaestroSpinBox {
-            width: 150px;
-            minimum: 0;
-            maximum: 1;
-            step: 0.05;
-            decimals: 2;
-            enabled: SettingsEditorState.current_config.synth.fluid_reverb;
-            value: SettingsEditorState.current_config.synth.fluid_reverb_damp;
-            edited(v) => {
-                root.edit = SettingsEditorState.current_config.synth;
-                root.edit.fluid_reverb_damp = v;
-                root.commit();
-            }
-        }
-    }
-
-    Setting {
-        text: "Width";
-        subtext: "Sets the stereo spread of the reverb signal, i.e. how much the wet-left signal contributes to the wet-right signal and vice versa. A value of 0 indicates no stereo-spread causing the reverb to sound like a monophonic signal. A value of 1 indicates maximum spread between the uncorrelated left and right channels. This subrange [0;1] is recommended for general usage. Values bigger than 1 increase (or exaggerate) the perception of the uncorrelated left and right signals.";
-
-        MaestroSpinBox {
-            width: 150px;
-            minimum: 0;
-            maximum: 100;
-            step: 1;
-            decimals: 2;
-            enabled: SettingsEditorState.current_config.synth.fluid_reverb;
-            value: SettingsEditorState.current_config.synth.fluid_reverb_width;
-            edited(v) => {
-                root.edit = SettingsEditorState.current_config.synth;
-                root.edit.fluid_reverb_width = v;
-                root.commit();
-            }
-        }
-    }
-
-    Setting {
-        text: "Level";
-        subtext: "Specifies the output amplitude of the reverb signal.";
-
-        MaestroSpinBox {
-            width: 150px;
-            minimum: 0;
-            maximum: 1;
-            step: 0.05;
-            decimals: 2;
-            enabled: SettingsEditorState.current_config.synth.fluid_reverb;
-            value: SettingsEditorState.current_config.synth.fluid_reverb_level;
-            edited(v) => {
-                root.edit = SettingsEditorState.current_config.synth;
-                root.edit.fluid_reverb_level = v;
-                root.commit();
-            }
-        }
-    }
-
-    if (root.show_advanced || root.multicore_set): VerticalLayout {
-        spacing: 12px;
-
-        Rectangle { }
-
-        TitleText {
-            text: "Multi-Threading";
-        }
+    if (root.show_advanced || root.multicore_set): SectionCard {
+        title: "Multi-Threading";
 
         Setting {
             text: "CPU Cores";
@@ -388,14 +379,8 @@ component FluidSynthPanel inherits SynthPanel {
         }
     }
 
-    if (root.show_advanced): VerticalLayout {
-        spacing: 12px;
-
-        Rectangle { }
-
-        TitleText {
-            text: "Voice Killing from Overflow Score";
-        }
+    if (root.show_advanced): SectionCard {
+        title: "Voice Killing from Overflow Score";
 
         Setting {
             text: "According to Age";
@@ -506,126 +491,120 @@ component BassMidiPanel inherits SynthPanel {
 
     edit: SettingsEditorState.current_config.synth;
 
-    TitleText {
-        text: "General";
-    }
+    SectionCard {
+        title: "General";
 
-    Setting {
-        text: "Active Voice Limit";
-        subtext: "This is not necessarily the same thing as the maximum number of notes, due to presets possibly containing multiple layered samples, ie. multiple samples may be played for a single note. When the voice limit is hit, the voice with the lowest volume level will be killed.";
+        Setting {
+            text: "Active Voice Limit";
+            subtext: "This is not necessarily the same thing as the maximum number of notes, due to presets possibly containing multiple layered samples, ie. multiple samples may be played for a single note. When the voice limit is hit, the voice with the lowest volume level will be killed.";
 
-        MaestroSpinBox {
-            width: 150px;
-            minimum: 1;
-            maximum: 2147483648;
-            value: SettingsEditorState.current_config.synth.bass_voice_limit;
-            edited(v) => {
-                root.edit = SettingsEditorState.current_config.synth;
-                root.edit.bass_voice_limit = v;
-                root.commit();
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 1;
+                maximum: 2147483648;
+                value: SettingsEditorState.current_config.synth.bass_voice_limit;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.bass_voice_limit = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Interpolation Method";
+            subtext: "The linear interpolation option uses less CPU, but the sinc interpolation gives better sound quality (less aliasing), with the quality and CPU usage increasing with the number of points.";
+
+            MaestroComboBox {
+                width: 150px;
+                model: ["None", "Linear", "8 Point Sinc", "16 Point Sinc"];
+                current_index: SettingsEditorState.current_config.synth.bass_interpolation;
+                selected(v, i) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.bass_interpolation = i;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Render Time Limit (%)";
+            subtext: "How timely the stream is able to render data. When the limit is exceeded, BASSMIDI will begin killing voices, starting with the most quiet. This does not affect MIDI event decoding.";
+
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 0;
+                maximum: 100;
+                value: SettingsEditorState.current_config.synth.bass_render_time_limit;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.bass_render_time_limit = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Exclusive Notes";
+            subtext: "When enabled, this attribute effectively gives each key its own exclusive class/group. Any keys that are already assigned to an exclusive class/group by the active soundfont are unaffected.";
+
+            MaestroComboBox {
+                width: 150px;
+                model: ["Disabled", "Only Drums", "All Notes"];
+                current_index: SettingsEditorState.current_config.synth.bass_exclusive_keys;
+                selected(v, i) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.bass_exclusive_keys = i;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Disable Audio Effects";
+            subtext: "Disable reverb and chorus processing, saving some CPU time.";
+
+            MaestroSwitch {
+                checked: SettingsEditorState.current_config.synth.bass_disable_effects;
+                toggled(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.bass_disable_effects = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Killed Note Fading";
+            subtext: "Fade out voices when killing them.";
+
+            MaestroSwitch {
+                checked: SettingsEditorState.current_config.synth.bass_fade_out_killing;
+                toggled(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.bass_fade_out_killing = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Don't Follow Overlaps on Note-Off Events";
+            subtext: "Only release the oldest instance upon a note off event when there are overlapping instances of the note. Otherwise all instances are released.";
+
+            MaestroSwitch {
+                checked: SettingsEditorState.current_config.synth.bass_note_off1;
+                toggled(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.bass_note_off1 = v;
+                    root.commit();
+                }
             }
         }
     }
 
-    Setting {
-        text: "Interpolation Method";
-        subtext: "The linear interpolation option uses less CPU, but the sinc interpolation gives better sound quality (less aliasing), with the quality and CPU usage increasing with the number of points.";
-
-        MaestroComboBox {
-            width: 150px;
-            model: ["None", "Linear", "8 Point Sinc", "16 Point Sinc"];
-            current_index: SettingsEditorState.current_config.synth.bass_interpolation;
-            selected(v, i) => {
-                root.edit = SettingsEditorState.current_config.synth;
-                root.edit.bass_interpolation = i;
-                root.commit();
-            }
-        }
-    }
-
-    Setting {
-        text: "Render Time Limit (%)";
-        subtext: "How timely the stream is able to render data. When the limit is exceeded, BASSMIDI will begin killing voices, starting with the most quiet. This does not affect MIDI event decoding.";
-
-        MaestroSpinBox {
-            width: 150px;
-            minimum: 0;
-            maximum: 100;
-            value: SettingsEditorState.current_config.synth.bass_render_time_limit;
-            edited(v) => {
-                root.edit = SettingsEditorState.current_config.synth;
-                root.edit.bass_render_time_limit = v;
-                root.commit();
-            }
-        }
-    }
-
-    Setting {
-        text: "Exclusive Notes";
-        subtext: "When enabled, this attribute effectively gives each key its own exclusive class/group. Any keys that are already assigned to an exclusive class/group by the active soundfont are unaffected.";
-
-        MaestroComboBox {
-            width: 150px;
-            model: ["Disabled", "Only Drums", "All Notes"];
-            current_index: SettingsEditorState.current_config.synth.bass_exclusive_keys;
-            selected(v, i) => {
-                root.edit = SettingsEditorState.current_config.synth;
-                root.edit.bass_exclusive_keys = i;
-                root.commit();
-            }
-        }
-    }
-
-    Setting {
-        text: "Disable Audio Effects";
-        subtext: "Disable reverb and chorus processing, saving some CPU time.";
-
-        MaestroSwitch {
-            checked: SettingsEditorState.current_config.synth.bass_disable_effects;
-            toggled(v) => {
-                root.edit = SettingsEditorState.current_config.synth;
-                root.edit.bass_disable_effects = v;
-                root.commit();
-            }
-        }
-    }
-
-    Setting {
-        text: "Killed Note Fading";
-        subtext: "Fade out voices when killing them.";
-
-        MaestroSwitch {
-            checked: SettingsEditorState.current_config.synth.bass_fade_out_killing;
-            toggled(v) => {
-                root.edit = SettingsEditorState.current_config.synth;
-                root.edit.bass_fade_out_killing = v;
-                root.commit();
-            }
-        }
-    }
-
-    Setting {
-        text: "Don't Follow Overlaps on Note-Off Events";
-        subtext: "Only release the oldest instance upon a note off event when there are overlapping instances of the note. Otherwise all instances are released.";
-
-        MaestroSwitch {
-            checked: SettingsEditorState.current_config.synth.bass_note_off1;
-            toggled(v) => {
-                root.edit = SettingsEditorState.current_config.synth;
-                root.edit.bass_note_off1 = v;
-                root.commit();
-            }
-        }
-    }
-
-    if (root.show_advanced || SettingsEditorState.current_config.synth.bass_multithreading): VerticalLayout {
-        spacing: 12px;
-
-        Rectangle { }
-
-        TitleText {
-            text: "Multithreading";
-        }
+    if (root.show_advanced || SettingsEditorState.current_config.synth.bass_multithreading): SectionCard {
+        title: "Multi-Threading";
 
         Setting {
             text: "Enable Multi-Threading";
@@ -685,14 +664,8 @@ component BassMidiPanel inherits SynthPanel {
         }
     }
 
-    if (root.show_advanced || root.sf_options_set): VerticalLayout {
-        spacing: 12px;
-
-        Rectangle { }
-
-        TitleText {
-            text: "SoundFont Options";
-        }
+    if (root.show_advanced || root.sf_options_set): SectionCard {
+        title: "SoundFont Options";
 
         Setting {
             text: "Use a linear attack phase in SF2 modulation (pitch/filter) envelopes";

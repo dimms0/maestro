@@ -12,6 +12,7 @@ import {
 import { RendererState } from "../globals.slint";
 import { RenderQueueTable } from "converter/queue.slint";
 import { RenderProgressModal, AddMidiModal } from "converter/modals.slint";
+import { ScrollView } from "std-widgets.slint";
 
 // Banner shown while the converter config has in-memory edits: a render loads
 // its configuration from disk, so unsaved edits would silently not apply.
@@ -57,45 +58,41 @@ export component RendererView inherits Rectangle {
         spacing: 20px;
 
         HorizontalLayout {
-            alignment: space-between;
+            spacing: 12px;
+            alignment: center;
 
-            HorizontalLayout {
-                spacing: 12px;
-
-                TitleText {
-                    text: "MIDI to Audio Converter";
-                    font-size: 24px;
-                    font-weight: 800;
-                }
-
-                HorizontalSeparator { }
-
-                LabelText {
-                    text: "Convert MIDI file sequences to high-quality audio files";
-                    font-size: 14px;
-                    overflow: TextOverflow.elide;
-                }
+            TitleText {
+                text: "MIDI to Audio Converter";
+                font-size: 24px;
+                font-weight: 800;
             }
 
-            HorizontalLayout {
-                spacing: 12px;
-                alignment: center;
+            HorizontalSeparator { }
 
-                MaestroButton {
-                    icon: Icons.settings;
-                    text: "Converter Settings";
-                    clicked => { RendererState.open_converter_settings(); }
-                }
+            LabelText {
+                text: "Convert MIDI file sequences to high-quality audio files";
+                font-size: 14px;
+                overflow: TextOverflow.elide;
             }
         }
 
         MaestroCard {
             VerticalLayout {
                 padding: 16px;
-                spacing: 16px;
+                spacing: 12px;
 
-                TitleText {
-                    text: "Conversion Queue (" + RendererState.render_queue.length + " items)";
+                HorizontalLayout {
+                    alignment: space-between;
+
+                    TitleText {
+                        text: "Conversion Queue (" + RendererState.render_queue.length + " items)";
+                    }
+
+                    MaestroButton {
+                        icon: Icons.settings;
+                        text: "Converter Settings";
+                        clicked => { RendererState.open_converter_settings(); }
+                    }
                 }
 
                 RenderQueueTable { }
