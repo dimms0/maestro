@@ -70,9 +70,9 @@ pub enum FluidSynthBankSelect {
     MMA,
 }
 
-impl Into<&str> for FluidSynthBankSelect {
-    fn into(self) -> &'static str {
-        match self {
+impl From<FluidSynthBankSelect> for &str {
+    fn from(val: FluidSynthBankSelect) -> Self {
+        match val {
             FluidSynthBankSelect::GS => "gs",
             FluidSynthBankSelect::GM => "gm",
             FluidSynthBankSelect::GM2 => "gm2",
@@ -90,9 +90,9 @@ pub enum FluidSynthPortamentoTime {
     XgGs,
 }
 
-impl Into<&str> for FluidSynthPortamentoTime {
-    fn into(self) -> &'static str {
-        match self {
+impl From<FluidSynthPortamentoTime> for &str {
+    fn from(val: FluidSynthPortamentoTime) -> Self {
+        match val {
             FluidSynthPortamentoTime::Auto => "auto",
             FluidSynthPortamentoTime::Linear => "linear",
             FluidSynthPortamentoTime::XgGs => "XgGs",
@@ -110,9 +110,9 @@ pub enum FluidSynthReverbEngine {
     Signalsmith,
 }
 
-impl Into<&str> for FluidSynthReverbEngine {
-    fn into(self) -> &'static str {
-        match self {
+impl From<FluidSynthReverbEngine> for &str {
+    fn from(val: FluidSynthReverbEngine) -> Self {
+        match val {
             FluidSynthReverbEngine::Freeverb => "free",
             FluidSynthReverbEngine::FDN => "fdn",
             FluidSynthReverbEngine::Lexverb => "lex",

@@ -18,8 +18,7 @@ use maestro_core::{
     file_renderer::{MaestroFileRenderer, OutputSettings, PortMode},
     renderer::{
         config::{
-            EventProcessorConfig, RendererConfig, SynthConfig,
-            bassmidi::{BASSMIDIConfig, BASSMIDIThreading},
+            EventProcessorConfig, RendererConfig, SynthConfig, bassmidi::BASSMIDIConfig,
             fluidsynth::FluidSynthConfig,
         },
         probe_libraries,

@@ -7,10 +7,7 @@ use std::{
 
 use maestro_core::{
     realtime::{MaestroRealtimeEngine, RealtimeEngineOptions, config::RealtimeConfig},
-    renderer::config::{
-        RendererConfig,
-        bassmidi::{BASSMIDIConfig, BASSMIDIThreading},
-    },
+    renderer::config::{RendererConfig, bassmidi::BASSMIDIConfig},
     soundfont::SoundFontList,
 };
 use midi_parser::{EventRef, MidiFile};
