@@ -31,6 +31,7 @@ export struct SlintRealtimeConfig {
     precision_playback: bool,
     max_nps: int,
     has_max_nps: bool,
+    load_limiter: bool,
     coalesce_ms: int,
     has_coalesce: bool,
 
@@ -207,8 +208,12 @@ export struct SlintComponentStats {
     state_text: string,
     memory: string,
     voices: string,
+    nps: string,
+    eps: string,
     render_load_txt: string,
     render_load: float,
+    // Empty unless the engine has lowered the NPS limit to keep up.
+    limiting: string,
 }
 
 export struct SlintMidiRenderEntry {

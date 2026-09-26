@@ -10,7 +10,8 @@ pub struct RealtimeConfig {
     /// received by the engine.
     pub precision_playback: bool,
 
-    pub max_nps: Option<usize>,
+    /// Limit on notes per second. `None` lets every note through.
+    pub max_nps: Option<NpsLimit>,
 
     /// Collapse bursts of CC/pitch-bend/program-change/aftertouch on the same
     /// channel+parameter down to the latest value, flushed to the renderer
@@ -41,11 +42,30 @@ impl Default for RealtimeConfig {
             device_audio_params: true,
             render_buffer_ms: 20.0,
             precision_playback: true,
-            max_nps: Some(100_000),
+            max_nps: Some(NpsLimit::default()),
             coalesce_window_ms: Some(10),
             audio_host: None,
             output_device: None,
             buffer_size: None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct NpsLimit {
+    pub max: usize,
+
+    /// Lower the limit while the renderer can't keep up with realtime, scaled
+    /// by how far over budget it is, and raise it back up to `max` as the load
+    /// drops.
+    pub load_limiter: bool,
+}
+
+impl Default for NpsLimit {
+    fn default() -> Self {
+        Self {
+            max: 400_000,
+            load_limiter: true,
         }
     }
 }

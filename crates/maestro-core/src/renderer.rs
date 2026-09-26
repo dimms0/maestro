@@ -126,7 +126,6 @@ impl MaestroRenderer {
             config: config.synth,
             clock: RendererClock::new(audio_params),
             rt_clock: None,
-            // ev_proc: evproc.map(|c| EventProcessor::new(port_count, c)),
             post_proc,
             stats: Arc::new(MaestroRenderStatistics::new()),
             audio_dur_div,

@@ -1,7 +1,7 @@
 use std::{
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     thread::{self, JoinHandle},
     time::Duration,
@@ -298,6 +298,7 @@ impl EventCoalescer {
         clock: Arc<RealtimeClock>,
         precision: bool,
         window_ms: u32,
+        event_counter: Arc<AtomicU64>,
     ) -> Self {
         let ports: Arc<[Mutex<PortState>]> = senders
             .iter()
@@ -323,6 +324,7 @@ impl EventCoalescer {
 
                         for (sender, state) in senders.iter().zip(ports.iter()) {
                             state.lock().unwrap().drain_into(&mut pending);
+                            event_counter.fetch_add(pending.len() as u64, Ordering::Relaxed);
                             for event in pending.drain(..) {
                                 sender.send(MaestroTimedEvent { event, pos });
                             }

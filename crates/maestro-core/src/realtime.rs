@@ -3,7 +3,6 @@ use crate::{
     realtime::buffered_renderer::BufferedRenderer,
     renderer::{MaestroRenderer, RealtimeClock},
     soundfont::SoundFontList,
-    statistics::MaestroRenderStatistics,
 };
 use cpal::{Stream, traits::StreamTrait};
 use std::sync::{Arc, Mutex};
@@ -12,7 +11,10 @@ mod buffered_renderer;
 pub mod config;
 mod event_sender;
 pub use event_sender::{RealtimeEventSender, UMP_GROUPS};
+mod load;
 mod options;
+mod statistics;
+pub use statistics::MaestroRealtimeStatistics;
 mod stream;
 pub use options::*;
 pub use stream::{device_caps, output_devices, output_hosts, set_stream_error_handler};
@@ -21,7 +23,7 @@ pub struct MaestroRealtimeEngine {
     renderer: Arc<Mutex<MaestroRenderer>>,
     stream: Stream,
     sender: RealtimeEventSender,
-    stats: Arc<MaestroRenderStatistics>,
+    stats: MaestroRealtimeStatistics,
 }
 
 impl MaestroRealtimeEngine {
@@ -43,7 +45,8 @@ impl MaestroRealtimeEngine {
             options.event_processor.clone(),
             options.post_processor,
         )?;
-        let stats = renderer.get_statistics();
+        let stats = MaestroRealtimeStatistics::new();
+        renderer.set_statistics(stats.renderer_handle());
 
         let clock = Arc::new(RealtimeClock::new(&stream_params));
         renderer.set_realtime_clock(clock.clone());
@@ -53,6 +56,7 @@ impl MaestroRealtimeEngine {
             &stream_params,
             clock,
             renderer.get_port_senders().into_boxed_slice(),
+            stats.clone(),
         )?;
 
         let renderer = Arc::new(Mutex::new(renderer));
@@ -62,7 +66,8 @@ impl MaestroRealtimeEngine {
             renderer_cln.lock().unwrap().render(buffer);
         };
 
-        let mut buffered = BufferedRenderer::new(func, stream_params, &options.config)?;
+        let mut buffered =
+            BufferedRenderer::new(func, stream_params, &options.config, sender.load_limiter())?;
 
         let func = move |buffer: &mut [f32]| {
             buffered.read(buffer);
@@ -94,7 +99,7 @@ impl MaestroRealtimeEngine {
         self.renderer.lock().unwrap().load_soundfonts(&list)
     }
 
-    pub fn get_statistics(&self) -> Arc<MaestroRenderStatistics> {
+    pub fn get_statistics(&self) -> MaestroRealtimeStatistics {
         self.stats.clone()
     }
 

@@ -9,7 +9,9 @@ use std::{
 };
 
 use crate::{
-    audio_params::AudioParameters, error::RealtimeEngineError, realtime::config::RealtimeConfig,
+    audio_params::AudioParameters,
+    error::RealtimeEngineError,
+    realtime::{config::RealtimeConfig, load::LoadLimiter},
 };
 
 // Original code by Arduano for XSynth (LGPL-3.0)
@@ -31,6 +33,7 @@ impl BufferedRenderer {
         mut render_func: F,
         stream_params: AudioParameters,
         config: &RealtimeConfig,
+        limiter: Option<Arc<LoadLimiter>>,
     ) -> Result<Self, RealtimeEngineError>
     where
         F: 'static + FnMut(&mut [f32]) + Send,
@@ -40,9 +43,15 @@ impl BufferedRenderer {
 
         let samples = Arc::new(AtomicI64::new(0));
         let last_request_samples = Arc::new(AtomicI64::new(0));
+
+        let channels: usize = Into::<u16>::into(stream_params.channels) as usize;
         let render_size = (config.render_buffer_ms.clamp(0.1, 100.0)
             * stream_params.sample_rate as f32
             / 1000.0) as usize;
+        let render_size = render_size.max(channels);
+        let target_len = render_size * channels;
+
+        let audio_div = render_size as f32 / stream_params.sample_rate as f32;
 
         let killed = Arc::new(RwLock::new(false));
 
@@ -53,16 +62,13 @@ impl BufferedRenderer {
             thread::Builder::new()
                 .name("buffered_rendering".to_string())
                 .spawn(move || {
-                    let channels: usize = Into::<u16>::into(stream_params.channels) as usize;
-
                     loop {
-                        let size = render_size.max(channels);
-
                         // The expected render time per iteration. It is slightly smaller (*90/100) than
                         // the real time so the render thread can catch up if it's behind.
-                        let delay =
-                            Duration::from_secs(1) * size as u32 / stream_params.sample_rate * 90
-                                / 100;
+                        let delay = Duration::from_secs(1) * render_size as u32
+                            / stream_params.sample_rate
+                            * 90
+                            / 100;
 
                         // If the render thread is ahead by over ~10%, wait until more samples are required.
                         loop {
@@ -82,21 +88,21 @@ impl BufferedRenderer {
                         let start = Instant::now();
                         let end: Instant = start + delay;
 
-                        // Create the vec and write the samples
                         let mut vec = return_rx.try_recv().unwrap_or_else(|_| Vec::new());
-                        let target_len = size * channels;
                         vec.resize(target_len, 0.0);
 
                         render_func(&mut vec);
 
-                        // Send the samples, break if the pipe is broken
+                        if let Some(limiter) = &limiter {
+                            limiter.update(start.elapsed().as_secs_f32() / audio_div, audio_div);
+                        }
+
                         samples.fetch_add(vec.len() as i64, Ordering::SeqCst);
                         match tx.send(vec) {
                             Ok(_) => {}
                             Err(_) => break,
                         };
 
-                        // Sleep until the next iteration
                         let now = Instant::now();
                         if end > now {
                             spin_sleep::sleep(end - now);

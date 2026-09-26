@@ -238,7 +238,7 @@ pub extern "C" fn SendDirectDataNoBuf(short: u32) {
 pub extern "C" fn GetVoiceCount() -> u64 {
     let state = get_state();
     if let Some(stats) = state.statistics.lock().unwrap().as_ref() {
-        stats.read_voice_count()
+        stats.get_renderer().read_voice_count()
     } else {
         0
     }
@@ -248,7 +248,7 @@ pub extern "C" fn GetVoiceCount() -> u64 {
 pub extern "C" fn GetRenderingTime() -> f32 {
     let state = get_state();
     if let Some(stats) = state.statistics.lock().unwrap().as_ref() {
-        stats.get_average_render_time()
+        stats.get_renderer().get_average_render_time()
     } else {
         0.0
     }

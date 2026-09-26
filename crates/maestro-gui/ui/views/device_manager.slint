@@ -63,6 +63,32 @@ component StatsRow inherits MaestroCard {
         BodyText {
             text: root.stats.state == 2 ? "Voice Count: " + root.stats.voices
                 : root.stats.state_text;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+
+        if (root.stats.state == 2): VerticalLayout {
+            spacing: 8px;
+
+            HorizontalLayout {
+                alignment: space-between;
+
+                BodyText {
+                    text: "Notes/sec.: " + root.stats.nps;
+                    horizontal-stretch: 1;
+                }
+
+                if (root.stats.limiting != ""): LabelText {
+                    text: root.stats.limiting;
+                    color: Theme.accent_amber;
+                    horizontal-alignment: right;
+                }
+            }
+
+            BodyText {
+                text: "Events/sec.: " + root.stats.eps;
+                horizontal-stretch: 1;
+            }
         }
 
         HorizontalLayout {

@@ -10,7 +10,8 @@ use criterion::{
 };
 use maestro_core::{
     realtime::{
-        MaestroRealtimeEngine, RealtimeEngineOptions, RealtimeEventSender, config::RealtimeConfig,
+        MaestroRealtimeEngine, RealtimeEngineOptions, RealtimeEventSender,
+        config::{NpsLimit, RealtimeConfig},
     },
     renderer::config::EventProcessorConfig,
     soundfont::SoundFontList,
@@ -121,7 +122,10 @@ fn send_path(c: &mut Criterion) {
         (
             "nps_gate",
             RealtimeConfig {
-                max_nps: Some(NPS_UNREACHABLE),
+                max_nps: Some(NpsLimit {
+                    max: NPS_UNREACHABLE,
+                    load_limiter: false,
+                }),
                 ..bare.clone()
             },
             None,
@@ -129,7 +133,7 @@ fn send_path(c: &mut Criterion) {
         (
             "nps_limited",
             RealtimeConfig {
-                max_nps: Some(100_000),
+                max_nps: Some(NpsLimit::default()),
                 ..bare.clone()
             },
             None,

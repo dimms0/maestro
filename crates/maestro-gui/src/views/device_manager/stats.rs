@@ -115,6 +115,14 @@ fn state_text(state: u32) -> &'static str {
     }
 }
 
+fn limiting_text(stats: &MaestroStats) -> slint::SharedString {
+    if stats.state == STATE_LIVE && stats.nps_limit > 0 {
+        format!("Limiting NPS: {}", fmt_count(stats.nps_limit)).into()
+    } else {
+        slint::SharedString::new()
+    }
+}
+
 fn to_slint(stats: &MaestroStats) -> SlintComponentStats {
     SlintComponentStats {
         name: stats.name().into(),
@@ -122,7 +130,10 @@ fn to_slint(stats: &MaestroStats) -> SlintComponentStats {
         state_text: state_text(stats.state).into(),
         memory: format_bytes(stats.rss_bytes).into(),
         voices: fmt_count(stats.voices).into(),
+        nps: fmt_count(stats.nps).into(),
+        eps: fmt_count(stats.eps).into(),
         render_load_txt: format!("{:.2}%", stats.render_last).into(),
         render_load: stats.render_avg,
+        limiting: limiting_text(stats),
     }
 }

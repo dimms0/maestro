@@ -59,8 +59,8 @@ fn main() {
         loop {
             println!(
                 "Voice Count: {:3}\tRender time: {:.2}",
-                stats.read_voice_count(),
-                stats.get_average_render_time()
+                stats.get_renderer().read_voice_count(),
+                stats.get_renderer().get_average_render_time()
             );
             thread::sleep(Duration::from_millis(100));
         }

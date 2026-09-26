@@ -6,7 +6,7 @@ pub use component::{
 
 use maestro_core::{
     audio_params::AudioParameters,
-    realtime::config::RealtimeConfig,
+    realtime::config::{NpsLimit, RealtimeConfig},
     renderer::config::{
         AudioLimiterConfig, EventProcessorConfig, PostProcessorConfig, RendererConfig,
         bassmidi::BASSMIDIThreading,
@@ -45,7 +45,7 @@ impl SoundfontFileCache {
 
 #[derive(Clone, Debug)]
 pub struct RememberedSettings {
-    pub max_nps: usize,
+    pub nps_limit: NpsLimit,
     pub coalesce_window_ms: u32,
     pub buffer_size: u32,
     pub port_threads: usize,
@@ -59,7 +59,7 @@ pub struct RememberedSettings {
 impl Default for RememberedSettings {
     fn default() -> Self {
         Self {
-            max_nps: 100_000,
+            nps_limit: NpsLimit::default(),
             coalesce_window_ms: 10,
             buffer_size: DEFAULT_BUFFER_SIZE,
             port_threads: 4,

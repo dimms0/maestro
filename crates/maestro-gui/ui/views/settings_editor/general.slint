@@ -389,6 +389,20 @@ export component RealtimeSection inherits SectionCard {
     }
 
     Setting {
+        text: "Skip notes when the renderer is overloaded";
+        subtext: "When rendering can't keep up with realtime, Maestro lowers the NPS limit, scaled by how far over budget it is, to avoid audio dropouts. The limit rises back to the set value as the load drops.";
+
+        enabled: SettingsEditorState.current_config.realtime.has_max_nps;
+        has-switch: true;
+        checked: SettingsEditorState.current_config.realtime.load_limiter;
+        toggled(v) => {
+            root.edit = SettingsEditorState.current_config.realtime;
+            root.edit.load_limiter = v;
+            SettingsEditorState.update_realtime(root.edit);
+        }
+    }
+
+    Setting {
         text: "Coalesce control events every (ms)";
         subtext: "Collects CC, program change, pitch and aftertouch events and sends the latest changes once per set ms to the synthesizer. Enabling this will quantize the events. Does not apply to timed events (ticks).";
 

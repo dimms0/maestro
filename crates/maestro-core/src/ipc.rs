@@ -15,9 +15,9 @@ use interprocess::local_socket::{
     GenericNamespaced, ListenerOptions, Stream, ToNsName, prelude::*,
 };
 
-use crate::{statistics::MaestroRenderStatistics, system_cfg::ConfigComponent};
+use crate::{realtime::MaestroRealtimeStatistics, system_cfg::ConfigComponent};
 
-pub type SharedStats = Arc<Mutex<Option<Arc<MaestroRenderStatistics>>>>;
+pub type SharedStats = Arc<Mutex<Option<MaestroRealtimeStatistics>>>;
 
 const MAGIC: u32 = 0x4d53_5431; // "MST1"
 const NAME_CAP: usize = 64;
@@ -37,6 +37,9 @@ pub struct MaestroStats {
     pub pid: u32,
     pub voices: u64,
     pub rss_bytes: u64,
+    pub nps: u64,
+    pub eps: u64,
+    pub nps_limit: u64,
     pub render_last: f32,
     pub render_avg: f32,
     pub state: u32,
@@ -54,6 +57,9 @@ impl MaestroStats {
             pid: std::process::id(),
             voices: 0,
             rss_bytes: crate::sysinfo::rss_bytes().unwrap_or(0),
+            nps: 0,
+            eps: 0,
+            nps_limit: 0,
             render_last: 0.0,
             render_avg: 0.0,
             state,
@@ -63,9 +69,13 @@ impl MaestroStats {
         };
 
         if let Some(engine) = engine {
-            frame.voices = engine.read_voice_count();
-            frame.render_last = engine.get_last_render_time();
-            frame.render_avg = engine.get_average_render_time();
+            let renderer = engine.get_renderer();
+            frame.voices = renderer.read_voice_count();
+            frame.render_last = renderer.get_last_render_time();
+            frame.render_avg = renderer.get_average_render_time();
+            frame.nps_limit = engine.read_nps_limit();
+            frame.nps = engine.read_nps();
+            frame.eps = engine.read_eps();
         }
 
         let mut len = label.len().min(NAME_CAP);
@@ -375,9 +385,9 @@ mod tests {
     use super::*;
 
     fn stats_with(voices: u64) -> SharedStats {
-        let stats = MaestroRenderStatistics::new();
-        stats.set_voices(voices);
-        Arc::new(Mutex::new(Some(Arc::new(stats))))
+        let stats = MaestroRealtimeStatistics::new();
+        stats.get_renderer().set_voices(voices);
+        Arc::new(Mutex::new(Some(stats)))
     }
 
     fn frame(label: &str, stats: &SharedStats, state: u32) -> MaestroStats {
@@ -449,7 +459,13 @@ mod tests {
 
         // The same connection is reused on the next poll, and the state cell is
         // read fresh each time rather than captured at publish.
-        stats.lock().unwrap().as_ref().unwrap().set_voices(11);
+        stats
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .get_renderer()
+            .set_voices(11);
         state.store(STATE_PAUSED, Ordering::Relaxed);
         let frames = subscriber.poll();
         let frame = frames

@@ -9,164 +9,201 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::realtime::{MaestroRealtimeStatistics, config::NpsLimit, load::LoadLimiter};
+
 // Original code by Arduano for XSynth (LGPL-3.0)
 // (https://github.com/BlackMIDIDevs/xsynth/blob/master/realtime/src/event_senders/nps.rs)
 //
-// Reworked for Maestro so the per-note hot path is fully lock-free: the sliding
-// windows and the NPS estimate are maintained by the background ticker thread,
-// and `note_on` only touches atomics.
+// Reworked for Maestro
 
 const NPS_WINDOW_MILLISECONDS: u64 = 1;
 
 struct NpsWindow {
     time: u64,
     notes: u64,
+    events: u64,
 }
 
-struct ChannelNpsTracker {
-    current_window_sum: AtomicU64,
-    total_window_sum: AtomicU64,
-    cached_nps: AtomicU64,
-    active_notes: [AtomicU64; 128],
-}
-
-impl ChannelNpsTracker {
-    fn new() -> Self {
-        Self {
-            current_window_sum: AtomicU64::new(0),
-            total_window_sum: AtomicU64::new(0),
-            cached_nps: AtomicU64::new(0),
-            active_notes: [const { AtomicU64::new(0) }; 128],
-        }
-    }
-
-    fn add_note(&self, key: u8) {
-        self.current_window_sum.fetch_add(1, Ordering::Relaxed);
-        self.total_window_sum.fetch_add(1, Ordering::Relaxed);
-        self.active_notes[key as usize].fetch_add(1, Ordering::Relaxed);
-    }
-
-    fn take_active_note(&self, key: u8) -> bool {
-        self.active_notes[key as usize]
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
-                (n > 0).then(|| n - 1)
-            })
-            .is_ok()
-    }
-
-    fn reset(&self) {
-        for n in &self.active_notes {
-            n.store(0, Ordering::Relaxed);
-        }
-    }
-}
-
-fn background_loop(channels: &[ChannelNpsTracker], stop: &AtomicBool) {
-    let mut windows: Vec<VecDeque<NpsWindow>> =
-        (0..channels.len()).map(|_| VecDeque::new()).collect();
+fn background_loop(
+    current_window_sum: &AtomicU64,
+    total_window_sum: &AtomicU64,
+    current_events: &AtomicU64,
+    stats: &MaestroRealtimeStatistics,
+    stop: &AtomicBool,
+) {
+    let mut windows: VecDeque<NpsWindow> = VecDeque::new();
     let mut virtual_time: u64 = 0;
     let mut now = Instant::now();
+    let mut total_events: u64 = 0;
 
     while !stop.load(Ordering::Acquire) {
         thread::sleep(Duration::from_millis(NPS_WINDOW_MILLISECONDS));
         virtual_time += now.elapsed().as_millis() as u64;
         now = Instant::now();
 
-        let cutoff = virtual_time.saturating_sub(1000);
-
-        for (channel, ch) in channels.iter().enumerate() {
-            let win = &mut windows[channel];
-
-            let notes = ch.current_window_sum.swap(0, Ordering::AcqRel);
-            win.push_back(NpsWindow {
+        let notes = current_window_sum.swap(0, Ordering::AcqRel);
+        let events = current_events.swap(0, Ordering::AcqRel);
+        total_events += events;
+        if notes > 0 || events > 0 {
+            windows.push_back(NpsWindow {
                 time: virtual_time,
                 notes,
+                events,
             });
-
-            while let Some(front) = win.front() {
-                if front.time < cutoff {
-                    ch.total_window_sum.fetch_sub(front.notes, Ordering::AcqRel);
-                    win.pop_front();
-                } else {
-                    break;
-                }
-            }
-
-            let short_nps = notes * (1000 / NPS_WINDOW_MILLISECONDS) * 4 / 3;
-            let long_nps = ch.total_window_sum.load(Ordering::Relaxed);
-            ch.cached_nps
-                .store(short_nps.max(long_nps), Ordering::Relaxed);
         }
+
+        let cutoff = virtual_time.saturating_sub(1000);
+        while let Some(front) = windows.front() {
+            if front.time < cutoff {
+                total_window_sum.fetch_sub(front.notes, Ordering::AcqRel);
+                total_events -= front.events;
+                windows.pop_front();
+            } else {
+                break;
+            }
+        }
+
+        stats.set_rates(total_window_sum.load(Ordering::Acquire), total_events);
     }
 }
 
 pub(crate) struct NpsTracker {
-    channels: Arc<[ChannelNpsTracker]>,
-    max_nps: u64,
+    current_window_sum: Arc<AtomicU64>,
+    total_window_sum: Arc<AtomicU64>,
+    current_events: Arc<AtomicU64>,
+    active_notes: Arc<[AtomicU64]>,
+    limiter: Option<Arc<LoadLimiter>>,
+    max_nps: Option<u64>,
     stop: Arc<AtomicBool>,
     join_handle: Option<JoinHandle<()>>,
 }
 
 impl NpsTracker {
-    pub(crate) fn new(channels: usize, max_nps: u64) -> Result<NpsTracker, io::Error> {
-        let trackers: Arc<[ChannelNpsTracker]> = (0..channels)
-            .map(|_| ChannelNpsTracker::new())
-            .collect::<Vec<_>>()
-            .into();
-
+    pub(crate) fn new(
+        channels: usize,
+        limit: Option<NpsLimit>,
+        stats: MaestroRealtimeStatistics,
+    ) -> Result<NpsTracker, io::Error> {
+        let current_window_sum = Arc::new(AtomicU64::new(0));
+        let total_window_sum = Arc::new(AtomicU64::new(0));
+        let current_events = Arc::new(AtomicU64::new(0));
         let stop = Arc::new(AtomicBool::new(false));
 
+        let max_nps = limit.map(|limit| limit.max as u64);
+        let limiter = limit
+            .filter(|limit| limit.load_limiter)
+            .map(|limit| Arc::new(LoadLimiter::new(limit.max as u64, stats.clone())));
+
         let join_handle = {
-            let channels = trackers.clone();
+            let current = current_window_sum.clone();
+            let total = total_window_sum.clone();
+            let events = current_events.clone();
             let stop = stop.clone();
-            thread::Builder::new()
-                .name("nps_tracker".to_string())
-                .spawn(move || background_loop(&channels, &stop))?
+            Some(
+                thread::Builder::new()
+                    .name("nps_tracker".to_string())
+                    .spawn(move || background_loop(&current, &total, &events, &stats, &stop))?,
+            )
         };
 
         Ok(NpsTracker {
-            channels: trackers,
+            current_window_sum,
+            total_window_sum,
+            current_events,
+            active_notes: (0..channels * 128).map(|_| AtomicU64::new(0)).collect(),
+            limiter,
             max_nps,
             stop,
-            join_handle: Some(join_handle),
+            join_handle,
         })
     }
 
-    pub(crate) fn note_on(&self, channel: usize, key: u8, vel: u8) -> bool {
-        if let Some(ch) = self.channels.get(channel) {
-            let curr = ch.cached_nps.load(Ordering::Relaxed);
+    pub(crate) fn limiter(&self) -> Option<Arc<LoadLimiter>> {
+        self.limiter.clone()
+    }
 
-            if should_send_for_vel_and_nps(vel, curr, self.max_nps) {
-                ch.add_note(key);
-                true
-            } else {
-                false
-            }
-        } else {
-            false
+    pub(crate) fn note_on(&self, channel: usize, key: u8, vel: u8) -> bool {
+        let Some(active) = self.active_notes.get(channel * 128 + key as usize) else {
+            return false;
+        };
+
+        match self.max_nps() {
+            Some(max) if !self.admit(vel, max) => return false,
+            Some(_) => {}
+            None => self.count_note(),
+        }
+
+        active.fetch_add(1, Ordering::Relaxed);
+        true
+    }
+
+    fn max_nps(&self) -> Option<u64> {
+        match &self.limiter {
+            Some(limiter) => Some(limiter.max_nps()),
+            None => self.max_nps,
         }
     }
 
+    fn admit(&self, vel: u8, max: u64) -> bool {
+        let threshold = (vel as u64) * max / 127;
+
+        let admitted = self
+            .total_window_sum
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |total| {
+                let current = self.current_window_sum.load(Ordering::Relaxed);
+                let short_nps = current * (1000 / NPS_WINDOW_MILLISECONDS) * 4 / 3;
+
+                (total.max(short_nps) < threshold).then_some(total + 1)
+            })
+            .is_ok();
+
+        if admitted {
+            self.current_window_sum.fetch_add(1, Ordering::AcqRel);
+        }
+        admitted
+    }
+
+    fn count_note(&self) {
+        self.total_window_sum.fetch_add(1, Ordering::AcqRel);
+        self.current_window_sum.fetch_add(1, Ordering::AcqRel);
+    }
+
+    pub(crate) fn count_event(&self) {
+        self.current_events.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(crate) fn event_counter(&self) -> Arc<AtomicU64> {
+        self.current_events.clone()
+    }
+
     pub(crate) fn note_off(&self, channel: usize, key: u8) -> bool {
-        self.channels
-            .get(channel)
-            .is_some_and(|ch| ch.take_active_note(key))
+        self.active_notes
+            .get(channel * 128 + key as usize)
+            .is_some_and(|n| {
+                n.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+                    (n > 0).then(|| n - 1)
+                })
+                .is_ok()
+            })
     }
 
     pub(crate) fn reset(&self) {
-        for c in self.channels.iter() {
-            c.reset();
+        for n in self.active_notes.iter() {
+            n.store(0, Ordering::Relaxed);
+        }
+        if let Some(limiter) = &self.limiter {
+            limiter.reset();
         }
     }
 }
 
 impl Drop for NpsTracker {
     fn drop(&mut self) {
-        self.stop.store(true, Ordering::Release);
-        if let Some(handle) = self.join_handle.take()
-            && handle.join().is_err()
-        {
-            eprintln!("nps tracker thread panicked during shutdown");
+        if let Some(handle) = self.join_handle.take() {
+            self.stop.store(true, Ordering::Release);
+            if handle.join().is_err() {
+                eprintln!("nps tracker thread panicked during shutdown");
+            }
         }
     }
 }
@@ -174,14 +211,14 @@ impl Drop for NpsTracker {
 impl Clone for NpsTracker {
     fn clone(&self) -> Self {
         Self {
-            channels: self.channels.clone(),
+            current_window_sum: self.current_window_sum.clone(),
+            total_window_sum: self.total_window_sum.clone(),
+            current_events: self.current_events.clone(),
+            active_notes: self.active_notes.clone(),
+            limiter: self.limiter.clone(),
             max_nps: self.max_nps,
             stop: self.stop.clone(),
             join_handle: None,
         }
     }
-}
-
-fn should_send_for_vel_and_nps(vel: u8, nps: u64, max: u64) -> bool {
-    (vel as u64) * max / 127 > nps
 }
