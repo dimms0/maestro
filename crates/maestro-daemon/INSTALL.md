@@ -28,8 +28,7 @@ and the realtime engine. Three rules shape everything below:
 | `maestro` (GUI) | `/usr/bin/maestro` |
 | `service/maestrod.service` | `/usr/lib/systemd/user/maestrod.service` |
 | `gr.dimms.maestro.desktop` | `/usr/share/applications/` |
-| `gr.dimms.maestro.svg` | `/usr/share/icons/hicolor/scalable/apps/` |
-| `gr.dimms.maestro.png` | `/usr/share/icons/hicolor/256x256/apps/` |
+| `icons/hicolor/` | `/usr/share/icons/hicolor/` |
 
 A manual or unpackaged install puts the unit in
 `~/.config/systemd/user/maestrod.service` instead. That is also where the GUI's
@@ -41,6 +40,8 @@ found rather than a hardcoded path.
 ```sh
 install -Dm644 maestrod.service /usr/lib/systemd/user/maestrod.service
 systemctl --user daemon-reload
+cp -r icons/hicolor /usr/share/icons/     # scalable SVG plus 16-512px PNGs
+gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
 ```
 
 ### Desktop integration

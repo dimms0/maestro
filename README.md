@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/icons/maestro.svg" width="96" alt="">
+<img src="assets/logo/maestro-icon.svg" width="96" alt="">
 
 # Maestro
 

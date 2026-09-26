@@ -33,10 +33,15 @@ package() {
         "$pkgdir/usr/lib/systemd/user/maestrod.service"
     install -Dm644 packaging/linux/gr.dimms.maestro.desktop \
         "$pkgdir/usr/share/applications/gr.dimms.maestro.desktop"
-    install -Dm644 assets/icons/maestro.svg \
+    install -Dm644 assets/logo/maestro-app-icon.svg \
         "$pkgdir/usr/share/icons/hicolor/scalable/apps/gr.dimms.maestro.svg"
-    install -Dm644 assets/icons/maestro-256.png \
-        "$pkgdir/usr/share/icons/hicolor/256x256/apps/gr.dimms.maestro.png"
+    local png size
+    for png in assets/logo/linux/maestro-*.png; do
+        size="${png##*-}"
+        size="${size%.png}"
+        install -Dm644 "$png" \
+            "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/gr.dimms.maestro.png"
+    done
     install -Dm644 LICENSE.md "$pkgdir/usr/share/doc/$pkgname/LICENSE.md"
     install -Dm644 THIRD-PARTY-NOTICES.md "$pkgdir/usr/share/doc/$pkgname/THIRD-PARTY-NOTICES.md"
     install -Dm644 assets/fonts/OFL.txt "$pkgdir/usr/share/doc/$pkgname/OFL.txt"

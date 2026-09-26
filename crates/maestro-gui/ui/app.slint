@@ -24,7 +24,11 @@ import { RendererView } from "views/converter.slint";
 import { DeviceManagerView } from "views/device_manager.slint";
 import { SystemIntegrationView } from "views/system_integration.slint";
 import { ErrorView, ErrorDialog } from "views/error.slint";
-import { QuitConfirmModal, RenderQuitModal, UnsavedQuitModal } from "views/quit.slint";
+import {
+    QuitConfirmModal,
+    RenderQuitModal,
+    UnsavedQuitModal,
+} from "views/quit.slint";
 import { StartupIssueModal } from "views/startup_issue.slint";
 import { GetSoundfontsModal } from "views/get_soundfonts.slint";
 import { UpdateAvailableModal } from "views/update.slint";
@@ -131,7 +135,7 @@ component NavBar inherits Rectangle {
                 cross-axis-alignment: center;
 
                 Image {
-                    source: @image-url("../../../assets/icons/maestro-white.png");
+                    source: @image-url("../../../assets/logo/maestro-icon.svg");
                     width: 28px;
                     height: 28px;
                     image-fit: contain;
@@ -188,7 +192,7 @@ component NavBar inherits Rectangle {
 
 export component MainWindow inherits Window {
     title: is_error ? "Critical Error - Maestro" : "Maestro";
-    icon: @image-url("../../../assets/icons/maestro.png");
+    icon: @image-url("../../../assets/logo/maestro-app-icon-16.svg");
     min-width: 800px;
     min-height: 600px;
     preferred-width: 1200px;

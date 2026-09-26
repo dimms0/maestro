@@ -57,7 +57,7 @@ DefaultDirName={autopf}\{#AppName}
 DisableProgramGroupPage=yes
 DisableWelcomePage=no
 LicenseFile=..\..\LICENSE.md
-SetupIconFile=..\..\assets\icons\maestro.ico
+SetupIconFile=..\..\assets\logo\maestro.ico
 UninstallDisplayIcon={app}\maestro.exe
 UninstallDisplayName={#AppName}
 ; The driver is linked into System32 and entered in Drivers32, so this is a

@@ -75,13 +75,8 @@ dylibbundler -od -b -x "$APP/Contents/MacOS/libfluidsynth.3.dylib" \
 cp crates/maestro-daemon/service/gr.dimms.maestro.daemon.plist "$APP/Contents/Library/LaunchAgents/"
 sed "s/0\.1\.0/$VERSION/g" packaging/macos/Info.plist > "$APP/Contents/Info.plist"
 
-ICONSET=$(mktemp -d)/maestro.iconset
-mkdir -p "$ICONSET"
-for size in 16 32 128 256 512; do
-    sips -z "$size" "$size" assets/icons/maestro.png --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
-    sips -z $((size * 2)) $((size * 2)) assets/icons/maestro.png --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
-done
-iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/maestro.icns"
+# Generated from the SVG sources by packaging/generate-icons.sh.
+cp assets/logo/maestro.icns "$APP/Contents/Resources/maestro.icns"
 
 if [ -n "${SIGNING_IDENTITY:-}" ]; then
     codesign --deep --force --options runtime --sign "$SIGNING_IDENTITY" "$APP"

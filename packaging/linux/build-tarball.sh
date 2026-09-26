@@ -25,7 +25,16 @@ cp "$build/maestro" "$build/maestrod" "$stage/"
 cp crates/maestro-daemon/service/maestrod.service "$stage/"
 cp crates/maestro-daemon/INSTALL.md "$stage/"
 cp packaging/linux/gr.dimms.maestro.desktop "$stage/"
-cp assets/icons/maestro.svg "$stage/"
+
+mkdir -p "$stage/icons/hicolor/scalable/apps"
+cp assets/logo/maestro-app-icon.svg "$stage/icons/hicolor/scalable/apps/gr.dimms.maestro.svg"
+for png in assets/logo/linux/maestro-*.png; do
+    size="${png##*-}"
+    size="${size%.png}"
+    mkdir -p "$stage/icons/hicolor/${size}x${size}/apps"
+    cp "$png" "$stage/icons/hicolor/${size}x${size}/apps/gr.dimms.maestro.png"
+done
+
 cp LICENSE.md THIRD-PARTY-NOTICES.md assets/fonts/OFL.txt "$stage/"
 # Placed next to the binaries: paths::exe_dir() is checked first.
 cp "$build/libOmniMIDI.so" "$stage/"
