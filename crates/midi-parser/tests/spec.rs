@@ -270,10 +270,81 @@ fn strict_mode_refuses_what_lenient_mode_recovers_from() {
 }
 
 #[test]
-fn format_2_is_rejected() {
-    let mut bytes = header(2, 1, 96);
-    chunk(&mut bytes, &[0x00, 0xFF, 0x2F, 0x00]);
-    assert!(MidiFile::from_slice(&bytes).is_err());
+fn format_2_plays_its_tracks_one_after_another() {
+    let first: &[u8] = &[
+        0x00, 0x90, 0x3C, 0x40, //
+        0x60, 0x80, 0x3C, 0x40, //
+        0x60, 0xFF, 0x2F, 0x00, // ends at tick 192
+    ];
+    let empty: &[u8] = &[0x00, 0xFF, 0x2F, 0x00];
+    let second: &[u8] = &[
+        0x00, 0xFF, 0x51, 0x03, 0x0F, 0x42, 0x40, // tempo, 1000000 us
+        0x10, 0x91, 0x40, 0x40, //
+        0x60, 0x81, 0x40, 0x40, //
+        0x00, 0xFF, 0x2F, 0x00,
+    ];
+
+    let mut bytes = header(2, 3, 96);
+    for track in [first, empty, second] {
+        chunk(&mut bytes, track);
+    }
+
+    assert_eq!(
+        notes(&bytes),
+        vec![
+            (0, 0, 0x3C, true),
+            (96, 0, 0x3C, false),
+            (208, 1, 0x40, true),
+            (304, 1, 0x40, false),
+        ]
+    );
+
+    let file = MidiFile::from_slice(&bytes).unwrap();
+    let tracks: Vec<u32> = file.merged().unwrap().map(|e| e.unwrap().track).collect();
+    assert!(tracks.windows(2).all(|pair| pair[0] <= pair[1]));
+    assert!(
+        tracks.contains(&1),
+        "an empty track still yields its End of Track"
+    );
+
+    let info = file.scan().unwrap();
+    assert_eq!(info.format, 2);
+    assert_eq!(info.total_ticks, 304);
+    // 192 ticks at 120 bpm, then 112 at 60 bpm once the second track's tempo
+    // lands at tick 192.
+    assert!((info.duration - (1.0 + 112.0 / 96.0)).abs() < 1e-9);
+}
+
+#[test]
+fn rmid_files_read_the_smf_they_wrap() {
+    let smf = format_1();
+
+    let mut data = Vec::new();
+    // Chunks before and after "data" must be skipped, including an odd-sized
+    // one whose pad byte shifts everything after it.
+    for (id, body) in [
+        (b"INFO", &b"abc"[..]),
+        (b"data", &smf[..]),
+        (b"DLS ", &b"xyzw"[..]),
+    ] {
+        data.extend_from_slice(id);
+        data.extend_from_slice(&(body.len() as u32).to_le_bytes());
+        data.extend_from_slice(body);
+        if body.len() % 2 == 1 {
+            data.push(0);
+        }
+    }
+
+    let mut rmid = b"RIFF".to_vec();
+    rmid.extend_from_slice(&(data.len() as u32 + 4).to_le_bytes());
+    rmid.extend_from_slice(b"RMID");
+    rmid.extend_from_slice(&data);
+
+    let file = MidiFile::from_slice_with(&rmid, Options { strict: true }).unwrap();
+    assert_eq!(file.kind(), FileKind::Smf);
+    assert_eq!(file.format(), 1);
+    assert_eq!(file.track_count(), 4);
+    assert_eq!(notes(&rmid), notes(&smf));
 }
 
 #[test]

@@ -21,7 +21,8 @@ pub struct MidiInfo {
     pub format: u16,
     pub division: Division,
     pub track_count: usize,
-    /// Length of the longest track, in ticks.
+    /// Length of the longest track, in ticks, or of every track end to end
+    /// for a format 2 file, whose tracks play one after another.
     pub total_ticks: u64,
     /// Length in seconds, with every tempo change applied.
     pub duration: f64,
@@ -153,9 +154,21 @@ impl<'a> MidiFile<'a> {
             tempo_changes: 0,
         };
 
+        // Format 2 tracks play one after another, so each is shifted to start
+        // where the last one ended, matching what `merged` produces.
+        let sequential = self.kind() == FileKind::Smf && self.format() == 2;
+
         let mut tempos = Vec::new();
-        for scan in scans {
-            info.total_ticks = info.total_ticks.max(scan.ticks);
+        for mut scan in scans {
+            if sequential {
+                let offset = info.total_ticks;
+                for (tick, _) in &mut scan.tempos {
+                    *tick += offset;
+                }
+                info.total_ticks += scan.ticks;
+            } else {
+                info.total_ticks = info.total_ticks.max(scan.ticks);
+            }
             info.events += scan.events;
             info.notes += scan.notes;
             info.channels |= scan.channels;

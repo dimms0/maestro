@@ -7,7 +7,7 @@ pub enum Error {
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("not a MIDI file: expected \"MThd\" or \"SMF2CLIP\"")]
+    #[error("not a MIDI file: expected \"MThd\", \"SMF2CLIP\" or an RMID file")]
     BadMagic,
 
     #[error("SMF format {0} is not supported")]

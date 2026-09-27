@@ -68,6 +68,9 @@ pub struct MidiFile<'a> {
 const MTHD: &[u8] = b"MThd";
 const MTRK: &[u8] = b"MTrk";
 const SMF2CLIP: &[u8] = b"SMF2CLIP";
+const RIFF: &[u8] = b"RIFF";
+const RMID: &[u8] = b"RMID";
+const DATA: &[u8] = b"data";
 
 impl MidiFile<'static> {
     /// Opens a file by memory-mapping it. The OS pages it in on demand and can
@@ -102,7 +105,9 @@ impl<'a> MidiFile<'a> {
     fn build(source: Source<'a>, options: Options) -> Result<Self> {
         let parsed = {
             let bytes: &[u8] = &source;
-            if bytes.starts_with(MTHD) {
+            if bytes.starts_with(RIFF) {
+                parse_rmid(bytes, options)?
+            } else if bytes.starts_with(MTHD) {
                 parse_smf(bytes, options)?
             } else if bytes.starts_with(SMF2CLIP) {
                 parse_clip(bytes, options)?
@@ -125,8 +130,9 @@ impl<'a> MidiFile<'a> {
         self.kind
     }
 
-    /// SMF format number: 0 for a single track, 1 for parallel tracks. Clip
-    /// files report 0, being a single sequence.
+    /// SMF format number: 0 for a single track, 1 for parallel tracks, 2 for
+    /// independent patterns, which [`MidiFile::merged`] plays one after
+    /// another. Clip files report 0, being a single sequence.
     pub fn format(&self) -> u16 {
         self.format
     }
@@ -167,7 +173,7 @@ fn parse_smf(bytes: &[u8], options: Options) -> Result<Parsed> {
     }
 
     let format = read_u16(bytes, 8).ok_or(Error::Truncated(8))?;
-    if format > 1 {
+    if format > 2 {
         return Err(Error::UnsupportedFormat(format));
     }
     let division = Division::parse(read_u16(bytes, 12).ok_or(Error::Truncated(12))?);
@@ -204,6 +210,47 @@ fn parse_smf(bytes: &[u8], options: Options) -> Result<Parsed> {
     })
 }
 
+/// An RMID file is a Standard MIDI File wrapped in a RIFF container, with the
+/// SMF held whole in its "data" chunk. Everything else in there, such as DLS
+/// banks and INFO lists, has no bearing on playback and is skipped.
+fn parse_rmid(bytes: &[u8], options: Options) -> Result<Parsed> {
+    if bytes.get(8..12) != Some(RMID) {
+        return Err(Error::BadMagic);
+    }
+
+    // RIFF sizes are little-endian, unlike everything inside the SMF.
+    let mut pos = 12;
+    while pos + 8 <= bytes.len() {
+        let length = read_u32_le(bytes, pos + 4).unwrap() as usize;
+        let start = pos + 8;
+        let end = match start.checked_add(length) {
+            Some(end) if end <= bytes.len() => end,
+            _ if options.strict => return Err(Error::BadChunkLength(pos)),
+            _ => bytes.len(),
+        };
+
+        if &bytes[pos..pos + 4] == DATA {
+            let smf = &bytes[start..end];
+            if !smf.starts_with(MTHD) {
+                return Err(Error::BadMagic);
+            }
+
+            // Track ranges are handed to cursors over the whole file, so they
+            // have to point past the RIFF framing rather than into the chunk.
+            let mut parsed = parse_smf(smf, options)?;
+            for track in &mut parsed.tracks {
+                *track = track.start + start..track.end + start;
+            }
+            return Ok(parsed);
+        }
+
+        // Chunks are padded to an even length.
+        pos = end + (length & 1);
+    }
+
+    Err(Error::BadMagic)
+}
+
 fn parse_clip(bytes: &[u8], options: Options) -> Result<Parsed> {
     // M2-116-U §3.2.1: the DCTPQ sits at the top of the Clip Configuration
     // Header, ahead of everything but optional Set Profile On messages.
@@ -235,4 +282,9 @@ fn read_u16(bytes: &[u8], at: usize) -> Option<u16> {
 #[inline]
 fn read_u32(bytes: &[u8], at: usize) -> Option<u32> {
     Some(u32::from_be_bytes(bytes.get(at..at + 4)?.try_into().ok()?))
+}
+
+#[inline]
+fn read_u32_le(bytes: &[u8], at: usize) -> Option<u32> {
+    Some(u32::from_le_bytes(bytes.get(at..at + 4)?.try_into().ok()?))
 }

@@ -14,9 +14,7 @@ use crate::{
 
 pub const WINDOWS_COMPAT_TEXT: &str = "MIDI 2.0 functionality is not yet\
 supported on Windows as it requires Windows MIDI Services which are not\
-officially released yet.\n\
-If you want to test the unstable builds with WMS please visit out Discord\
-server (https://dimms.gr/discord) and let us know.\n\n\
+officially released yet.\n\n\
 For more information about Windows MIDI Services visit: https://aka.ms/midi";
 
 impl From<DeviceComponent> for ConfigComponent {

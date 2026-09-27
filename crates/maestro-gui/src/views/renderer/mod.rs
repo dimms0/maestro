@@ -18,7 +18,7 @@ use crate::{
 use jobs::JobRegistry;
 use worker::{ConverterRenderSettings, RenderRun};
 
-const MIDI_FILTER: [&str; 5] = ["mid", "MID", "midi", "kar", "rmi"];
+const MIDI_FILTER: [&str; 6] = ["mid", "MID", "midi", "kar", "rmi", "midi2"];
 
 pub fn clear_entry_statuses(ui: &MainWindow) {
     RendererState::get(ui)

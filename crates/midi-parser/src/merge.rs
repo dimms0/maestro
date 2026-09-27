@@ -1,6 +1,11 @@
 use std::{cmp::Reverse, collections::BinaryHeap};
 
-use crate::{cursor::Cursor, error::Result, event::EventRef, file::MidiFile};
+use crate::{
+    cursor::Cursor,
+    error::Result,
+    event::EventRef,
+    file::{FileKind, MidiFile},
+};
 
 /// One event out of the merged stream.
 #[derive(Debug, Clone, Copy)]
@@ -22,28 +27,49 @@ pub struct MergedEvent<'a> {
 /// This is what makes timing in a renderer simple: the tracks of a format 1
 /// file arrive as if they had been written as a single one. Ties are broken by
 /// track number, so a given file always merges the same way.
+///
+/// A format 2 file holds independent patterns rather than parallel tracks, so
+/// its tracks are chained instead: each one starts where the one before it
+/// ended, and only one is ever in the queue.
 pub struct Merged<'a> {
     cursors: Vec<Cursor<'a>>,
     pending: Vec<Option<(u8, EventRef<'a>)>>,
     /// (tick, track) of every track still holding an event, earliest first.
     queue: BinaryHeap<Reverse<(u64, u32)>>,
     last_tick: u64,
+    /// Whether tracks play one after another, as in a format 2 file.
+    sequential: bool,
+    /// Where the current track starts, when playing sequentially.
+    offset: u64,
+    /// The tick of the last event read, which is where the next track starts
+    /// once the current one runs out.
+    track_end: u64,
     failed: bool,
 }
 
 impl<'a> Merged<'a> {
     pub(crate) fn new(file: &'a MidiFile<'a>) -> Result<Self> {
         let count = file.track_count();
+        let sequential = file.kind() == FileKind::Smf && file.format() == 2;
         let mut merged = Self {
             cursors: (0..count).map(|index| file.track(index).unwrap()).collect(),
             pending: vec![None; count],
             queue: BinaryHeap::with_capacity(count),
             last_tick: 0,
+            sequential,
+            offset: 0,
+            track_end: 0,
             failed: false,
         };
 
-        for track in 0..count as u32 {
-            merged.advance(track)?;
+        if sequential {
+            if count > 0 {
+                merged.advance(0)?;
+            }
+        } else {
+            for track in 0..count as u32 {
+                merged.advance(track)?;
+            }
         }
 
         Ok(merged)
@@ -78,18 +104,29 @@ impl<'a> Merged<'a> {
         Some(Ok((first.delta, first.track, first.group)))
     }
 
-    fn advance(&mut self, track: u32) -> Result<()> {
-        let event = match self.cursors[track as usize].next_event() {
-            Some(Ok((tick, group, event))) => {
-                self.queue.push(Reverse((tick, track)));
-                Some((group, event))
-            }
-            Some(Err(error)) => return Err(error),
-            None => None,
-        };
+    fn advance(&mut self, mut track: u32) -> Result<()> {
+        loop {
+            let event = match self.cursors[track as usize].next_event() {
+                Some(Ok((tick, group, event))) => {
+                    let tick = tick + self.offset;
+                    self.track_end = tick;
+                    self.queue.push(Reverse((tick, track)));
+                    Some((group, event))
+                }
+                Some(Err(error)) => return Err(error),
+                None => None,
+            };
 
-        self.pending[track as usize] = event;
-        Ok(())
+            self.pending[track as usize] = event;
+
+            // A finished track hands over to the next one, which starts where
+            // it left off. Empty tracks are passed straight through.
+            if event.is_some() || !self.sequential || track as usize + 1 >= self.cursors.len() {
+                return Ok(());
+            }
+            track += 1;
+            self.offset = self.track_end;
+        }
     }
 }
 
@@ -123,7 +160,8 @@ impl<'a> Iterator for Merged<'a> {
 }
 
 impl<'a> MidiFile<'a> {
-    /// Every track merged into one tick-ordered stream.
+    /// Every track merged into one tick-ordered stream. The tracks of a
+    /// format 2 file play one after another instead.
     pub fn merged(&'a self) -> Result<Merged<'a>> {
         Merged::new(self)
     }
