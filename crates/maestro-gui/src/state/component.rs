@@ -35,7 +35,6 @@ impl ComponentProfile {
         match kind {
             ConfigComponent::Converter => ComponentProfile {
                 has_enabled: false,
-                has_sflist: false,
                 has_audio_params: true,
                 ..base
             },

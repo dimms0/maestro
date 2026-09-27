@@ -11,7 +11,7 @@ import {
 } from "../widgets.slint";
 import { RendererState } from "../globals.slint";
 import { RenderQueueTable } from "converter/queue.slint";
-import { RenderProgressModal, AddMidiModal } from "converter/modals.slint";
+import { RenderProgressModal } from "converter/modals.slint";
 import { ScrollView } from "std-widgets.slint";
 
 // Banner shown while the converter config has in-memory edits: a render loads
@@ -50,8 +50,6 @@ component UnsavedSettingsWarning inherits Rectangle {
 export component RendererView inherits Rectangle {
     background: Theme.bg_main;
     clip: true;
-
-    property <bool> show_add_midi: false;
 
     VerticalLayout {
         padding: 24px;
@@ -113,9 +111,9 @@ export component RendererView inherits Rectangle {
 
                         MaestroButton {
                             icon: Icons.plus;
-                            text: "Add MIDI";
+                            text: "Add MIDIs";
                             primary: true;
-                            clicked => { root.show_add_midi = true; }
+                            clicked => { RendererState.add_midis(); }
                         }
 
                         MaestroButton {
@@ -132,8 +130,4 @@ export component RendererView inherits Rectangle {
     }
 
     if (RendererState.is_rendering): RenderProgressModal { }
-
-    if (root.show_add_midi): AddMidiModal {
-        dismissed => { root.show_add_midi = false; }
-    }
 }

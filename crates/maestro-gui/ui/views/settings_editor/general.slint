@@ -78,7 +78,9 @@ export component GeneralSection inherits SectionCard {
         }
 
         if (SettingsEditorState.current_config.has_sflist): Field {
-            label: "Assigned SoundFont List";
+            label: SettingsEditorState.current_config.has_converter_options
+                ? "Default SoundFont List"
+                : "Assigned SoundFont List";
 
             SflistPicker {
                 current_index: SettingsEditorState.current_config.sflist_index;

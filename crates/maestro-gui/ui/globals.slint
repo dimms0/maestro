@@ -224,13 +224,14 @@ export global RendererState {
     // has been started for the current queue contents.
     in-out property <[RenderStatus]> render_statuses;
 
-    callback add_midi_to_queue(string, string);
+    // Opens a multi-select file dialog and queues every picked MIDI with the
+    // converter's default SoundFont list.
+    callback add_midis();
     callback remove_midi_from_queue(int);
     callback update_midi_sflist(int, string);
     callback start_render();
     callback cancel_render();
     callback open_converter_settings();
-    callback browse_midi() -> string;
 }
 
 // Virtual MIDI Device tab. The System and KDMAPI cards are the same component

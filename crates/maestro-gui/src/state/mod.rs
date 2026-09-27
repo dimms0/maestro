@@ -205,6 +205,15 @@ impl AppData {
             .unwrap_or(0) as i32
     }
 
+    pub fn converter_default_sflist(&self) -> String {
+        self.config(ConfigComponent::Converter)
+            .map(|c| c.sflist.as_str())
+            .filter(|name| self.available_sflists.iter().any(|n| n == name))
+            .or_else(|| self.available_sflists.first().map(String::as_str))
+            .unwrap_or(DEFAULT_SOUNDFONT_LIST_NAME)
+            .to_string()
+    }
+
     pub fn refresh_available_sflists(&mut self) {
         self.available_sflists = self.sflist_files.iter().map(|f| f.name.clone()).collect();
     }

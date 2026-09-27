@@ -228,6 +228,13 @@ pub fn pick_file(filter_name: &str, extensions: &[&str]) -> SharedString {
         .unwrap_or_default()
 }
 
+pub fn pick_files(filter_name: &str, extensions: &[&str]) -> Vec<std::path::PathBuf> {
+    rfd::FileDialog::new()
+        .add_filter(filter_name, extensions)
+        .pick_files()
+        .unwrap_or_default()
+}
+
 pub fn pick_folder() -> SharedString {
     rfd::FileDialog::new()
         .pick_folder()

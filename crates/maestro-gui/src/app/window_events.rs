@@ -3,12 +3,12 @@ use std::path::Path;
 use slint::{ComponentHandle, Global};
 
 use crate::{
-    AppState, MainWindow, RendererState, SettingsEditorState, SlintMidiRenderEntry,
-    SoundfontEditorState, StandaloneMode, Tab, actions,
+    AppState, MainWindow, RendererState, SettingsEditorState, SoundfontEditorState,
+    StandaloneMode, Tab,
     app::{AppContext, quit},
     errors,
     state::AppData,
-    sync::{sync_renderer_to_slint, sync_sflist_to_slint},
+    sync::sync_sflist_to_slint,
     views::renderer,
 };
 use maestro_core::soundfont::SoundFont;
@@ -55,22 +55,7 @@ fn queue_midi(ui: &MainWindow, data: &mut AppData, path: &Path) {
     {
         return;
     }
-    let Some(path) = path.to_str() else {
-        return;
-    };
-
-    let sflist = data
-        .available_sflists
-        .first()
-        .cloned()
-        .unwrap_or_else(|| actions::FALLBACK_SFLIST.to_string());
-    data.render_queue.push(SlintMidiRenderEntry {
-        midi_path: path.into(),
-        sflist_name: sflist.into(),
-    });
-
-    renderer::clear_entry_statuses(ui);
-    sync_renderer_to_slint(ui, data);
+    renderer::queue_midis(ui, data, vec![path.to_path_buf()]);
     AppState::get(ui).set_active_tab(Tab::Converter);
 }
 

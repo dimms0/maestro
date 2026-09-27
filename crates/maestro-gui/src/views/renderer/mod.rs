@@ -1,6 +1,7 @@
 mod jobs;
 mod worker;
 
+use std::path::PathBuf;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -11,7 +12,7 @@ use slint::{ComponentHandle, Global, ModelRc, VecModel};
 use crate::{
     MainWindow, RenderStatus, RendererState, SlintMidiRenderEntry, SlintRenderJob, actions,
     app::AppContext,
-    state::{ConfigComponent, index_of},
+    state::{AppData, ConfigComponent, index_of},
     sync::sync_renderer_to_slint,
 };
 
@@ -25,21 +26,34 @@ pub fn clear_entry_statuses(ui: &MainWindow) {
         .set_render_statuses(ModelRc::new(VecModel::from(Vec::<RenderStatus>::new())));
 }
 
+pub fn queue_midis(ui: &MainWindow, data: &mut AppData, paths: Vec<PathBuf>) {
+    let sflist = data.converter_default_sflist();
+    let entries: Vec<_> = paths
+        .iter()
+        .filter_map(|p| p.to_str())
+        .map(|p| SlintMidiRenderEntry {
+            midi_path: p.into(),
+            sflist_name: sflist.as_str().into(),
+        })
+        .collect();
+    if entries.is_empty() {
+        return;
+    }
+    data.render_queue.extend(entries);
+    clear_entry_statuses(ui);
+    sync_renderer_to_slint(ui, data);
+}
+
 pub fn setup(ui: &MainWindow, cx: &AppContext) {
     let state = RendererState::get(ui);
 
     // Queue management
 
     let c = cx.clone();
-    state.on_add_midi_to_queue(move |path, sflist| {
-        c.with(|ui, data| {
-            data.render_queue.push(SlintMidiRenderEntry {
-                midi_path: path,
-                sflist_name: sflist,
-            });
-            clear_entry_statuses(ui);
-            sync_renderer_to_slint(ui, data);
-        });
+    state.on_add_midis(move || {
+        // The dialog is modal, so pick before borrowing the app data.
+        let paths = actions::pick_files("MIDI", &MIDI_FILTER);
+        c.with(|ui, data| queue_midis(ui, data, paths));
     });
 
     let c = cx.clone();
@@ -62,8 +76,6 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
             sync_renderer_to_slint(ui, data);
         });
     });
-
-    state.on_browse_midi(|| actions::pick_file("MIDI", &MIDI_FILTER));
 
     // Render orchestration
 
