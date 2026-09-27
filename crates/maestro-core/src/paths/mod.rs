@@ -159,6 +159,66 @@ pub fn program_lib_dirs() -> Vec<PathBuf> {
     dirs
 }
 
+pub const BUNDLED_SOUNDFONT: &str = "GeneralUser-GS.sf2";
+
+#[cfg(target_os = "windows")]
+fn system_data_dirs() -> Vec<PathBuf> {
+    Vec::new()
+}
+
+#[cfg(target_os = "macos")]
+fn system_data_dirs() -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = exe_dir()
+        .and_then(|d| d.parent().map(|c| c.join("Resources")))
+        .into_iter()
+        .collect();
+    dirs.extend(
+        ["/usr/local/share/maestro", "/opt/maestro"]
+            .iter()
+            .map(PathBuf::from),
+    );
+    dirs
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn system_data_dirs() -> Vec<PathBuf> {
+    vec![PathBuf::from("/usr/share/maestro")]
+}
+
+pub fn soundfont_dirs() -> Vec<PathBuf> {
+    let module = module_dir();
+    // Companion-architecture drivers sit one level down, in <program>/<arch>
+    let module_parent = module
+        .as_deref()
+        .and_then(Path::parent)
+        .map(Path::to_path_buf);
+    let mut dirs = Vec::new();
+    for base in module
+        .into_iter()
+        .chain(exe_dir())
+        .chain(module_parent)
+        .chain(system_data_dirs())
+    {
+        let dir = base.join("soundfonts");
+        if !dirs.contains(&dir) {
+            dirs.push(dir);
+        }
+    }
+    // Development builds run straight out of target/ so fall back to the
+    // copy in the source tree
+    let dev = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/soundfont");
+    dirs.push(std::fs::canonicalize(&dev).unwrap_or(dev));
+
+    dirs
+}
+
+pub fn bundled_soundfont() -> Option<PathBuf> {
+    soundfont_dirs()
+        .into_iter()
+        .map(|dir| dir.join(BUNDLED_SOUNDFONT))
+        .find(|p| p.is_file())
+}
+
 pub fn lib_dirs() -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = Vec::new();
     for base in std::iter::once(user_lib_dir()).chain(program_lib_dirs()) {

@@ -14,6 +14,13 @@
   cutting a release, since the terms differ between non-commercial and
   commercial use and this notice is only a summary, not the license itself.
 
+- **GeneralUser GS** — Copyright S. Christian Collins
+  (https://www.schristiancollins.com). The General MIDI SoundFont that ships
+  in the program's `soundfonts` folder and fills a new Default list, so
+  Maestro makes sound out of the box. Its license permits free use and
+  redistribution, private or commercial; the full text ships next to it as
+  `GeneralUser-GS-LICENSE.txt`.
+
 - **FluidSynth** — Copyright the FluidSynth contributors
   (https://github.com/FluidSynth/fluidsynth), licensed under the GNU Lesser
   General Public License v2.1 or later. It is loaded at runtime via dlopen,

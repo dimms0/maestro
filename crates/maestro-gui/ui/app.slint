@@ -30,7 +30,6 @@ import {
     UnsavedQuitModal,
 } from "views/quit.slint";
 import { StartupIssueModal } from "views/startup_issue.slint";
-import { GetSoundfontsModal } from "views/get_soundfonts.slint";
 import { UpdateAvailableModal } from "views/update.slint";
 
 import "../../../assets/fonts/Poppins-Black.ttf";
@@ -267,8 +266,6 @@ export component MainWindow inherits Window {
 
     if (!is_error && AppState.combined && AppState.active_tab != Tab.system
         && SystemIntegrationState.startup_issue): StartupIssueModal { }
-
-    if (!is_error && AppState.combined && AppState.no_soundfonts_prompt): GetSoundfontsModal { }
 
     if (!is_error && AppState.combined && AppState.update_available != ""): UpdateAvailableModal { }
 

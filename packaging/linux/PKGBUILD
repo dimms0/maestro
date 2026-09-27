@@ -48,6 +48,11 @@ package() {
 
     install -Dm755 target/release/libOmniMIDI.so "$pkgdir/usr/share/maestro/lib/libOmniMIDI.so"
 
+    local sf
+    for sf in assets/soundfont/*; do
+        install -Dm644 "$sf" "$pkgdir/usr/share/maestro/soundfonts/${sf##*/}"
+    done
+
     local lib
     for lib in libbass.so libbassmidi.so libbassflac.so; do
         install -Dm755 "$srcdir/libs/$CARCH/$lib" "$pkgdir/usr/share/maestro/lib/$lib"

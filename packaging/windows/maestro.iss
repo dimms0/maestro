@@ -86,6 +86,7 @@ Source: "{#BuildDir}\maestrodrv.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\OmniMIDI.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#VendorDir}\*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#VendorDir}\*.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\assets\soundfont\*"; DestDir: "{app}\soundfonts"; Flags: ignoreversion
 
 #ifdef Companion1Arch
 Source: "{#Companion1BuildDir}\maestrodrv.dll"; DestDir: "{app}\{#Companion1Arch}"; Flags: ignoreversion

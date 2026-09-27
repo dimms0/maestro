@@ -69,6 +69,8 @@ cp "$VENDOR/libbass.dylib" "$VENDOR/libbassmidi.dylib" \
     "$VENDOR/libbassflac.dylib" "$APP/Contents/MacOS/"
 cp "$VENDOR"/bass*.txt "$APP/Contents/Resources/"
 cp LICENSE.md THIRD-PARTY-NOTICES.md assets/fonts/OFL.txt "$APP/Contents/Resources/"
+mkdir -p "$APP/Contents/Resources/soundfonts"
+cp assets/soundfont/* "$APP/Contents/Resources/soundfonts/"
 cp "$FLUIDSYNTH_DYLIB" "$APP/Contents/MacOS/libfluidsynth.3.dylib"
 dylibbundler -od -b -x "$APP/Contents/MacOS/libfluidsynth.3.dylib" \
     -d "$APP/Contents/MacOS/" -p @executable_path/

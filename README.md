@@ -50,9 +50,10 @@ never updates itself.
 
 ## First run
 
-1. Open Maestro and go to **SoundFont List Editor**. Create a list and add at
-   least one SoundFont file — without one, MIDI plays silently.
-2. In your player, DAW or game, choose **Maestro** as the MIDI output.
+1. In your player, DAW or game, choose **Maestro** as the MIDI output.
+2. That's it: Maestro ships with the GeneralUser GS SoundFont, and the
+   **Default** list starts out with it. To use other SoundFonts, open the
+   **SoundFont List Editor** and add them to a list.
 
 To convert files instead of playing them, use the **MIDI Converter** tab: add
 your MIDI files, pick a SoundFont list and an output format in Converter

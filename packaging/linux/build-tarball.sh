@@ -40,6 +40,8 @@ cp LICENSE.md THIRD-PARTY-NOTICES.md assets/fonts/OFL.txt "$stage/"
 cp "$build/libOmniMIDI.so" "$stage/"
 cp "$VENDOR/libbass.so" "$VENDOR/libbassmidi.so" "$VENDOR/libbassflac.so" "$stage/"
 cp "$VENDOR"/bass*.txt "$stage/"
+mkdir -p "$stage/soundfonts"
+cp assets/soundfont/* "$stage/soundfonts/"
 
 # Companion architectures, for applications that load the 32-bit shim. Off by
 # default on Linux; set MAESTRO_COMPANION_ARCHS to build them.

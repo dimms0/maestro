@@ -9,8 +9,6 @@ use slint::{ComponentHandle, Global};
 
 use crate::{AppState, MainWindow, errors, state::AppData, sync, views};
 
-const SOUNDFONT_URL: &str = "https://musical-artifacts.com/artifacts?tags=soundfont";
-
 #[derive(Clone)]
 pub struct AppContext {
     ui: slint::Weak<MainWindow>,
@@ -81,11 +79,6 @@ pub fn run(args: &[String]) {
             )
             .into(),
         );
-        let no_soundfonts = data
-            .sflist_files
-            .iter()
-            .all(|f| f.list.lists.values().all(|v| v.is_empty()));
-        AppState::get(&ui).set_no_soundfonts_prompt(no_soundfonts);
         // `edit-config` opens on the config; `open` then decides which of the
         // two editors that window shows (see app.slint).
         crate::SettingsEditorState::get(&ui)
@@ -93,9 +86,6 @@ pub fn run(args: &[String]) {
         sync::sync_all(&ui, &data);
     }
 
-    AppState::get(&ui).on_open_soundfonts_page(|| {
-        let _ = views::system_integration::open_path(SOUNDFONT_URL);
-    });
     let ui_weak = ui.as_weak();
     AppState::get(&ui).on_open_update_page(move || {
         if let Some(ui) = ui_weak.upgrade() {

@@ -45,11 +45,6 @@ export global AppState {
 
     in property <string> version: "0.1.0";
 
-    // Set at startup when every SoundFont list is empty, so a MIDI file playing
-    // silently doesn't become the user's first impression of the app.
-    in-out property <bool> no_soundfonts_prompt: false;
-    callback open_soundfonts_page();
-
     // Set from a background check against GitHub Releases (update-check
     // feature, release builds only).
     in-out property <string> update_available: "";

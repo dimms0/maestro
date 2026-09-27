@@ -178,6 +178,16 @@ assets = [
         "usr/share/doc/maestro/",
         "644",
     ],
+    [
+        "../../assets/soundfont/GeneralUser-GS.sf2",
+        "usr/share/maestro/soundfonts/",
+        "644",
+    ],
+    [
+        "../../assets/soundfont/GeneralUser-GS-LICENSE.txt",
+        "usr/share/maestro/soundfonts/",
+        "644",
+    ],
 ]
 
 [package.metadata.generate-rpm]
@@ -207,4 +217,6 @@ assets = [
     { source = "../../packaging/linux/vendor/staged/bass.txt", dest = "/usr/share/doc/maestro/bass.txt", mode = "0644" },
     { source = "../../packaging/linux/vendor/staged/bassmidi.txt", dest = "/usr/share/doc/maestro/bassmidi.txt", mode = "0644" },
     { source = "../../packaging/linux/vendor/staged/bassflac.txt", dest = "/usr/share/doc/maestro/bassflac.txt", mode = "0644" },
+    { source = "../../assets/soundfont/GeneralUser-GS.sf2", dest = "/usr/share/maestro/soundfonts/GeneralUser-GS.sf2", mode = "0644" },
+    { source = "../../assets/soundfont/GeneralUser-GS-LICENSE.txt", dest = "/usr/share/maestro/soundfonts/GeneralUser-GS-LICENSE.txt", mode = "0644" },
 ]

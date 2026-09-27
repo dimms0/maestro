@@ -126,7 +126,11 @@ impl MaestroConfigManager {
         // If not found, create it in the primary sflist directory so a
         // requested list is always present on disk after this call.
         let default_path = self.dirs.sflists().join(format!("{}.json", name));
-        let default_list = SoundFontList::new_with_default_sublist();
+        let default_list = match crate::paths::bundled_soundfont() {
+            // Only a new Default list gets the bundled SoundFont
+            Some(font) if name == DEFAULT_SOUNDFONT_LIST_NAME => SoundFontList::from(font),
+            _ => SoundFontList::new_with_default_sublist(),
+        };
         self.save_json(&default_path, &default_list)?;
 
         Ok(default_list)
