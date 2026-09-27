@@ -43,9 +43,9 @@ pub fn run(args: &[String]) {
         return;
     }
 
-    let _ = slint::set_xdg_app_id("gr.dimms.maestro");
-
     let ui = MainWindow::new().expect("Failed to create Slint UI");
+
+    let _ = slint::set_xdg_app_id("gr.dimms.maestro");
 
     errors::init(&ui);
 
