@@ -1,5 +1,9 @@
 use midi_parser::Division;
-use std::sync::{Arc, Mutex};
+use std::{
+    sync::{Arc, Mutex},
+    thread,
+    time::Duration,
+};
 
 use crate::{
     audio_params::AudioParameters,
@@ -18,6 +22,8 @@ mod coalescer;
 mod nps;
 
 pub use crate::event::ump::UMP_GROUPS;
+
+const MAX_TICK_LOOKAHEAD_MS: u64 = 2000;
 
 struct TickState {
     tempo: TempoClock,
@@ -161,7 +167,26 @@ impl RealtimeEventSender {
         let samples = tick.tempo.advance(ticks);
         tick.pos += samples;
 
-        (anchor + tick.pos * self.channels) as u32
+        let pos = anchor + tick.pos * self.channels;
+        drop(tick);
+
+        self.wait_for_playback(pos);
+        pos as u32
+    }
+
+    fn wait_for_playback(&self, pos: u64) {
+        let rate = self.sample_rate as u64;
+        let limit = rate * self.channels * MAX_TICK_LOOKAHEAD_MS / 1000;
+
+        loop {
+            let ahead = pos.saturating_sub(self.clock.get_position());
+            if ahead <= limit {
+                return;
+            }
+
+            let frames = ((ahead - limit) / self.channels).max(1);
+            thread::sleep(Duration::from_nanos(frames * 1_000_000_000 / rate));
+        }
     }
 
     pub fn set_tick_division(&self, division: Division) {
