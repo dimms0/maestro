@@ -44,30 +44,30 @@ pub(crate) const BASSFLAC_LIB_FILENAME: &str = "libbassflac.dylib";
 pub(crate) const BASSFLAC_LIB_FILENAME: &str = "libbassflac.so";
 
 define_lib_wrapper!(BASSSharedLib, {
-    // BASS_SetConfig: unsafe extern "C" fn(u32, u32) -> i32,
-    // BASS_GetConfig: unsafe extern "C" fn(u32) -> u32,
-    BASS_GetVersion: unsafe extern "C" fn() -> u32,
-    BASS_ErrorGetCode: unsafe extern "C" fn() -> i32,
-    BASS_Init: unsafe extern "C" fn(i32, u32, u32, *mut c_void, *const c_void) -> i32,
-    BASS_SetDevice: unsafe extern "C" fn(u32) -> i32,
-    BASS_Free: unsafe extern "C" fn() -> i32,
-    BASS_PluginLoad: unsafe extern "C" fn(*const c_char, u32) -> u32,
-    BASS_PluginFree: unsafe extern "C" fn(u32) -> i32,
-    BASS_StreamFree: unsafe extern "C" fn(u32) -> i32,
-    BASS_ChannelSetAttribute: unsafe extern "C" fn(u32, u32, f32) -> i32,
-    BASS_ChannelGetAttribute: unsafe extern "C" fn(u32, u32, *mut f32) -> i32,
-    BASS_ChannelGetData: unsafe extern "C" fn(u32, *mut c_void, u32) -> i32,
+    // BASS_SetConfig: unsafe extern "system" fn(u32, u32) -> i32,
+    // BASS_GetConfig: unsafe extern "system" fn(u32) -> u32,
+    BASS_GetVersion: unsafe extern "system" fn() -> u32,
+    BASS_ErrorGetCode: unsafe extern "system" fn() -> i32,
+    BASS_Init: unsafe extern "system" fn(i32, u32, u32, *mut c_void, *const c_void) -> i32,
+    BASS_SetDevice: unsafe extern "system" fn(u32) -> i32,
+    BASS_Free: unsafe extern "system" fn() -> i32,
+    BASS_PluginLoad: unsafe extern "system" fn(*const c_char, u32) -> u32,
+    BASS_PluginFree: unsafe extern "system" fn(u32) -> i32,
+    BASS_StreamFree: unsafe extern "system" fn(u32) -> i32,
+    BASS_ChannelSetAttribute: unsafe extern "system" fn(u32, u32, f32) -> i32,
+    BASS_ChannelGetAttribute: unsafe extern "system" fn(u32, u32, *mut f32) -> i32,
+    BASS_ChannelGetData: unsafe extern "system" fn(u32, *mut c_void, u32) -> i32,
 });
 
 define_lib_wrapper!(BASSMIDISharedLib, {
-    BASS_MIDI_GetVersion: unsafe extern "C" fn() -> u32,
-    BASS_MIDI_StreamCreate: unsafe extern "C" fn(u32, u32, u32) -> u32,
-    BASS_MIDI_StreamSetFonts: unsafe extern "C" fn(u32, *const c_void, u32) -> i32,
-    BASS_MIDI_StreamEvent: unsafe extern "C" fn(u32, u32, u32, u32) -> i32,
-    BASS_MIDI_StreamEvents: unsafe extern "C" fn(u32, u32, *const c_void, u32) -> u32,
-    BASS_MIDI_FontInit: unsafe extern "C" fn(*const c_void, u32) -> u32,
-    BASS_MIDI_FontFree: unsafe extern "C" fn(u32) -> i32,
-    BASS_MIDI_FontLoad: unsafe extern "C" fn(u32, i32, i32) -> i32,
+    BASS_MIDI_GetVersion: unsafe extern "system" fn() -> u32,
+    BASS_MIDI_StreamCreate: unsafe extern "system" fn(u32, u32, u32) -> u32,
+    BASS_MIDI_StreamSetFonts: unsafe extern "system" fn(u32, *const c_void, u32) -> i32,
+    BASS_MIDI_StreamEvent: unsafe extern "system" fn(u32, u32, u32, u32) -> i32,
+    BASS_MIDI_StreamEvents: unsafe extern "system" fn(u32, u32, *const c_void, u32) -> u32,
+    BASS_MIDI_FontInit: unsafe extern "system" fn(*const c_void, u32) -> u32,
+    BASS_MIDI_FontFree: unsafe extern "system" fn(u32) -> i32,
+    BASS_MIDI_FontLoad: unsafe extern "system" fn(u32, i32, i32) -> i32,
 });
 
 #[repr(C)]

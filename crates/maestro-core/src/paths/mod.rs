@@ -268,7 +268,7 @@ pub fn load_library(
         if !path.exists() {
             continue;
         }
-        match unsafe { libloading::Library::new(&path) } {
+        match unsafe { load_path(&path) } {
             Ok(lib) => return Ok((lib, Some(path))),
             Err(e) => {
                 found_err.get_or_insert(e);
@@ -279,6 +279,31 @@ pub fn load_library(
     unsafe { libloading::Library::new(filename) }
         .map(|lib| (lib, None))
         .map_err(|e| found_err.unwrap_or(e))
+}
+
+// A plain LoadLibrary resolves a DLL's own imports from the host executable's
+// folder, System32 and PATH, never from the folder the DLL was loaded from. The
+// libraries we ship there depend on each other (libfluidsynth-3.dll imports
+// sndfile.dll), so without this they fail with "module not found" whenever the
+// host is not our own executable, e.g. the WinMM driver or KDMAPI.
+#[cfg(windows)]
+unsafe fn load_path(path: &Path) -> Result<libloading::Library, libloading::Error> {
+    use libloading::os::windows::{
+        LOAD_LIBRARY_SEARCH_DEFAULT_DIRS, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR, Library,
+    };
+
+    unsafe {
+        Library::load_with_flags(
+            path,
+            LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS,
+        )
+    }
+    .map(Into::into)
+}
+
+#[cfg(not(windows))]
+unsafe fn load_path(path: &Path) -> Result<libloading::Library, libloading::Error> {
+    unsafe { libloading::Library::new(path) }
 }
 
 pub fn mismatched_lib(filename: &str) -> Option<(PathBuf, &'static str)> {

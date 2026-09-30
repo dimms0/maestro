@@ -1,4 +1,4 @@
-use std::sync::mpsc::channel;
+use std::sync::mpsc::{Receiver, channel};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
@@ -150,7 +150,7 @@ impl DriverState {
     fn retain_engine(&self) -> Result<(), u32> {
         let mut users = self.engine_users.lock().unwrap();
         if *users == 0 {
-            let config = self.config();
+            let config = self.refresh_config();
             if let Err(code) = self.start_engine(&config) {
                 return Err(code);
             }
@@ -232,12 +232,25 @@ impl DriverState {
             .ok();
     }
 
-    fn apply_config_change(&self) {
+    fn refresh_config(&self) -> MaestroSystemConfig {
+        match load_config() {
+            Ok(new) => {
+                *self.config.lock().unwrap() = new.clone();
+                new
+            }
+            Err(err) => {
+                log_driver_warn("failed to reload config, keeping previous settings", err);
+                self.config()
+            }
+        }
+    }
+
+    fn apply_config_change(&self) -> bool {
         let new = match load_config() {
             Ok(c) => c,
             Err(err) => {
                 log_driver_warn("config changed but failed to load", err);
-                return;
+                return false;
             }
         };
         let old = std::mem::replace(&mut *self.config.lock().unwrap(), new.clone());
@@ -245,8 +258,12 @@ impl DriverState {
 
         if diff.engine {
             self.restart_engine_if_running(&new);
+            true
         } else if diff.soundfonts {
             self.reload_soundfonts(&new);
+            true
+        } else {
+            false
         }
     }
 
@@ -267,6 +284,7 @@ impl DriverState {
 }
 
 const MMSYSERR_ERROR_CODE: u32 = 1; // MMSYSERR_ERROR
+const DEBOUNCE: Duration = Duration::from_millis(300);
 
 fn watcher_loop(state: &'static DriverState) {
     let manager = MaestroConfigManager::default();
@@ -284,18 +302,32 @@ fn watcher_loop(state: &'static DriverState) {
     };
 
     loop {
-        match rx.recv() {
-            Ok(ServiceEvent::ConfigChanged) => {
-                while rx.recv_timeout(Duration::from_millis(300)).is_ok() {}
-                state.apply_config_change();
-            }
-            Ok(ServiceEvent::SoundfontsChanged) => {
-                while rx.recv_timeout(Duration::from_millis(300)).is_ok() {}
-                let config = state.config();
-                state.reload_soundfonts(&config);
-            }
+        let (config_changed, soundfonts_changed) = match rx.recv() {
+            Ok(ServiceEvent::ConfigChanged) => debounce(&rx, true, false),
+            Ok(ServiceEvent::SoundfontsChanged) => debounce(&rx, false, true),
             Ok(ServiceEvent::Shutdown) | Err(_) => return,
+            Ok(_) => continue,
+        };
+
+        let reloaded = config_changed && state.apply_config_change();
+        if soundfonts_changed && !reloaded {
+            let config = state.config();
+            state.reload_soundfonts(&config);
+        }
+    }
+}
+
+fn debounce(
+    rx: &Receiver<ServiceEvent>,
+    mut config_changed: bool,
+    mut soundfonts_changed: bool,
+) -> (bool, bool) {
+    while let Ok(event) = rx.recv_timeout(DEBOUNCE) {
+        match event {
+            ServiceEvent::ConfigChanged => config_changed = true,
+            ServiceEvent::SoundfontsChanged => soundfonts_changed = true,
             _ => {}
         }
     }
+    (config_changed, soundfonts_changed)
 }
