@@ -3554,6 +3554,7 @@ name = "maestro-gui"
 version = "0.1.0"
 dependencies = [
  "directories",
+ "libc",
  "libloading 0.9.0",
  "maestro-core",
  "midi-parser",

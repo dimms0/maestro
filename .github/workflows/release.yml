@@ -4,6 +4,10 @@ on:
   push:
     tags: ["v*"]
 
+# action-gh-release creates the release and uploads assets with GITHUB_TOKEN.
+permissions:
+  contents: write
+
 jobs:
   linux:
     name: linux (${{ matrix.arch }})
@@ -21,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: sudo apt-get update && sudo apt-get install -y libjack-jackd2-dev libpulse-dev libpipewire-0.3-dev pkg-config build-essential libasound2-dev
+      - run: sudo apt-get update && sudo apt-get install -y libjack-jackd2-dev libpulse-dev libpipewire-0.3-dev libfontconfig1-dev pkg-config build-essential libasound2-dev
       - run: cargo install cargo-deb cargo-generate-rpm
       - run: ./packaging/linux/build-deb.sh --arch ${{ matrix.arch }}
       - run: ./packaging/linux/build-rpm.sh --arch ${{ matrix.arch }}

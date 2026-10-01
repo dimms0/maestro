@@ -46,6 +46,9 @@ windows-sys = { version = "0.61", features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+
 [target.'cfg(all(windows, target_arch = "x86_64"))'.dependencies]
 maestro-core = { path = "../maestro-core", features = ["asio"] }
 
