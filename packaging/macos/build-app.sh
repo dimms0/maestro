@@ -72,7 +72,7 @@ cp LICENSE.md THIRD-PARTY-NOTICES.md assets/fonts/OFL.txt "$APP/Contents/Resourc
 mkdir -p "$APP/Contents/Resources/soundfonts"
 cp assets/soundfont/* "$APP/Contents/Resources/soundfonts/"
 cp "$FLUIDSYNTH_DYLIB" "$APP/Contents/MacOS/libfluidsynth.3.dylib"
-dylibbundler -od -b -x "$APP/Contents/MacOS/libfluidsynth.3.dylib" \
+dylibbundler -of -b -x "$APP/Contents/MacOS/libfluidsynth.3.dylib" \
     -d "$APP/Contents/MacOS/" -p @executable_path/
 cp crates/maestro-daemon/service/gr.dimms.maestro.daemon.plist "$APP/Contents/Library/LaunchAgents/"
 sed "s/0\.1\.0/$VERSION/g" packaging/macos/Info.plist > "$APP/Contents/Info.plist"
