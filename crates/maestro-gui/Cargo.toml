@@ -53,6 +53,7 @@ libc = "0.2"
 maestro-core = { path = "../maestro-core", features = ["asio"] }
 
 [package.metadata.deb]
+name = "maestro"
 maintainer = "dimms"
 copyright = "2026, dimms"
 license-file = ["../../LICENSE.md", "0"]
@@ -194,6 +195,7 @@ assets = [
 ]
 
 [package.metadata.generate-rpm]
+name = "maestro"
 requires = { "fluidsynth-libs" = "*" }
 assets = [
     { source = "target/release/maestro", dest = "/usr/bin/maestro", mode = "0755" },
