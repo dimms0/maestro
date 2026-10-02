@@ -120,6 +120,14 @@ export component SoundfontEditorView inherits Rectangle {
                     discard => { SoundfontEditorState.discard_current(); }
                     exit_standalone => { SoundfontEditorState.exit_standalone(); }
 
+                    MaestroButton {
+                        icon: Icons.refresh;
+                        // Saving already reloads; this is for an unchanged list
+                        disabled: SoundfontEditorState.selected_file_index < 0
+                            || SoundfontEditorState.file_dirty[SoundfontEditorState.selected_file_index];
+                        clicked => { SoundfontEditorState.save_current(); }
+                    }
+
                     if (root.show_back): MaestroButton {
                         icon: Icons.arrow_left;
                         text: "Back to Config";

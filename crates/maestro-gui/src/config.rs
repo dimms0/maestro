@@ -1,10 +1,10 @@
 use crate::state::{ComponentConfigCache, ComponentProfile, ConfigComponent, RememberedSettings};
 use maestro_core::{
     error::ConfigError,
-    soundfont::DEFAULT_SOUNDFONT_LIST_NAME,
+    soundfont::{DEFAULT_SOUNDFONT_LIST_NAME, SoundFontList},
     system_cfg::{MaestroConfigManager, MaestroGlobalConfig},
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub fn load_global_config() -> MaestroGlobalConfig {
     MaestroConfigManager::default()
@@ -14,6 +14,13 @@ pub fn load_global_config() -> MaestroGlobalConfig {
 
 pub fn save_global_config(config: &MaestroGlobalConfig) -> Result<(), ConfigError> {
     MaestroConfigManager::default().save_global_config(config)
+}
+
+pub fn read_soundfont_list(path: &Path) -> Option<(SoundFontList, bool)> {
+    let content = std::fs::read_to_string(path).ok()?;
+    let mut list: SoundFontList = serde_json::from_str(&content).ok()?;
+    let pruned = !list.remove_missing().is_empty();
+    Some((list, pruned))
 }
 
 pub fn get_soundfont_list_files() -> Vec<(String, PathBuf)> {

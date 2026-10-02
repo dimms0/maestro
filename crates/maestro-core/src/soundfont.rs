@@ -99,4 +99,18 @@ impl SoundFontList {
             default_list: Some(DEFAULT_SOUNDFONT_LIST_NAME.to_string()),
         }
     }
+
+    pub fn remove_missing(&mut self) -> Vec<PathBuf> {
+        let mut removed = Vec::new();
+        for fonts in self.lists.values_mut() {
+            fonts.retain(|sf| {
+                let exists = sf.path.exists();
+                if !exists {
+                    removed.push(sf.path.clone());
+                }
+                exists
+            });
+        }
+        removed
+    }
 }

@@ -70,7 +70,11 @@ impl Service {
     }
 
     fn load_soundfonts(&self) -> Result<SoundFontList, DaemonError> {
-        Ok(self.cfg_manager.get_soundfont_list(&self.config.sflist)?)
+        let (list, missing) = self.cfg_manager.load_soundfont_list(&self.config.sflist)?;
+        for path in &missing {
+            log_info!("Skipping missing SoundFont {}", path.display());
+        }
+        Ok(list)
     }
 
     fn apply_current_config(&mut self) {

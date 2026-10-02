@@ -116,10 +116,19 @@ impl MaestroConfigManager {
     }
 
     pub fn get_soundfont_list(&self, name: &str) -> Result<SoundFontList, ConfigError> {
+        self.load_soundfont_list(name).map(|(list, _)| list)
+    }
+
+    pub fn load_soundfont_list(
+        &self,
+        name: &str,
+    ) -> Result<(SoundFontList, Vec<PathBuf>), ConfigError> {
         for path in &self.sflist_dirs() {
             let full_path = path.join(format!("{}.json", name));
             if full_path.exists() {
-                return self.load_json(&full_path);
+                let mut list: SoundFontList = self.load_json(&full_path)?;
+                let removed = list.remove_missing();
+                return Ok((list, removed));
             }
         }
 
@@ -133,7 +142,7 @@ impl MaestroConfigManager {
         };
         self.save_json(&default_path, &default_list)?;
 
-        Ok(default_list)
+        Ok((default_list, Vec::new()))
     }
 
     pub fn ensure_default_soundfont_list(&self) -> Result<SoundFontList, ConfigError> {

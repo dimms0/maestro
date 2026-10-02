@@ -4,7 +4,9 @@ use maestro_core::{soundfont::SoundFontList, system_cfg::MaestroConfigManager};
 
 use crate::{
     StandaloneMode,
-    config::{get_component_files, get_soundfont_list_files, load_config_cache},
+    config::{
+        get_component_files, get_soundfont_list_files, load_config_cache, read_soundfont_list,
+    },
     errors,
     state::{AppData, SoundfontFileCache},
 };
@@ -61,16 +63,13 @@ fn empty(standalone_mode: StandaloneMode) -> AppData {
 
 /// `edit-list`: a single SoundFont list read straight from the given path.
 fn single_list(path: PathBuf) -> AppData {
-    let list = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|content| serde_json::from_str(&content).ok())
-        .unwrap_or_default();
+    let (list, dirty) = read_soundfont_list(&path).unwrap_or_default();
 
     let mut data = empty(StandaloneMode::EditList);
     data.sflist_files.push(SoundfontFileCache {
         name: stem_or(&path, "list"),
         path,
-        dirty: false,
+        dirty,
         list,
     });
     data.selected_sflist_idx = 0;
@@ -101,13 +100,13 @@ fn load_sflist_files(data: &mut AppData) {
     data.sflist_files = get_soundfont_list_files()
         .into_iter()
         .map(|(name, path)| {
-            let list = manager
-                .get_soundfont_list(&name)
-                .unwrap_or_else(|_| SoundFontList::new_with_default_sublist());
+            let (list, missing) = manager
+                .load_soundfont_list(&name)
+                .unwrap_or_else(|_| (SoundFontList::new_with_default_sublist(), Vec::new()));
             SoundfontFileCache {
                 path,
                 name,
-                dirty: false,
+                dirty: !missing.is_empty(),
                 list,
             }
         })

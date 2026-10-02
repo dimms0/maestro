@@ -5,6 +5,7 @@ use slint::{ComponentHandle, Global};
 use crate::{
     MainWindow, SoundfontEditorState, actions,
     app::AppContext,
+    config::read_soundfont_list,
     state::{AppData, SoundfontFileCache, index_of},
     sync::sync_sflist_to_slint,
 };
@@ -101,20 +102,17 @@ fn discard_current(ui: &MainWindow, data: &mut AppData) {
         return;
     };
 
-    let reloaded = if file.path.exists() {
-        let Some(list) = std::fs::read_to_string(&file.path)
-            .ok()
-            .and_then(|content| serde_json::from_str(&content).ok())
-        else {
+    let (reloaded, pruned) = if file.path.exists() {
+        let Some(read) = read_soundfont_list(&file.path) else {
             return;
         };
-        list
+        read
     } else {
-        SoundFontList::new_with_default_sublist()
+        (SoundFontList::new_with_default_sublist(), false)
     };
 
     file.list = reloaded;
-    file.dirty = false;
+    file.dirty = pruned;
     sync_sflist_to_slint(ui, data);
 }
 
