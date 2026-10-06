@@ -11,7 +11,7 @@ use crate::{
 pub(crate) struct PortEventSender {
     tx: Sender<MaestroTimedEvent>,
     rx: Receiver<MaestroTimedEvent>,
-    evproc: Option<Mutex<PortEventProcessor>>,
+    evproc: Mutex<Option<PortEventProcessor>>,
 }
 
 impl PortEventSender {
@@ -27,13 +27,17 @@ impl PortEventSender {
         Self {
             tx,
             rx,
-            evproc: evproc.map(Mutex::new),
+            evproc: Mutex::new(evproc),
         }
     }
 
+    pub(super) fn set_event_processor(&self, evproc: Option<PortEventProcessor>) {
+        *self.evproc.lock().unwrap() = evproc;
+    }
+
     pub fn send(&self, event: MaestroTimedEvent) {
-        let event = match &self.evproc {
-            Some(evproc) => evproc.lock().unwrap().process(event),
+        let event = match self.evproc.lock().unwrap().as_mut() {
+            Some(evproc) => evproc.process(event),
             None => Some(event),
         };
 
@@ -49,8 +53,8 @@ impl PortEventSender {
     }
 
     pub fn reset(&self) {
-        if let Some(evproc) = &self.evproc {
-            evproc.lock().unwrap().reset();
+        if let Some(evproc) = self.evproc.lock().unwrap().as_mut() {
+            evproc.reset();
         }
 
         self.drain();

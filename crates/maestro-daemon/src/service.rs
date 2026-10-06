@@ -327,11 +327,15 @@ impl Service {
             self.recreate_backend();
         }
 
-        if diff.engine {
+        if diff.engine && !self.engine.reload_config(&self.config) {
             self.start_engine();
-        } else if diff.soundfonts {
+            return;
+        }
+
+        if diff.soundfonts {
             self.reload_soundfonts();
-        } else if diff.idle {
+        }
+        if diff.idle {
             // Only the timeout moved. Re-arm from now rather than restarting.
             self.last_activity = Instant::now();
             self.reminded = false;

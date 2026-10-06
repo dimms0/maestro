@@ -54,6 +54,7 @@ define_lib_wrapper!(BASSSharedLib, {
     BASS_PluginLoad: unsafe extern "system" fn(*const c_char, u32) -> u32,
     BASS_PluginFree: unsafe extern "system" fn(u32) -> i32,
     BASS_StreamFree: unsafe extern "system" fn(u32) -> i32,
+    BASS_ChannelFlags: unsafe extern "system" fn(u32, u32, u32) -> u32,
     BASS_ChannelSetAttribute: unsafe extern "system" fn(u32, u32, f32) -> i32,
     BASS_ChannelGetAttribute: unsafe extern "system" fn(u32, u32, *mut f32) -> i32,
     BASS_ChannelGetData: unsafe extern "system" fn(u32, *mut c_void, u32) -> i32,

@@ -1,6 +1,9 @@
 use midi_parser::Division;
 use std::{
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     thread,
     time::Duration,
 };
@@ -11,6 +14,7 @@ use crate::{
     event::{MaestroEvent, MaestroTimedEvent, MidiTranslator},
     realtime::{
         MaestroRealtimeStatistics, RealtimeEngineOptions,
+        config::RealtimeConfig,
         event_sender::{coalescer::EventCoalescer, nps::NpsTracker},
         load::LoadLimiter,
     },
@@ -47,7 +51,7 @@ impl Clone for RealtimeEventSender {
             ports: self.ports.clone(),
             nps: self.nps.clone(),
             coalescer: self.coalescer.clone(),
-            precision: self.precision,
+            precision: self.precision.clone(),
             clock: self.clock.clone(),
             translator: MidiTranslator::new(),
             tick: Mutex::new(TickState::new(self.sample_rate)),
@@ -61,8 +65,8 @@ pub struct RealtimeEventSender {
     ports: Box<[Arc<PortEventSender>]>,
 
     nps: NpsTracker,
-    coalescer: Option<EventCoalescer>,
-    precision: bool,
+    coalescer: EventCoalescer,
+    precision: Arc<AtomicBool>,
 
     clock: Arc<RealtimeClock>,
     translator: MidiTranslator,
@@ -85,22 +89,22 @@ impl RealtimeEventSender {
             .map_err(RealtimeEngineError::Thread)?;
 
         let sample_rate = params.sample_rate;
+        let precision = Arc::new(AtomicBool::new(options.config.precision_playback));
 
-        let coalescer = options.config.coalesce_window_ms.map(|ms| {
-            EventCoalescer::new(
-                port_senders.clone(),
-                clock.clone(),
-                options.config.precision_playback,
-                ms,
-                nps.event_counter(),
-            )
-        });
+        let coalescer = EventCoalescer::new(
+            port_senders.clone(),
+            clock.clone(),
+            precision.clone(),
+            options.config.coalesce_window_ms,
+            nps.event_counter(),
+        )
+        .map_err(RealtimeEngineError::Thread)?;
 
         Ok(Self {
             ports: port_senders,
             nps,
             coalescer,
-            precision: options.config.precision_playback,
+            precision,
             clock,
             translator: MidiTranslator::new(),
             tick: Mutex::new(TickState::new(sample_rate)),
@@ -109,7 +113,14 @@ impl RealtimeEventSender {
         })
     }
 
-    pub(super) fn load_limiter(&self) -> Option<Arc<LoadLimiter>> {
+    pub(super) fn reload_config(&self, config: &RealtimeConfig) {
+        self.precision
+            .store(config.precision_playback, Ordering::Relaxed);
+        self.nps.set_limit(config.max_nps);
+        self.coalescer.set_window(config.coalesce_window_ms);
+    }
+
+    pub(super) fn load_limiter(&self) -> Arc<LoadLimiter> {
         self.nps.limiter()
     }
 
@@ -133,9 +144,7 @@ impl RealtimeEventSender {
                 _ => {}
             }
 
-            if let Some(coalescer) = &self.coalescer
-                && coalescer.record(port, event)
-            {
+            if self.coalescer.record(port, event) {
                 return;
             }
 
@@ -153,7 +162,7 @@ impl RealtimeEventSender {
     }
 
     fn stamp(&self) -> u32 {
-        if self.precision {
+        if self.precision.load(Ordering::Relaxed) {
             self.clock.get_position() as u32
         } else {
             self.clock.unstamped_position()
@@ -231,9 +240,7 @@ impl RealtimeEventSender {
         for port in &self.ports {
             port.reset();
         }
-        if let Some(coalescer) = &self.coalescer {
-            coalescer.reset();
-        }
+        self.coalescer.reset();
 
         self.translator.reset();
         self.nps.reset();

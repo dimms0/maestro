@@ -24,6 +24,11 @@ pub(super) trait SynthLibrary: Send + Sync {
 }
 
 pub(super) trait SynthModule: Send + Sync {
+    type Config;
+
+    // True = settings applied, False = needs rebuild
+    fn reload_config(&mut self, config: &Self::Config) -> bool;
+
     fn set_soundfonts(&mut self, handles: &[SoundFontHandle]) -> Result<(), RendererError>;
 
     fn process_event(&mut self, event: MaestroTimedEvent);

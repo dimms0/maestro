@@ -8,7 +8,7 @@ use maestro_core::system_cfg::{ConfigComponent, MaestroConfigManager};
 
 use crate::config::MaestroKdmapiConfig;
 use crate::state::get_state;
-use crate::{log_error, log_info, start_engine, stop_engine};
+use crate::{log_error, log_info, reload_engine, start_engine, stop_engine};
 
 const DEBOUNCE: Duration = Duration::from_millis(300);
 
@@ -149,7 +149,7 @@ fn reload_config(
     }
 
     let running = get_state().realtime.lock().unwrap().is_some();
-    if engine_changed || !running {
+    if !running || (engine_changed && !reload_engine(config)) {
         log_info("Config changed; rebuilding engine");
         stop_engine();
         if !start_engine(config) {

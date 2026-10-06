@@ -140,6 +140,33 @@ impl BASSMIDIStream {
             return Err(RendererError::SynthInit(error));
         }
 
+        Self::set_attributes(&lib, stream, config);
+
+        // g = gcd(sample_rate, 1_000_000), ppqn = sample_rate / g makes
+        // tempo = ppqn * 1_000_000 / sample_rate collapse to 1_000_000 / g,
+        // which is always an exact integer, that makes 1 tick == 1 frame
+        let sample_rate = audio_params.sample_rate as u64;
+        let divisor = gcd(sample_rate, 1_000_000);
+        let ppqn = sample_rate / divisor;
+        let tempo = (1_000_000 / divisor) as u32;
+
+        unsafe {
+            (lib.bass.BASS_ChannelSetAttribute)(stream, BASS_ATTRIB_MIDI_PPQN, ppqn as f32);
+            (lib.bassmidi.BASS_MIDI_StreamEvent)(stream, 0, MIDI_EVENT_TEMPO, tempo);
+        }
+
+        Ok(Self {
+            lib,
+            stream,
+            channels: u16::from(audio_params.channels) as u32,
+            last_pos: 0,
+            pending: 0,
+            event_buf: EventBuffer::new(),
+            raw: Vec::new(),
+        })
+    }
+
+    fn set_attributes(lib: &BASSMIDILib, stream: u32, config: &BASSMIDIConfig) {
         unsafe {
             (lib.bass.BASS_ChannelSetAttribute)(
                 stream,
@@ -167,29 +194,6 @@ impl BASSMIDIStream {
                 config.exclusive_keys.clamp(0, 2) as f32,
             );
         }
-
-        // g = gcd(sample_rate, 1_000_000), ppqn = sample_rate / g makes
-        // tempo = ppqn * 1_000_000 / sample_rate collapse to 1_000_000 / g,
-        // which is always an exact integer, that makes 1 tick == 1 frame
-        let sample_rate = audio_params.sample_rate as u64;
-        let divisor = gcd(sample_rate, 1_000_000);
-        let ppqn = sample_rate / divisor;
-        let tempo = (1_000_000 / divisor) as u32;
-
-        unsafe {
-            (lib.bass.BASS_ChannelSetAttribute)(stream, BASS_ATTRIB_MIDI_PPQN, ppqn as f32);
-            (lib.bassmidi.BASS_MIDI_StreamEvent)(stream, 0, MIDI_EVENT_TEMPO, tempo);
-        }
-
-        Ok(Self {
-            lib,
-            stream,
-            channels: u16::from(audio_params.channels) as u32,
-            last_pos: 0,
-            pending: 0,
-            event_buf: EventBuffer::new(),
-            raw: Vec::new(),
-        })
     }
 
     pub fn set_drum_channel(&mut self, channel: u8, is_percussion: bool) {
@@ -207,6 +211,25 @@ impl BASSMIDIStream {
 }
 
 impl SynthModule for BASSMIDIStream {
+    type Config = BASSMIDIConfig;
+
+    fn reload_config(&mut self, config: &BASSMIDIConfig) -> bool {
+        Self::set_attributes(&self.lib, self.stream, config);
+
+        let flag = |on: bool, flag: u32| if on { flag } else { 0 };
+        let flags = flag(config.note_off1, BASS_MIDI_NOTEOFF1)
+            | flag(config.disable_effects, BASS_MIDI_NOFX);
+        unsafe {
+            (self.lib.bass.BASS_ChannelFlags)(
+                self.stream,
+                flags,
+                BASS_MIDI_NOTEOFF1 | BASS_MIDI_NOFX,
+            );
+        }
+
+        true
+    }
+
     fn set_soundfonts(&mut self, handles: &[SoundFontHandle]) -> Result<(), RendererError> {
         let bass_handles = handles
             .iter()

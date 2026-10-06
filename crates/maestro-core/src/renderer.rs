@@ -10,6 +10,7 @@ use crate::{
     renderer::{
         clock::RendererClock,
         config::{EventProcessorConfig, PostProcessorConfig, RendererConfig, SynthConfig},
+        event_processor::PortEventProcessor,
         port::{PortRenderer, PortSynthManager},
         post_processor::AudioPostProcessor,
         sender::PortEventSender,
@@ -42,7 +43,10 @@ pub(crate) struct MaestroRenderer {
     render_buffers: Box<[Vec<f32>]>,
     port_soundfonts: Box<[Vec<SoundFontHandle>]>,
 
-    config: SynthConfig,
+    config: RendererConfig,
+    evproc: Option<EventProcessorConfig>,
+    postproc: Option<PostProcessorConfig>,
+    audio_params: AudioParameters,
     clock: RendererClock,
     rt_clock: Option<Arc<RealtimeClock>>,
     post_proc: Option<AudioPostProcessor>,
@@ -101,29 +105,20 @@ impl MaestroRenderer {
         let audio_dur_div =
             audio_params.sample_rate as f32 * u16::from(audio_params.channels) as f32;
 
-        let threadpool = if let Some(threads) = config.port_threads
-            && threads > 1
-        {
-            let tp = rayon::ThreadPoolBuilder::new()
-                .num_threads(threads.min(port_count as usize))
-                .build()?;
-            Some(tp)
-        } else {
-            None
-        };
-
-        let post_proc = if let Some(config) = postproc {
-            Some(AudioPostProcessor::new(config, audio_params)?)
-        } else {
-            None
-        };
+        let threadpool = build_threadpool(config.port_threads, port_count as usize)?;
+        let post_proc = postproc
+            .map(|c| AudioPostProcessor::new(c, audio_params))
+            .transpose()?;
 
         Ok(Self {
             library,
             ports: ports.into_boxed_slice(),
             render_buffers: vec![Vec::new(); port_count as usize].into_boxed_slice(),
             port_soundfonts: vec![Vec::new(); port_count as usize].into_boxed_slice(),
-            config: config.synth,
+            config,
+            evproc,
+            postproc,
+            audio_params: *audio_params,
             clock: RendererClock::new(audio_params),
             rt_clock: None,
             post_proc,
@@ -251,7 +246,7 @@ impl MaestroRenderer {
                 let mut vec = Vec::new();
 
                 for sf in filtered {
-                    match self.library.load_soundfont_handle(&self.config, sf) {
+                    match self.library.load_soundfont_handle(&self.config.synth, sf) {
                         Ok(handle) => vec.push(handle),
                         Err(err) => {
                             for handle in vec.drain(..) {
@@ -322,6 +317,51 @@ impl MaestroRenderer {
         }
     }
 
+    pub(crate) fn reload_config(
+        &mut self,
+        config: RendererConfig,
+        evproc: Option<EventProcessorConfig>,
+        postproc: Option<PostProcessorConfig>,
+    ) -> Result<bool, RendererError> {
+        if config.synth != self.config.synth {
+            // every port runs the same synth so the first one speaks for all
+            let Some((first, rest)) = self.ports.split_first_mut() else {
+                return Ok(false);
+            };
+            if !first.reload_config(&config.synth) {
+                return Ok(false);
+            }
+            for port in rest {
+                port.reload_config(&config.synth);
+            }
+        }
+
+        if config.port_threads != self.config.port_threads {
+            self.threadpool = build_threadpool(config.port_threads, self.ports.len())?;
+        }
+
+        if postproc != self.postproc {
+            self.post_proc = postproc
+                .map(|c| AudioPostProcessor::new(c, &self.audio_params))
+                .transpose()?;
+        }
+
+        if evproc != self.evproc {
+            for (i, port) in self.ports.iter_mut().enumerate() {
+                let processor = evproc
+                    .clone()
+                    .map(|c| PortEventProcessor::new(i as u8, c, &self.audio_params));
+                port.get_buffer().set_event_processor(processor);
+                port.reset();
+            }
+        }
+
+        self.config = config;
+        self.evproc = evproc;
+        self.postproc = postproc;
+        Ok(true)
+    }
+
     pub fn get_statistics(&self) -> Arc<MaestroRenderStatistics> {
         self.stats.clone()
     }
@@ -332,5 +372,19 @@ impl MaestroRenderer {
 
     pub(crate) fn get_port_senders(&self) -> Vec<Arc<PortEventSender>> {
         self.ports.iter().map(|p| p.get_buffer()).collect()
+    }
+}
+
+fn build_threadpool(
+    threads: Option<usize>,
+    port_count: usize,
+) -> Result<Option<rayon::ThreadPool>, RendererError> {
+    match threads {
+        Some(threads) if threads > 1 => Ok(Some(
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(threads.min(port_count))
+                .build()?,
+        )),
+        _ => Ok(None),
     }
 }

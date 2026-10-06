@@ -24,6 +24,7 @@ pub(crate) struct BASSMIDISynth {
     divisor: usize,
     kbdiv: usize,
     threadpool: Option<rayon::ThreadPool>,
+    config: BASSMIDIConfig,
 }
 
 impl BASSMIDISynth {
@@ -83,11 +84,38 @@ impl BASSMIDISynth {
             divisor: if kbdiv == 0 { instances } else { kbdiv },
             kbdiv,
             threadpool,
+            config: *config,
         })
     }
 }
 
 impl SynthModule for BASSMIDISynth {
+    type Config = BASSMIDIConfig;
+
+    fn reload_config(&mut self, config: &BASSMIDIConfig) -> bool {
+        // Threading decides the stream layout and the `sf_*` flags were baked
+        // into the loaded soundfonts, everything else is a stream setting
+        let fixed = |c: &BASSMIDIConfig| BASSMIDIConfig {
+            voice_limit: 0,
+            render_time_limit: 0.0,
+            interpolation: Default::default(),
+            disable_effects: false,
+            fade_out_killing: false,
+            note_off1: false,
+            exclusive_keys: 0,
+            ..*c
+        };
+        if fixed(&self.config) != fixed(config) {
+            return false;
+        }
+
+        for stream in &mut self.streams {
+            stream.reload_config(config);
+        }
+        self.config = *config;
+        true
+    }
+
     fn set_soundfonts(&mut self, handles: &[SoundFontHandle]) -> Result<(), RendererError> {
         for stream in &mut self.streams {
             stream.set_soundfonts(handles)?;

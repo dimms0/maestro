@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use crate::realtime::MaestroRealtimeStatistics;
 
@@ -14,23 +14,37 @@ const MAX_CAP: f32 = 1_000_000_000.0;
 pub(crate) struct LoadLimiter {
     max_nps: AtomicU32,
     average: AtomicU32,
-    cap: f32,
+    cap: AtomicU32,
+    adaptive: AtomicBool,
     stats: MaestroRealtimeStatistics,
 }
 
 impl LoadLimiter {
-    pub(crate) fn new(cap: u64, stats: MaestroRealtimeStatistics) -> Self {
-        let cap = (cap as f32).min(MAX_CAP);
-
-        Self {
-            max_nps: AtomicU32::new(cap.to_bits()),
+    pub(crate) fn new(cap: u64, adaptive: bool, stats: MaestroRealtimeStatistics) -> Self {
+        let limiter = Self {
+            max_nps: AtomicU32::new(0),
             average: AtomicU32::new(0),
-            cap,
+            cap: AtomicU32::new(0),
+            adaptive: AtomicBool::new(false),
             stats,
-        }
+        };
+        limiter.configure(cap, adaptive);
+        limiter
+    }
+
+    pub(crate) fn configure(&self, cap: u64, adaptive: bool) -> bool {
+        let cap = (cap as f32).min(MAX_CAP);
+        self.cap.store(cap.to_bits(), Ordering::Relaxed);
+        self.adaptive.store(adaptive, Ordering::Relaxed);
+        self.reset();
+        true
     }
 
     pub(crate) fn update(&self, load: f32, block_seconds: f32) -> Option<u64> {
+        if !self.adaptive.load(Ordering::Relaxed) {
+            return None;
+        }
+
         let average = f32::from_bits(self.average.load(Ordering::Relaxed));
         let average = average + (load - average) * AVERAGE_WEIGHT;
         self.average.store(average.to_bits(), Ordering::Relaxed);
@@ -44,11 +58,11 @@ impl LoadLimiter {
             let headroom = ((TARGET_LOAD - average) / TARGET_LOAD).max(0.0);
             max * (1.0 + RECOVERY_PER_SECOND * headroom * block_seconds)
         }
-        .min(self.cap);
+        .min(self.cap());
 
         self.max_nps.store(next.to_bits(), Ordering::Relaxed);
 
-        let lowered = (next < self.cap).then_some(next as u64);
+        let lowered = (next < self.cap()).then_some(next as u64);
         self.stats.set_nps_limit(lowered);
         lowered
     }
@@ -58,9 +72,13 @@ impl LoadLimiter {
     }
 
     pub(crate) fn reset(&self) {
-        self.max_nps.store(self.cap.to_bits(), Ordering::Relaxed);
+        self.max_nps.store(self.cap().to_bits(), Ordering::Relaxed);
         self.average.store(0, Ordering::Relaxed);
         self.stats.set_nps_limit(None);
+    }
+
+    fn cap(&self) -> f32 {
+        f32::from_bits(self.cap.load(Ordering::Relaxed))
     }
 
     fn limit(&self) -> f32 {

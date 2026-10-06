@@ -1,6 +1,7 @@
 use crate::{
+    audio_params::AudioParameters,
     error::{MaestroComponentError, RealtimeEngineError, RendererError},
-    realtime::buffered_renderer::BufferedRenderer,
+    realtime::{buffered_renderer::BufferedRenderer, load::LoadLimiter},
     renderer::{MaestroRenderer, RealtimeClock},
     soundfont::SoundFontList,
 };
@@ -21,20 +22,44 @@ pub use stream::{device_caps, output_devices, output_hosts, set_stream_error_han
 
 pub struct MaestroRealtimeEngine {
     renderer: Arc<Mutex<MaestroRenderer>>,
-    stream: Stream,
+    stream: Option<Stream>,
     sender: RealtimeEventSender,
     stats: MaestroRealtimeStatistics,
+    options: RealtimeEngineOptions,
+    stream_params: AudioParameters,
+}
+
+fn requested_params(options: &RealtimeEngineOptions) -> Option<AudioParameters> {
+    (!options.config.device_audio_params).then_some(options.audio_params)
+}
+
+fn start_stream(
+    renderer: &Arc<Mutex<MaestroRenderer>>,
+    output: &stream::ResolvedOutput,
+    config: &config::RealtimeConfig,
+    limiter: Arc<LoadLimiter>,
+) -> Result<Stream, RealtimeEngineError> {
+    let renderer = renderer.clone();
+    let func = move |buffer: &mut [f32]| {
+        renderer.lock().unwrap().render(buffer);
+    };
+
+    let mut buffered = BufferedRenderer::new(func, output.params, config, limiter)?;
+
+    let func = move |buffer: &mut [f32]| {
+        buffered.read(buffer);
+    };
+
+    let stream = stream::build_stream(output, config, func)?;
+    stream
+        .play()
+        .map_err(|e| RealtimeEngineError::Audio(format!("Failed to start audio stream: {e:?}")))?;
+    Ok(stream)
 }
 
 impl MaestroRealtimeEngine {
     pub fn new(options: RealtimeEngineOptions) -> Result<Self, MaestroComponentError> {
-        let requested = if options.config.device_audio_params {
-            None
-        } else {
-            Some(options.audio_params)
-        };
-
-        let output = stream::resolve_output(requested, &options.config)?;
+        let output = stream::resolve_output(requested_params(&options), &options.config)?;
         let stream_params = output.params;
 
         let ports = options.ports.unwrap_or(1).clamp(1, 16);
@@ -60,30 +85,60 @@ impl MaestroRealtimeEngine {
         )?;
 
         let renderer = Arc::new(Mutex::new(renderer));
-
-        let renderer_cln = renderer.clone();
-        let func = move |buffer: &mut [f32]| {
-            renderer_cln.lock().unwrap().render(buffer);
-        };
-
-        let mut buffered =
-            BufferedRenderer::new(func, stream_params, &options.config, sender.load_limiter())?;
-
-        let func = move |buffer: &mut [f32]| {
-            buffered.read(buffer);
-        };
-
-        let stream = stream::build_stream(&output, &options.config, func)?;
-        stream.play().map_err(|e| {
-            RealtimeEngineError::Audio(format!("Failed to start audio stream: {e:?}"))
-        })?;
+        let stream = start_stream(&renderer, &output, &options.config, sender.load_limiter())?;
 
         Ok(Self {
             renderer,
-            stream,
+            stream: Some(stream),
             sender,
             stats,
+            options,
+            stream_params,
         })
+    }
+
+    pub fn reload_config(
+        &mut self,
+        options: RealtimeEngineOptions,
+    ) -> Result<bool, MaestroComponentError> {
+        let (old, new) = (&self.options, &options);
+        if old.ports != new.ports {
+            return Ok(false);
+        }
+
+        let reloaded = self.renderer.lock().unwrap().reload_config(
+            new.renderer,
+            new.event_processor.clone(),
+            new.post_processor,
+        )?;
+        if !reloaded {
+            return Ok(false);
+        }
+
+        self.sender.reload_config(&new.config);
+
+        // Whatever the sender doesn't handle belongs to the output stream
+        let stream_config = |c: &config::RealtimeConfig| config::RealtimeConfig {
+            precision_playback: false,
+            max_nps: None,
+            coalesce_window_ms: None,
+            ..c.clone()
+        };
+        if stream_config(&old.config) != stream_config(&new.config)
+            || old.audio_params != new.audio_params
+        {
+            self.stream = None;
+            let output = stream::resolve_output(requested_params(new), &new.config)?;
+            if output.params != self.stream_params {
+                return Ok(false);
+            }
+
+            let limiter = self.sender.load_limiter();
+            self.stream = Some(start_stream(&self.renderer, &output, &new.config, limiter)?);
+        }
+
+        self.options = options;
+        Ok(true)
     }
 
     pub fn sender(&mut self) -> &mut RealtimeEventSender {
@@ -108,10 +163,10 @@ impl MaestroRealtimeEngine {
     }
 
     pub fn pause(&mut self) -> Result<(), cpal::Error> {
-        self.stream.pause()
+        self.stream.as_ref().map_or(Ok(()), |s| s.pause())
     }
 
     pub fn play(&mut self) -> Result<(), cpal::Error> {
-        self.stream.play()
+        self.stream.as_ref().map_or(Ok(()), |s| s.play())
     }
 }

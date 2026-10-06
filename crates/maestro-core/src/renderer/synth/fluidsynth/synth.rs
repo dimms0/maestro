@@ -38,6 +38,7 @@ pub(crate) struct FluidSynthSynth {
     rendered: u64,
     last_pos: u32,
     scheduled: u64,
+    config: FluidSynthConfig,
 }
 
 // SAFETY: the settings/synth handles are owned exclusively by this instance
@@ -103,6 +104,7 @@ impl FluidSynthSynth {
             rendered: 0,
             last_pos: 0,
             scheduled: 0,
+            config: *config,
         })
     }
 
@@ -132,17 +134,37 @@ impl FluidSynthSynth {
             )));
         }
 
-        setint(
-            c"synth.polyphony",
-            config.voice_limit.clamp(1, 65535) as c_int,
-        );
         setint(c"synth.cpu-cores", config.cpu_cores.clamp(1, 256) as c_int);
         setint(
             c"synth.min-note-length",
             config.minimum_note_length.min(65535) as c_int,
         );
-        setint(c"synth.device-id", config.system_id.clamp(0, 127));
         setint(c"synth.note-cut", config.note_cut.clamp(0, 2));
+        setstr(c"synth.reverb.engine", config.reverb_engine.into());
+        Self::apply_realtime_settings(lib, settings, config);
+
+        setint(c"synth.threadsafe-api", 0);
+
+        Ok(())
+    }
+
+    fn apply_realtime_settings(
+        lib: &FluidSynthLib,
+        settings: *mut c_void,
+        config: &FluidSynthConfig,
+    ) {
+        let setint = |name: &CStr, val: c_int| unsafe {
+            (lib.fns.fluid_settings_setint)(settings, name.as_ptr(), val)
+        };
+        let setnum = |name: &CStr, val: f64| unsafe {
+            (lib.fns.fluid_settings_setnum)(settings, name.as_ptr(), val)
+        };
+
+        setint(
+            c"synth.polyphony",
+            config.voice_limit.clamp(1, 65535) as c_int,
+        );
+        setint(c"synth.device-id", config.system_id.clamp(0, 127));
 
         setint(c"synth.chorus.active", config.chorus_active as c_int);
         setnum(c"synth.chorus.depth", config.chorus_depth as f64);
@@ -154,7 +176,6 @@ impl FluidSynthSynth {
         setnum(c"synth.reverb.level", config.reverb_level as f64);
         setnum(c"synth.reverb.room-size", config.reverb_roomsize as f64);
         setnum(c"synth.reverb.width", config.reverb_width as f64);
-        setstr(c"synth.reverb.engine", config.reverb_engine.into());
 
         let overflow = |v: f64| v.clamp(-10000.0, 10000.0);
         setnum(c"synth.overflow.age", overflow(config.overflow_age));
@@ -171,14 +192,48 @@ impl FluidSynthSynth {
             overflow(config.overflow_sustained),
         );
         setnum(c"synth.overflow.volume", overflow(config.overflow_volume));
-
-        setint(c"synth.threadsafe-api", 0);
-
-        Ok(())
     }
 }
 
 impl SynthModule for FluidSynthSynth {
+    type Config = FluidSynthConfig;
+
+    fn reload_config(&mut self, config: &FluidSynthConfig) -> bool {
+        let fixed = |c: &FluidSynthConfig| FluidSynthConfig {
+            voice_limit: 0,
+            interpolation: Default::default(),
+            system_id: 0,
+            chorus_active: false,
+            chorus_depth: 0.0,
+            chorus_level: 0.0,
+            chorus_speed: 0.0,
+            reverb_active: false,
+            reverb_damp: 0.0,
+            reverb_level: 0.0,
+            reverb_roomsize: 0.0,
+            reverb_width: 0.0,
+            overflow_age: 0.0,
+            overflow_percussion: 0.0,
+            overflow_released: 0.0,
+            overflow_sustained: 0.0,
+            overflow_volume: 0.0,
+            ..*c
+        };
+        if fixed(&self.config) != fixed(config) {
+            return false;
+        }
+
+        Self::apply_realtime_settings(&self.lib, self.settings, config);
+        unsafe {
+            (self.lib.fns.fluid_synth_set_interp_method)(
+                self.synth,
+                -1,
+                interp_to_fluid(config.interpolation),
+            )
+        };
+        self.config = *config;
+        true
+    }
     fn set_soundfonts(&mut self, handles: &[SoundFontHandle]) -> Result<(), RendererError> {
         for id in self.loaded_fonts.drain(..) {
             unsafe { (self.lib.fns.fluid_synth_sfunload)(self.synth, id, 0) };

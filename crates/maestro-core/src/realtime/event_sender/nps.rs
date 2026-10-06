@@ -72,8 +72,8 @@ pub(crate) struct NpsTracker {
     total_window_sum: Arc<AtomicU64>,
     current_events: Arc<AtomicU64>,
     active_notes: Arc<[AtomicU64]>,
-    limiter: Option<Arc<LoadLimiter>>,
-    max_nps: Option<u64>,
+    limiter: Arc<LoadLimiter>,
+    limited: Arc<AtomicBool>,
     stop: Arc<AtomicBool>,
     join_handle: Option<JoinHandle<()>>,
 }
@@ -89,10 +89,11 @@ impl NpsTracker {
         let current_events = Arc::new(AtomicU64::new(0));
         let stop = Arc::new(AtomicBool::new(false));
 
-        let max_nps = limit.map(|limit| limit.max as u64);
-        let limiter = limit
-            .filter(|limit| limit.load_limiter)
-            .map(|limit| Arc::new(LoadLimiter::new(limit.max as u64, stats.clone())));
+        let limiter = Arc::new(LoadLimiter::new(
+            limit.map_or(0, |l| l.max as u64),
+            limit.is_some_and(|l| l.load_limiter),
+            stats.clone(),
+        ));
 
         let join_handle = {
             let current = current_window_sum.clone();
@@ -112,14 +113,22 @@ impl NpsTracker {
             current_events,
             active_notes: (0..channels * 128).map(|_| AtomicU64::new(0)).collect(),
             limiter,
-            max_nps,
+            limited: Arc::new(AtomicBool::new(limit.is_some())),
             stop,
             join_handle,
         })
     }
 
-    pub(crate) fn limiter(&self) -> Option<Arc<LoadLimiter>> {
+    pub(crate) fn limiter(&self) -> Arc<LoadLimiter> {
         self.limiter.clone()
+    }
+
+    pub(crate) fn set_limit(&self, limit: Option<NpsLimit>) {
+        self.limited.store(limit.is_some(), Ordering::Relaxed);
+        self.limiter.configure(
+            limit.map_or(0, |l| l.max as u64),
+            limit.is_some_and(|l| l.load_limiter),
+        );
     }
 
     pub(crate) fn note_on(&self, channel: usize, key: u8, vel: u8) -> bool {
@@ -138,10 +147,9 @@ impl NpsTracker {
     }
 
     fn max_nps(&self) -> Option<u64> {
-        match &self.limiter {
-            Some(limiter) => Some(limiter.max_nps()),
-            None => self.max_nps,
-        }
+        self.limited
+            .load(Ordering::Relaxed)
+            .then(|| self.limiter.max_nps())
     }
 
     fn admit(&self, vel: u8, max: u64) -> bool {
@@ -191,9 +199,7 @@ impl NpsTracker {
         for n in self.active_notes.iter() {
             n.store(0, Ordering::Relaxed);
         }
-        if let Some(limiter) = &self.limiter {
-            limiter.reset();
-        }
+        self.limiter.reset();
     }
 }
 
@@ -216,7 +222,7 @@ impl Clone for NpsTracker {
             current_events: self.current_events.clone(),
             active_notes: self.active_notes.clone(),
             limiter: self.limiter.clone(),
-            max_nps: self.max_nps,
+            limited: self.limited.clone(),
             stop: self.stop.clone(),
             join_handle: None,
         }

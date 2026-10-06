@@ -75,6 +75,17 @@ fn load_config() -> Result<MaestroSystemConfig, maestro_core::error::ConfigError
     manager.load_or_default(&path)
 }
 
+fn engine_options(config: &MaestroSystemConfig) -> RealtimeEngineOptions {
+    RealtimeEngineOptions {
+        ports: Some(config.custom.num_ports.max(1)),
+        config: config.realtime.clone(),
+        renderer: config.renderer.clone(),
+        audio_params: config.audio_params,
+        event_processor: config.event_processor.clone(),
+        post_processor: config.post_processor.clone(),
+    }
+}
+
 fn utf16_name(name: &str) -> [u16; 32] {
     let mut buf = [0u16; 32];
     for (i, unit) in name.encode_utf16().take(31).enumerate() {
@@ -179,16 +190,7 @@ impl DriverState {
             }
         };
 
-        let options = RealtimeEngineOptions {
-            ports: Some(config.custom.num_ports.max(1)),
-            config: config.realtime.clone(),
-            renderer: config.renderer.clone(),
-            audio_params: config.audio_params,
-            event_processor: config.event_processor.clone(),
-            post_processor: config.post_processor.clone(),
-        };
-
-        let engine = match MaestroRealtimeEngine::new(options) {
+        let engine = match MaestroRealtimeEngine::new(engine_options(config)) {
             Ok(e) => e,
             Err(err) => {
                 log_driver_error("failed to start engine", err);
@@ -203,6 +205,21 @@ impl DriverState {
         *self.stats.lock().unwrap() = Some(engine.get_statistics());
         *self.engine.lock().unwrap() = Some(engine);
         Ok(())
+    }
+
+    // Returns false when the engine isn't running or has to be restarted
+    fn reload_engine(&self, config: &MaestroSystemConfig) -> bool {
+        let mut engine = self.engine.lock().unwrap();
+        let Some(engine) = engine.as_mut() else {
+            return false;
+        };
+
+        engine
+            .reload_config(engine_options(config))
+            .unwrap_or_else(|err| {
+                log_driver_warn("failed to reload engine config", err);
+                false
+            })
     }
 
     fn restart_engine_if_running(&self, config: &MaestroSystemConfig) {
@@ -256,7 +273,7 @@ impl DriverState {
         let old = std::mem::replace(&mut *self.config.lock().unwrap(), new.clone());
         let diff = diff_configs(&old, &new);
 
-        if diff.engine {
+        if diff.engine && !self.reload_engine(&new) {
             self.restart_engine_if_running(&new);
             true
         } else if diff.soundfonts {

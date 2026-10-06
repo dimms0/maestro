@@ -1,9 +1,10 @@
 use std::{
+    io,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
     },
-    thread::{self, JoinHandle},
+    thread::{self, JoinHandle, Thread},
     time::Duration,
 };
 
@@ -286,9 +287,39 @@ impl PortState {
     }
 }
 
+struct Shared {
+    senders: Box<[Arc<PortEventSender>]>,
+    ports: Box<[Mutex<PortState>]>,
+    clock: Arc<RealtimeClock>,
+    precision: Arc<AtomicBool>,
+    event_counter: Arc<AtomicU64>,
+    window_ms: AtomicU32, // 0 while coalescing is off
+    stop: AtomicBool,
+}
+
+impl Shared {
+    fn flush(&self, pending: &mut Vec<MaestroEvent>) {
+        let pos = if self.precision.load(Ordering::Relaxed) {
+            self.clock.get_position() as u32
+        } else {
+            self.clock.unstamped_position()
+        };
+
+        for (sender, state) in self.senders.iter().zip(self.ports.iter()) {
+            let mut state = state.lock().unwrap();
+            state.drain_into(pending);
+            self.event_counter
+                .fetch_add(pending.len() as u64, Ordering::Relaxed);
+            for event in pending.drain(..) {
+                sender.send(MaestroTimedEvent { event, pos });
+            }
+        }
+    }
+}
+
 pub(super) struct EventCoalescer {
-    ports: Arc<[Mutex<PortState>]>,
-    stop: Arc<AtomicBool>,
+    shared: Arc<Shared>,
+    thread: Thread,
     join_handle: Option<JoinHandle<()>>,
 }
 
@@ -296,67 +327,91 @@ impl EventCoalescer {
     pub fn new(
         senders: Box<[Arc<PortEventSender>]>,
         clock: Arc<RealtimeClock>,
-        precision: bool,
-        window_ms: u32,
+        precision: Arc<AtomicBool>,
+        window_ms: Option<u32>,
         event_counter: Arc<AtomicU64>,
-    ) -> Self {
-        let ports: Arc<[Mutex<PortState>]> = senders
-            .iter()
-            .map(|_| Mutex::new(PortState::new()))
-            .collect::<Vec<_>>()
-            .into();
-        let stop = Arc::new(AtomicBool::new(false));
+    ) -> io::Result<Self> {
+        let shared = Arc::new(Shared {
+            ports: senders
+                .iter()
+                .map(|_| Mutex::new(PortState::new()))
+                .collect(),
+            senders,
+            clock,
+            precision,
+            event_counter,
+            window_ms: AtomicU32::new(window(window_ms)),
+            stop: AtomicBool::new(false),
+        });
 
         let join_handle = {
-            let ports = ports.clone();
-            let stop = stop.clone();
+            let shared = shared.clone();
             thread::Builder::new()
                 .name("event_coalescer".to_string())
                 .spawn(move || {
                     let mut pending = Vec::new();
-                    while !stop.load(Ordering::Acquire) {
-                        thread::sleep(Duration::from_millis(window_ms as u64));
-                        let pos = if precision {
-                            clock.get_position() as u32
-                        } else {
-                            clock.unstamped_position()
-                        };
+                    loop {
+                        match shared.window_ms.load(Ordering::Acquire) {
+                            0 => thread::park(),
+                            ms => thread::park_timeout(Duration::from_millis(ms as u64)),
+                        }
 
-                        for (sender, state) in senders.iter().zip(ports.iter()) {
-                            state.lock().unwrap().drain_into(&mut pending);
-                            event_counter.fetch_add(pending.len() as u64, Ordering::Relaxed);
-                            for event in pending.drain(..) {
-                                sender.send(MaestroTimedEvent { event, pos });
-                            }
+                        shared.flush(&mut pending);
+                        if shared.stop.load(Ordering::Acquire) {
+                            return;
                         }
                     }
-                })
-                .ok()
+                })?
         };
 
-        Self {
-            ports,
-            stop,
-            join_handle,
+        Ok(Self {
+            shared,
+            thread: join_handle.thread().clone(),
+            join_handle: Some(join_handle),
+        })
+    }
+
+    pub fn set_window(&self, window_ms: Option<u32>) {
+        let ms = window(window_ms);
+        if self.shared.window_ms.swap(ms, Ordering::AcqRel) == ms {
+            return;
         }
+
+        // The thread parks for good once off, so whatever is pending goes out now
+        if ms == 0 {
+            self.shared.flush(&mut Vec::new());
+        }
+        self.thread.unpark();
     }
 
     pub fn record(&self, port: u8, event: MaestroEvent) -> bool {
-        self.ports[port as usize].lock().unwrap().record(event)
+        let off = || self.shared.window_ms.load(Ordering::Relaxed) == 0;
+        if off() {
+            return false;
+        }
+
+        // Checked again under the lock: once the flush in `set_window` has
+        // taken it, nothing may be recorded into a parked coalescer
+        let mut state = self.shared.ports[port as usize].lock().unwrap();
+        !off() && state.record(event)
     }
 
     pub fn reset(&self) {
-        for port in self.ports.iter() {
+        for port in self.shared.ports.iter() {
             *port.lock().unwrap() = PortState::new();
         }
     }
 }
 
+fn window(window_ms: Option<u32>) -> u32 {
+    window_ms.map_or(0, |ms| ms.max(1))
+}
+
 impl Clone for EventCoalescer {
     fn clone(&self) -> Self {
         Self {
-            ports: self.ports.clone(),
-            stop: self.stop.clone(),
+            shared: self.shared.clone(),
+            thread: self.thread.clone(),
             join_handle: None,
         }
     }
@@ -364,8 +419,9 @@ impl Clone for EventCoalescer {
 
 impl Drop for EventCoalescer {
     fn drop(&mut self) {
-        self.stop.store(true, Ordering::Release);
         if let Some(handle) = self.join_handle.take() {
+            self.shared.stop.store(true, Ordering::Release);
+            handle.thread().unpark();
             handle.join().ok();
         }
     }

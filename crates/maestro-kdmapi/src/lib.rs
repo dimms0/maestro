@@ -41,6 +41,38 @@ fn load_config() -> Result<MaestroKdmapiConfig, maestro_core::error::ConfigError
     config_manager.load_or_default(&path)
 }
 
+fn engine_options(config: &MaestroKdmapiConfig) -> RealtimeEngineOptions {
+    RealtimeEngineOptions {
+        ports: None,
+        config: config.realtime.clone(),
+        renderer: config.renderer,
+        audio_params: config.audio_params,
+        event_processor: config.event_processor.clone(),
+        post_processor: config.post_processor,
+    }
+}
+
+fn reload_engine(config: &MaestroKdmapiConfig) -> bool {
+    let state = get_state();
+    let mut realtime = state.realtime.lock().unwrap();
+    let Some(engine) = realtime.as_mut() else {
+        return false;
+    };
+
+    match engine.reload_config(engine_options(config)) {
+        Ok(applied) => {
+            if applied {
+                log_info("Config changed; engine reloaded in place");
+            }
+            applied
+        }
+        Err(err) => {
+            log_info(format!("Failed to reload engine config ({err})"));
+            false
+        }
+    }
+}
+
 fn start_engine(config: &MaestroKdmapiConfig) -> bool {
     let config_manager = MaestroConfigManager::default();
     let sflist = match config_manager.get_soundfont_list(&config.sflist) {
@@ -51,16 +83,7 @@ fn start_engine(config: &MaestroKdmapiConfig) -> bool {
         }
     };
 
-    let options = RealtimeEngineOptions {
-        ports: None,
-        config: config.realtime.clone(),
-        renderer: config.renderer,
-        audio_params: config.audio_params,
-        event_processor: config.event_processor.clone(),
-        post_processor: config.post_processor,
-    };
-
-    let engine = match MaestroRealtimeEngine::new(options) {
+    let engine = match MaestroRealtimeEngine::new(engine_options(config)) {
         Ok(e) => e,
         Err(err) => {
             log_error(err);

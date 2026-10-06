@@ -5,7 +5,7 @@ use crate::{
     error::RendererError,
     event::MaestroTimedEvent,
     renderer::{
-        config::EventProcessorConfig,
+        config::{EventProcessorConfig, SynthConfig},
         sender::PortEventSender,
         synth::{
             SoundFontHandle, SynthModule, bassmidi::BASSMIDISynth, fluidsynth::FluidSynthSynth,
@@ -38,6 +38,14 @@ impl PortRenderer {
         match self {
             Self::BASSMIDI(mgr) => mgr.set_soundfonts(handles),
             Self::FluidSynth(mgr) => mgr.set_soundfonts(handles),
+        }
+    }
+
+    pub fn reload_config(&mut self, config: &SynthConfig) -> bool {
+        match (self, config) {
+            (Self::BASSMIDI(mgr), SynthConfig::BASSMIDI(cfg)) => mgr.synth.reload_config(cfg),
+            (Self::FluidSynth(mgr), SynthConfig::FluidSynth(cfg)) => mgr.synth.reload_config(cfg),
+            _ => false,
         }
     }
 

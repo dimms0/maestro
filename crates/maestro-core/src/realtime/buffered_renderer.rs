@@ -33,7 +33,7 @@ impl BufferedRenderer {
         mut render_func: F,
         stream_params: AudioParameters,
         config: &RealtimeConfig,
-        limiter: Option<Arc<LoadLimiter>>,
+        limiter: Arc<LoadLimiter>,
     ) -> Result<Self, RealtimeEngineError>
     where
         F: 'static + FnMut(&mut [f32]) + Send,
@@ -93,9 +93,7 @@ impl BufferedRenderer {
 
                         render_func(&mut vec);
 
-                        if let Some(limiter) = &limiter {
-                            limiter.update(start.elapsed().as_secs_f32() / audio_div, audio_div);
-                        }
+                        limiter.update(start.elapsed().as_secs_f32() / audio_div, audio_div);
 
                         samples.fetch_add(vec.len() as i64, Ordering::SeqCst);
                         match tx.send(vec) {

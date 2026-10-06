@@ -10,7 +10,7 @@ use crate::{
     config::MaestroSystemConfig,
     error::DaemonError,
     gate::{GateMode, MidiGate, SharedGate},
-    log_info,
+    log_error, log_info,
     watcher::ServiceEvent,
 };
 
@@ -19,6 +19,17 @@ pub fn engine_ports(config: &MaestroSystemConfig) -> u8 {
         UMP_GROUPS
     } else {
         config.custom.num_ports.max(1)
+    }
+}
+
+fn engine_options(config: &MaestroSystemConfig) -> RealtimeEngineOptions {
+    RealtimeEngineOptions {
+        ports: Some(engine_ports(config)),
+        config: config.realtime.clone(),
+        renderer: config.renderer,
+        audio_params: config.audio_params,
+        event_processor: config.event_processor.clone(),
+        post_processor: config.post_processor,
     }
 }
 
@@ -58,14 +69,7 @@ impl EngineController {
         self.drop_engine();
 
         let ports = engine_ports(config);
-        let options = RealtimeEngineOptions {
-            ports: Some(ports),
-            config: config.realtime.clone(),
-            renderer: config.renderer,
-            audio_params: config.audio_params,
-            event_processor: config.event_processor.clone(),
-            post_processor: config.post_processor,
-        };
+        let options = engine_options(config);
 
         let built = (|| -> Result<MaestroRealtimeEngine, DaemonError> {
             let engine = MaestroRealtimeEngine::new(options)?;
@@ -100,6 +104,26 @@ impl EngineController {
     fn drop_engine(&mut self) {
         if self.engine.take().is_some() {
             *self.stats.lock().unwrap() = None;
+        }
+    }
+
+    /// Returns false when the engine isn't running or has to be restarted for the change.
+    pub fn reload_config(&mut self, config: &MaestroSystemConfig) -> bool {
+        let Some(engine) = &mut self.engine else {
+            return false;
+        };
+
+        match engine.reload_config(engine_options(config)) {
+            Ok(applied) => {
+                if applied {
+                    log_info!("Realtime engine config reloaded in place");
+                }
+                applied
+            }
+            Err(err) => {
+                log_error!("Failed to reload realtime engine config: {err}");
+                false
+            }
         }
     }
 
