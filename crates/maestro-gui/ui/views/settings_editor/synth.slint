@@ -608,7 +608,7 @@ component BassMidiPanel inherits SynthPanel {
 
         Setting {
             text: "Enable Multi-Threading";
-            subtext: "Multithreading will improve performance on larger MIDIs, although some MIDI features might not always work correctly (portamento, SysEx etc.). Only enable if you know what you are doing. Each thread will have a separate BASSMIDI instance and separate voice pool, so the total voice count is the original setting x the number of threads.";
+            subtext: "Multithreading will improve performance on larger MIDIs, although some MIDI features might not always work correctly (portamento, SysEx etc.). Each thread will have a separate BASSMIDI instance.";
 
             MaestroSwitch {
                 checked: SettingsEditorState.current_config.synth.bass_multithreading;
@@ -650,7 +650,7 @@ component BassMidiPanel inherits SynthPanel {
 
         Setting {
             text: "Divide Instances Between Channels";
-            subtext: "If enabled, Maestro will assign an equal number of instances to each of the 16 MIDI channels. This will provide complete separation of the channels for each instance. It will probably improve performance for MIDIs with a lot of control events (CC, pitch etc.) but will conceptually decrease the voice cap of each channel.";
+            subtext: "If enabled, Maestro will assign an equal number of instances to each of the 16 MIDI channels. This will provide complete separation of the channels for each instance. It may improve performance for MIDIs with a lot of control events (CC, pitch etc.) but will conceptually decrease the voice cap of each channel.";
 
             MaestroSwitch {
                 enabled: SettingsEditorState.current_config.synth.bass_multithreading;

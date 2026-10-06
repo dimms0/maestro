@@ -69,7 +69,8 @@ impl BASSMIDISynth {
         }
 
         for i in 0..instances {
-            let mut stream = BASSMIDIStream::initialize(lib.clone(), config, audio_params)?;
+            let stream_config = split_voices(config, i, instances);
+            let mut stream = BASSMIDIStream::initialize(lib.clone(), &stream_config, audio_params)?;
 
             if kbdiv > 0 && i / kbdiv == 9 {
                 stream.set_drum_channel(9, true);
@@ -86,6 +87,18 @@ impl BASSMIDISynth {
             threadpool,
             config: *config,
         })
+    }
+}
+
+fn split_voices(config: &BASSMIDIConfig, index: usize, instances: usize) -> BASSMIDIConfig {
+    let instances = instances as u32;
+    let index = index as u32;
+    let base = config.voice_limit / instances;
+    let extra = u32::from(index < config.voice_limit % instances);
+
+    BASSMIDIConfig {
+        voice_limit: (base + extra).max(1),
+        ..*config
     }
 }
 
@@ -109,8 +122,9 @@ impl SynthModule for BASSMIDISynth {
             return false;
         }
 
-        for stream in &mut self.streams {
-            stream.reload_config(config);
+        let instances = self.streams.len();
+        for (i, stream) in self.streams.iter_mut().enumerate() {
+            stream.reload_config(&split_voices(config, i, instances));
         }
         self.config = *config;
         true
