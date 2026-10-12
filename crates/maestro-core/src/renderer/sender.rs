@@ -1,4 +1,7 @@
-use std::sync::Mutex;
+use std::sync::{
+    Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 
 use crossbeam_channel::{Receiver, Sender};
 
@@ -12,6 +15,7 @@ pub(crate) struct PortEventSender {
     tx: Sender<MaestroTimedEvent>,
     rx: Receiver<MaestroTimedEvent>,
     evproc: Mutex<Option<PortEventProcessor>>,
+    processing: AtomicBool,
 }
 
 impl PortEventSender {
@@ -27,23 +31,32 @@ impl PortEventSender {
         Self {
             tx,
             rx,
+            processing: AtomicBool::new(evproc.is_some()),
             evproc: Mutex::new(evproc),
         }
     }
 
     pub(super) fn set_event_processor(&self, evproc: Option<PortEventProcessor>) {
-        *self.evproc.lock().unwrap() = evproc;
+        let mut current = self.evproc.lock().unwrap();
+        self.processing.store(evproc.is_some(), Ordering::Relaxed);
+        *current = evproc;
     }
 
+    #[inline]
     pub fn send(&self, event: MaestroTimedEvent) {
-        let event = match self.evproc.lock().unwrap().as_mut() {
-            Some(evproc) => evproc.process(event),
-            None => Some(event),
+        // self.processing is used to skip the lock if there's no processor
+        let event = if self.processing.load(Ordering::Relaxed)
+            && let Some(evproc) = self.evproc.lock().unwrap().as_mut()
+        {
+            let Some(event) = evproc.process(event) else {
+                return;
+            };
+            event
+        } else {
+            event
         };
 
-        let Some(ev) = event else { return };
-
-        if let Err(err) = self.tx.try_send(ev) {
+        if let Err(err) = self.tx.try_send(event) {
             sysex::release(&err.into_inner().event);
         }
     }

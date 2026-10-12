@@ -131,6 +131,7 @@ impl NpsTracker {
         );
     }
 
+    #[inline]
     pub(crate) fn note_on(&self, channel: usize, key: u8, vel: u8) -> bool {
         let Some(active) = self.active_notes.get(channel * 128 + key as usize) else {
             return false;
@@ -157,7 +158,7 @@ impl NpsTracker {
 
         let admitted = self
             .total_window_sum
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |total| {
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |total| {
                 let current = self.current_window_sum.load(Ordering::Relaxed);
                 let short_nps = current * (1000 / NPS_WINDOW_MILLISECONDS) * 4 / 3;
 
@@ -166,14 +167,14 @@ impl NpsTracker {
             .is_ok();
 
         if admitted {
-            self.current_window_sum.fetch_add(1, Ordering::AcqRel);
+            self.current_window_sum.fetch_add(1, Ordering::Relaxed);
         }
         admitted
     }
 
     fn count_note(&self) {
-        self.total_window_sum.fetch_add(1, Ordering::AcqRel);
-        self.current_window_sum.fetch_add(1, Ordering::AcqRel);
+        self.total_window_sum.fetch_add(1, Ordering::Relaxed);
+        self.current_window_sum.fetch_add(1, Ordering::Relaxed);
     }
 
     pub(crate) fn count_event(&self) {
@@ -184,6 +185,7 @@ impl NpsTracker {
         self.current_events.clone()
     }
 
+    #[inline]
     pub(crate) fn note_off(&self, channel: usize, key: u8) -> bool {
         self.active_notes
             .get(channel * 128 + key as usize)

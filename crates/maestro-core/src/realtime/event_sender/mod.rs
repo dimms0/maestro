@@ -95,6 +95,7 @@ impl RealtimeEventSender {
         self.nps.limiter()
     }
 
+    #[inline]
     fn admit(&self, port: u8, event: MaestroEvent) -> bool {
         let tracked = |channel: u8| port as usize * 16 + channel as usize;
 
@@ -107,7 +108,12 @@ impl RealtimeEventSender {
         }
     }
 
+    #[inline]
     fn push(&self, port: u8, event: MaestroEvent, at: Option<Instant>) {
+        let Some(sender) = self.ports.get(port as usize) else {
+            return;
+        };
+
         // Timestamped events keep the timing they were given, so the coalescer
         // has nothing to merge them into
         if !self.admit(port, event) || (at.is_none() && self.coalescer.record(port, event)) {
@@ -121,9 +127,10 @@ impl RealtimeEventSender {
             Some(at) => self.timed_stamp(at),
             None => self.stamp(),
         };
-        self.ports[port as usize].send(MaestroTimedEvent { event, pos });
+        sender.send(MaestroTimedEvent { event, pos });
     }
 
+    #[inline]
     fn stamp(&self) -> u32 {
         if self.precision.load(Ordering::Relaxed) {
             self.clock.get_position() as u32

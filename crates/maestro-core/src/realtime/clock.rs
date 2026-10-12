@@ -206,7 +206,13 @@ impl RealtimeClock {
 
         // Events keep the order they were sent in, even across a correction
         // that rewound the timeline under them.
-        let frames = frames.max(self.handed_out.fetch_max(frames, Ordering::Relaxed));
+        // Stamps landing on an already handed out frame skip the read-modify-write
+        let handed_out = self.handed_out.load(Ordering::Relaxed);
+        let frames = if frames > handed_out {
+            frames.max(self.handed_out.fetch_max(frames, Ordering::Relaxed))
+        } else {
+            handed_out
+        };
 
         frames * self.channels
     }
