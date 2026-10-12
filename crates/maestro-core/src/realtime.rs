@@ -1,16 +1,18 @@
 use crate::{
     audio_params::AudioParameters,
     error::{MaestroComponentError, RealtimeEngineError, RendererError},
-    realtime::{buffered_renderer::BufferedRenderer, load::LoadLimiter},
-    renderer::{MaestroRenderer, RealtimeClock},
+    realtime::{buffered_renderer::BufferedRenderer, clock::RealtimeClock, load::LoadLimiter},
+    renderer::MaestroRenderer,
     soundfont::SoundFontList,
 };
 use cpal::{Stream, traits::StreamTrait};
 use std::sync::{Arc, Mutex};
 
 mod buffered_renderer;
+mod clock;
 pub mod config;
 mod event_sender;
+pub mod host_time;
 pub use event_sender::{RealtimeEventSender, UMP_GROUPS};
 mod load;
 mod options;
@@ -22,6 +24,7 @@ pub use stream::{device_caps, output_devices, output_hosts, set_stream_error_han
 
 pub struct MaestroRealtimeEngine {
     renderer: Arc<Mutex<MaestroRenderer>>,
+    clock: Arc<RealtimeClock>,
     stream: Option<Stream>,
     sender: RealtimeEventSender,
     stats: MaestroRealtimeStatistics,
@@ -35,12 +38,15 @@ fn requested_params(options: &RealtimeEngineOptions) -> Option<AudioParameters> 
 
 fn start_stream(
     renderer: &Arc<Mutex<MaestroRenderer>>,
+    clock: &Arc<RealtimeClock>,
     output: &stream::ResolvedOutput,
     config: &config::RealtimeConfig,
     limiter: Arc<LoadLimiter>,
 ) -> Result<Stream, RealtimeEngineError> {
     let renderer = renderer.clone();
+    let clock = clock.clone();
     let func = move |buffer: &mut [f32]| {
+        clock.begin_block(buffer.len() as u64);
         renderer.lock().unwrap().render(buffer);
     };
 
@@ -74,21 +80,25 @@ impl MaestroRealtimeEngine {
         renderer.set_statistics(stats.renderer_handle());
 
         let clock = Arc::new(RealtimeClock::new(&stream_params));
-        renderer.set_realtime_clock(clock.clone());
-
         let sender = RealtimeEventSender::new(
             &options,
-            &stream_params,
-            clock,
+            clock.clone(),
             renderer.get_port_senders().into_boxed_slice(),
             stats.clone(),
         )?;
 
         let renderer = Arc::new(Mutex::new(renderer));
-        let stream = start_stream(&renderer, &output, &options.config, sender.load_limiter())?;
+        let stream = start_stream(
+            &renderer,
+            &clock,
+            &output,
+            &options.config,
+            sender.load_limiter(),
+        )?;
 
         Ok(Self {
             renderer,
+            clock,
             stream: Some(stream),
             sender,
             stats,
@@ -134,7 +144,13 @@ impl MaestroRealtimeEngine {
             }
 
             let limiter = self.sender.load_limiter();
-            self.stream = Some(start_stream(&self.renderer, &output, &new.config, limiter)?);
+            self.stream = Some(start_stream(
+                &self.renderer,
+                &self.clock,
+                &output,
+                &new.config,
+                limiter,
+            )?);
         }
 
         self.options = options;

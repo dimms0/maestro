@@ -68,7 +68,12 @@ fn events() -> Vec<u32> {
     events
 }
 
-fn drive(b: &mut Bencher<'_, WallTime>, sender: &RealtimeEventSender, events: &[u32]) {
+fn drive(
+    b: &mut Bencher<'_, WallTime>,
+    sender: &RealtimeEventSender,
+    events: &[u32],
+    scheduled: bool,
+) {
     b.iter_custom(|iters| {
         let mut elapsed = Duration::ZERO;
         let mut sent = 0;
@@ -77,9 +82,10 @@ fn drive(b: &mut Bencher<'_, WallTime>, sender: &RealtimeEventSender, events: &[
             let count = CHUNK.min(iters - sent);
 
             let start = Instant::now();
+            let at = scheduled.then_some(start);
             for i in 0..count {
                 let event = events[((sent + i) % events.len() as u64) as usize];
-                sender.process_short(0, black_box(event), None);
+                sender.process_short(0, black_box(event), at);
             }
             elapsed += start.elapsed();
 
@@ -151,13 +157,19 @@ fn send_path(c: &mut Criterion) {
             return;
         };
 
-        group.bench_function(name, |b| drive(b, &rig.sender, &events));
+        group.bench_function(name, |b| drive(b, &rig.sender, &events, false));
+    }
+
+    if let Some(rig) = rig(bare.clone(), None) {
+        group.bench_function("scheduled", |b| drive(b, &rig.sender, &events, true));
     }
 
     if let Some(mut rig) = rig(bare, None)
         && rig.engine.pause().is_ok()
     {
-        group.bench_function("bare_stream_paused", |b| drive(b, &rig.sender, &events));
+        group.bench_function("bare_stream_paused", |b| {
+            drive(b, &rig.sender, &events, false)
+        });
     }
 
     group.finish();

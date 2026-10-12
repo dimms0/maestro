@@ -1,18 +1,16 @@
-use midi_parser::Division;
-
-pub const DEFAULT_TEMPO: u32 = 500_000; // 120bpm
+use crate::{DEFAULT_TEMPO, Division};
 
 #[derive(Debug, Clone)]
-pub(crate) struct TempoClock {
+pub struct TempoClock {
     ticks_per_quarter: u64,
     micros_per_quarter: u64,
-    sample_rate: u64,
+    rate: u64,
     fixed_tick_rate: Option<u64>,
     remainder: u64,
 }
 
 impl TempoClock {
-    pub fn new(division: Division, sample_rate: u32) -> Self {
+    pub fn new(division: Division, units_per_second: u64) -> Self {
         let (ticks_per_quarter, fixed_tick_rate) = match division {
             Division::Ppq(ppq) => (u64::from(ppq).max(1), None),
             Division::Smpte { fps, subframes } => {
@@ -24,7 +22,7 @@ impl TempoClock {
         Self {
             ticks_per_quarter,
             micros_per_quarter: u64::from(DEFAULT_TEMPO),
-            sample_rate: u64::from(sample_rate),
+            rate: units_per_second,
             fixed_tick_rate,
             remainder: 0,
         }
@@ -50,14 +48,9 @@ impl TempoClock {
 
     fn ratio(&self, ticks: u64) -> (u128, u128) {
         match self.fixed_tick_rate {
-            Some(rate) => (
-                u128::from(ticks) * u128::from(self.sample_rate),
-                u128::from(rate),
-            ),
+            Some(rate) => (u128::from(ticks) * u128::from(self.rate), u128::from(rate)),
             None => (
-                u128::from(ticks)
-                    * u128::from(self.micros_per_quarter)
-                    * u128::from(self.sample_rate),
+                u128::from(ticks) * u128::from(self.micros_per_quarter) * u128::from(self.rate),
                 u128::from(self.ticks_per_quarter) * 1_000_000,
             ),
         }
@@ -68,7 +61,7 @@ impl TempoClock {
 mod tests {
     use super::*;
 
-    const RATE: u32 = 48_000;
+    const RATE: u64 = 48_000;
 
     #[test]
     fn a_quarter_note_at_120_bpm_is_half_a_second() {

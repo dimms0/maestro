@@ -10,7 +10,8 @@ use std::{
 
 use crate::{
     event::{MaestroEvent, MaestroTimedEvent},
-    renderer::{RealtimeClock, sender::PortEventSender},
+    realtime::clock::RealtimeClock,
+    renderer::sender::PortEventSender,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]

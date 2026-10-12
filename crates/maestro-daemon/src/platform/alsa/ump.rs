@@ -11,12 +11,14 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
+use std::time::{Duration, Instant};
 
-use maestro_core::realtime::UMP_GROUPS;
+use alsa_sys as sys;
+use maestro_core::realtime::{UMP_GROUPS, host_time::Anchor};
 
 use crate::{gate::SharedGate, log_error, log_info, log_warn};
 
-use super::POLL_TIMEOUT_MS;
+use super::{ANCHOR_RESYNC, POLL_TIMEOUT_MS};
 
 const SND_SEQ_OPEN_DUPLEX: c_int = 3;
 const SND_SEQ_NONBLOCK: c_int = 1;
@@ -25,6 +27,7 @@ const SND_UMP_EP_INFO_PROTO_MIDI1: c_uint = 0x0100;
 const SND_UMP_EP_INFO_PROTO_MIDI2: c_uint = 0x0200;
 const SND_UMP_DIR_BIDIRECTION: c_uint = 0x03;
 const SND_SEQ_EVENT_UMP: u8 = 1 << 5;
+const SND_SEQ_TIME_STAMP_REAL: u8 = 1;
 
 const SND_SEQ_EVENT_PORT_SUBSCRIBED: u8 = 66;
 const SND_SEQ_EVENT_PORT_UNSUBSCRIBED: u8 = 67;
@@ -121,6 +124,7 @@ ump_api! {
 pub struct UmpEndpoint {
     api: UmpApi,
     seq: *mut c_void,
+    queue: Option<c_int>,
     devices_connected: Arc<AtomicBool>,
 }
 
@@ -148,9 +152,10 @@ impl UmpEndpoint {
             return Err(format!("snd_seq_open failed ({rc})"));
         }
 
-        let endpoint = Self {
+        let mut endpoint = Self {
             api,
             seq,
+            queue: None,
             devices_connected: devices_connected.clone(),
         };
 
@@ -213,7 +218,62 @@ impl UmpEndpoint {
             Ok(())
         })?;
 
+        endpoint.queue = endpoint.timestamp_ports();
+        if endpoint.queue.is_none() {
+            log_warn!("UMP endpoint runs without kernel timestamps");
+        }
+
         Ok(endpoint)
+    }
+
+    fn timestamp_ports(&self) -> Option<c_int> {
+        let seq = self.seq.cast::<sys::snd_seq_t>();
+        unsafe {
+            let queue = sys::snd_seq_alloc_queue(seq);
+            let mut info = std::ptr::null_mut();
+            if queue < 0 || sys::snd_seq_port_info_malloc(&mut info) < 0 {
+                return None;
+            }
+
+            let mut stamped = true;
+            for port in 0..=UMP_GROUPS as c_int {
+                if sys::snd_seq_get_port_info(seq, port, info) == 0 {
+                    sys::snd_seq_port_info_set_timestamping(info, 1);
+                    sys::snd_seq_port_info_set_timestamp_real(info, 1);
+                    sys::snd_seq_port_info_set_timestamp_queue(info, queue);
+                    stamped &= sys::snd_seq_set_port_info(seq, port, info) == 0;
+                }
+            }
+            sys::snd_seq_port_info_free(info);
+
+            let started = sys::snd_seq_control_queue(
+                seq,
+                queue,
+                sys::SND_SEQ_EVENT_START as c_int,
+                0,
+                std::ptr::null_mut(),
+            ) >= 0
+                && sys::snd_seq_drain_output(seq) >= 0;
+
+            (stamped && started).then_some(queue)
+        }
+    }
+
+    fn anchor(&self) -> Option<Anchor> {
+        let seq = self.seq.cast::<sys::snd_seq_t>();
+        let queue = self.queue?;
+        unsafe {
+            let mut status = std::ptr::null_mut();
+            if sys::snd_seq_queue_status_malloc(&mut status) < 0 {
+                return None;
+            }
+            let anchor = (sys::snd_seq_get_queue_status(seq, queue, status) == 0).then(|| {
+                let time = &*sys::snd_seq_queue_status_get_real_time(status);
+                Anchor::new(Duration::new(time.tv_sec as u64, time.tv_nsec as u32))
+            });
+            sys::snd_seq_queue_status_free(status);
+            anchor
+        }
     }
 
     pub fn client_id(&self) -> Option<i32> {
@@ -264,6 +324,8 @@ impl UmpEndpoint {
         log_info!("MIDI 2.0 UMP endpoint running");
 
         let mut active: HashSet<(SeqAddr, SeqAddr)> = HashSet::new();
+        let mut anchor = self.anchor();
+        let mut synced = Instant::now();
 
         while !shutdown.load(Ordering::Relaxed) {
             let rc =
@@ -306,7 +368,15 @@ impl UmpEndpoint {
                     continue;
                 }
 
-                gate.session().ump(&event.ump);
+                if synced.elapsed() >= ANCHOR_RESYNC {
+                    anchor = self.anchor();
+                    synced = Instant::now();
+                }
+
+                let at = anchor
+                    .filter(|_| event.flags & SND_SEQ_TIME_STAMP_REAL != 0)
+                    .map(|anchor| anchor.at(Duration::new(event.time[0].into(), event.time[1])));
+                gate.session().ump(&event.ump, at);
             }
         }
     }

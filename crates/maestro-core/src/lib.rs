@@ -15,7 +15,6 @@ pub mod soundfont;
 pub mod statistics;
 pub mod sysinfo;
 pub mod system_cfg;
-mod tempo;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const BUILD_ID: &str = env!("BUILD_ID");

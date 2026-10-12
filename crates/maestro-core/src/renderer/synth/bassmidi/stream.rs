@@ -268,12 +268,12 @@ impl SynthModule for BASSMIDIStream {
     }
 
     fn process_event(&mut self, event: MaestroTimedEvent) {
-        self.event_buf.push(event);
+        self.event_buf.insert(event, self.last_pos);
     }
 
     fn read_audio(&mut self, buffer: &mut [f32]) {
         let base = self.last_pos;
-        self.event_buf.sort(base);
+        let end = base.wrapping_add(buffer.len() as u32);
         self.raw.clear();
 
         let Self {
@@ -285,7 +285,7 @@ impl SynthModule for BASSMIDIStream {
         } = self;
         let reach = write_block(
             raw,
-            std::iter::from_fn(|| event_buf.pop_front()),
+            std::iter::from_fn(|| event_buf.pop_before(end, base)),
             base,
             *channels,
             *pending,
@@ -309,7 +309,7 @@ impl SynthModule for BASSMIDIStream {
         }
 
         self.pending = reach.saturating_sub(buffer.len() as u32 / self.channels);
-        self.last_pos = base.wrapping_add(buffer.len() as u32);
+        self.last_pos = end;
     }
 
     fn voice_count(&self) -> u64 {

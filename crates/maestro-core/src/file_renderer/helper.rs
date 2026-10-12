@@ -31,8 +31,7 @@ impl RendererHelper {
         &mut self.renderer
     }
 
-    pub fn render_batch(&mut self) -> Result<(), FileRendererError> {
-        let target = self.renderer.clock_position();
+    pub fn render_batch(&mut self, target: u64) -> Result<(), FileRendererError> {
         let sample_count = target.saturating_sub(self.rendered) as usize;
         if sample_count == 0 {
             return Ok(());

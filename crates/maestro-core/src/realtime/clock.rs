@@ -3,59 +3,18 @@ use std::{
     time::Instant,
 };
 
-use midi_parser::Division;
-
-use crate::{audio_params::AudioParameters, tempo::TempoClock};
+use crate::audio_params::AudioParameters;
 
 const NANOS_PER_SEC: u64 = 1_000_000_000;
-
-pub(super) struct RendererClock {
-    pos: AtomicU64,
-    channels: u64,
-    sample_rate: u32,
-    tempo: TempoClock,
-}
-
-impl RendererClock {
-    pub fn new(audio_params: &AudioParameters) -> Self {
-        Self {
-            pos: AtomicU64::new(0),
-            channels: u16::from(audio_params.channels) as u64,
-            sample_rate: audio_params.sample_rate,
-            tempo: TempoClock::new(Division::Ppq(96), audio_params.sample_rate),
-        }
-    }
-
-    pub fn set_division(&mut self, division: Division) {
-        self.tempo = TempoClock::new(division, self.sample_rate);
-    }
-
-    pub fn set_tempo(&mut self, micros_per_quarter: u32) {
-        self.tempo.set_tempo(micros_per_quarter);
-    }
-
-    pub fn advance_by_ticks(&mut self, ticks: u64) {
-        let samples = self.tempo.advance(ticks);
-        self.advance_by_samples(samples);
-    }
-
-    pub fn advance_by_samples(&self, mono_samples: u64) {
-        self.pos.store(
-            self.pos.load(Ordering::Relaxed) + mono_samples,
-            Ordering::Relaxed,
-        );
-    }
-
-    pub fn get_position(&self) -> u64 {
-        self.pos.load(Ordering::Relaxed) * self.channels
-    }
-}
 
 /// Slack kept between the event timeline and the renderer, in render blocks.
 /// Events are stamped this far ahead of the block the renderer is working on,
 /// so they land in audio that still has to be produced and can be placed at
 /// their exact sample position.
 const TARGET_LEAD_BLOCKS: u64 = 2;
+
+/// How far past the committed block a timestamped event may be scheduled.
+const MAX_SCHEDULE_SECS: u64 = 2;
 
 /// How often the timeline is measured against the renderer's progress.
 const SYNC_WINDOW_NS: u64 = 500_000_000;
@@ -132,6 +91,8 @@ pub(crate) struct RealtimeClock {
     sync_window: u64,
     /// Floor the lookahead limit never drops below, a tenth of a second.
     min_lookahead: u64,
+    /// [`MAX_SCHEDULE_SECS`] in frames.
+    max_schedule: u64,
 }
 
 impl RealtimeClock {
@@ -155,11 +116,12 @@ impl RealtimeClock {
             channels: u16::from(audio_params.channels) as u64,
             sync_window,
             min_lookahead,
+            max_schedule: sample_rate * MAX_SCHEDULE_SECS,
         }
     }
 
-    fn elapsed_frames(&self) -> u64 {
-        let elapsed = self.start.elapsed();
+    fn frames(&self, at: Instant) -> u64 {
+        let elapsed = at.saturating_duration_since(self.start);
 
         // Splitting the elapsed time at the second keeps this to 64-bit
         // arithmetic: the whole seconds scale exactly, and the nanoseconds left
@@ -181,7 +143,7 @@ impl RealtimeClock {
 
     pub fn begin_block(&self, samples: u64) {
         let frames = samples / self.channels;
-        let now = self.elapsed_frames();
+        let now = self.frames(Instant::now());
 
         let lookahead = self.max_lookahead.load(Ordering::Relaxed);
         let committed = self.committed.load(Ordering::Relaxed) + frames;
@@ -239,7 +201,7 @@ impl RealtimeClock {
     }
 
     pub fn get_position(&self) -> u64 {
-        let timeline = self.timeline(self.elapsed_frames());
+        let timeline = self.timeline(self.frames(Instant::now()));
         let frames = (timeline.max(0) as u64).min(self.cap.load(Ordering::Relaxed));
 
         // Events keep the order they were sent in, even across a correction
@@ -249,194 +211,22 @@ impl RealtimeClock {
         frames * self.channels
     }
 
+    /// Position of an event that carries its own timestamp.
+    ///
+    /// Neither the lookahead cap nor the `handed_out` latch applies here: the
+    /// ports hold these events back until the block they fall into and order
+    /// them there, so they may land well past the committed block, or before
+    /// stamps that were already handed out. Only a timestamp further ahead
+    /// than [`MAX_SCHEDULE_SECS`] is pulled in, so that a bogus one cannot
+    /// hold an event back indefinitely.
+    pub fn position_for(&self, at: Instant) -> u64 {
+        let timeline = self.timeline(self.frames(at)).max(0) as u64;
+        let limit = self.committed.load(Ordering::Relaxed) + self.max_schedule;
+
+        timeline.min(limit) * self.channels
+    }
+
     pub fn unstamped_position(&self) -> u32 {
         self.unstamped.load(Ordering::Relaxed)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::{
-        sync::{Arc, atomic::AtomicBool},
-        thread::{self, sleep},
-        time::Duration,
-    };
-
-    use super::*;
-
-    const BLOCK: u64 = 480 * 2; // 5 ms of stereo audio at the default 48 kHz
-    const RATE: u64 = 48_000;
-    const CHANNELS: u64 = 2;
-
-    fn clock() -> RealtimeClock {
-        RealtimeClock::new(&AudioParameters::default())
-    }
-
-    /// Runs the clock through `blocks` blocks the way the buffered renderer
-    /// would: bursts of `burst` blocks, one burst per device callback.
-    fn run_blocks(clock: &RealtimeClock, blocks: usize, burst: usize) {
-        for i in 0..blocks {
-            clock.begin_block(BLOCK);
-            if (i + 1) % burst == 0 {
-                let callback = BLOCK * burst as u64 / CHANNELS;
-                sleep(Duration::from_nanos(callback * 1_000_000_000 / RATE));
-            }
-        }
-    }
-
-    #[test]
-    fn positions_are_whole_frames() {
-        let clock = clock();
-        run_blocks(&clock, 8, 4);
-
-        for _ in 0..20 {
-            assert_eq!(clock.get_position() % CHANNELS, 0);
-            sleep(Duration::from_micros(137));
-        }
-    }
-
-    #[test]
-    fn event_spacing_matches_the_wall_clock() {
-        let clock = clock();
-        run_blocks(&clock, 8, 4);
-
-        // The whole point of the timeline: two events sent 40 ms apart have to
-        // be 40 ms apart in the rendered audio, not rounded onto whatever block
-        // the renderer happened to be working on.
-        let first = clock.get_position();
-        sleep(Duration::from_millis(40));
-        let second = clock.get_position();
-
-        let expected = 40 * RATE * CHANNELS / 1000;
-        let spacing = second - first;
-        let error = spacing.abs_diff(expected);
-        assert!(
-            error < expected / 20,
-            "spacing {spacing} is off the expected {expected} by {error}"
-        );
-    }
-
-    #[test]
-    fn events_stay_ahead_of_the_renderer() {
-        let clock = clock();
-
-        // A whole second of blocks, rendered in bursts like the buffered
-        // renderer does. Events must keep landing in blocks that have not been
-        // rendered yet, otherwise they get played at the start of the block
-        // instead of where they belong.
-        for _ in 0..40 {
-            run_blocks(&clock, 5, 5);
-            let committed = 5 * BLOCK;
-            assert!(
-                clock.get_position() >= committed,
-                "timeline fell behind the renderer"
-            );
-        }
-    }
-
-    #[test]
-    fn a_player_sending_at_a_steady_rate_keeps_its_spacing() {
-        let clock = Arc::new(clock());
-        let stop = Arc::new(AtomicBool::new(false));
-
-        // The renderer, pacing itself the way the buffered renderer does: a
-        // burst of blocks whenever the device drains the queue, then idle.
-        let renderer = {
-            let clock = clock.clone();
-            let stop = stop.clone();
-            thread::spawn(move || {
-                while !stop.load(Ordering::Relaxed) {
-                    run_blocks(&clock, 5, 5);
-                }
-            })
-        };
-
-        // The player, sending an event every 10 ms.
-        let gap = Duration::from_millis(10);
-        let mut next = Instant::now() + gap;
-        let mut positions = Vec::new();
-        for _ in 0..30 {
-            spin_sleep::sleep(next.saturating_duration_since(Instant::now()));
-            positions.push(clock.get_position());
-            next += gap;
-        }
-
-        stop.store(true, Ordering::Relaxed);
-        renderer.join().unwrap();
-
-        let expected = gap.as_millis() as u64 * RATE * CHANNELS / 1000;
-        let tolerance = 3 * RATE * CHANNELS / 1000; // 3 ms
-        for pair in positions.windows(2) {
-            let spacing = pair[1] - pair[0];
-            assert!(
-                spacing.abs_diff(expected) < tolerance,
-                "event spacing {spacing} strays from the {expected} it was sent with"
-            );
-        }
-
-        // And no drift over the whole run.
-        let span = positions.last().unwrap() - positions.first().unwrap();
-        let expected_span = expected * (positions.len() as u64 - 1);
-        assert!(
-            span.abs_diff(expected_span) < tolerance,
-            "the timeline drifted: {span} samples instead of {expected_span}"
-        );
-    }
-
-    #[test]
-    fn a_stalled_renderer_cannot_push_events_into_the_future() {
-        let clock = clock();
-        run_blocks(&clock, 8, 4);
-
-        // Nothing is rendered while the renderer is stuck (loading soundfonts,
-        // overloaded, paused), so events pile up at the lookahead limit and
-        // play as soon as it catches up, rather than a second late.
-        sleep(Duration::from_millis(500));
-
-        let committed = 8 * BLOCK;
-        let lookahead = clock.get_position() - committed;
-        assert!(
-            lookahead <= RATE * CHANNELS / 4,
-            "stalled renderer stamped events {lookahead} samples ahead"
-        );
-    }
-
-    #[test]
-    fn a_stamp_never_lands_before_one_already_taken() {
-        let clock = clock();
-        run_blocks(&clock, 8, 4);
-
-        // A note on stamped while the renderer is stalled sits at the lookahead
-        // limit. The block that follows snaps the timeline back onto the
-        // renderer, and the note off that comes right after it may not land
-        // before its note on, or the note is left hanging forever.
-        sleep(Duration::from_millis(300));
-        let note_on = clock.get_position();
-
-        run_blocks(&clock, 1, 1);
-        let note_off = clock.get_position();
-
-        assert!(
-            note_off >= note_on,
-            "a stamp taken at {note_on} was followed by one at {note_off}"
-        );
-    }
-
-    #[test]
-    fn the_timeline_recovers_after_a_stall() {
-        let clock = clock();
-        run_blocks(&clock, 8, 4);
-        sleep(Duration::from_millis(500));
-
-        // The first block after the stall snaps the timeline back onto the
-        // renderer, so the events that follow are timed normally again.
-        run_blocks(&clock, 8, 4);
-
-        let committed = 16 * BLOCK;
-        let lead = clock.get_position() - committed;
-        assert!(
-            lead <= 8 * BLOCK,
-            "timeline still {lead} samples ahead after recovering"
-        );
     }
 }

@@ -42,7 +42,6 @@ pub(super) trait SynthModule: Send + Sync {
 
 pub(super) struct EventBuffer {
     events: VecDeque<MaestroTimedEvent>,
-    sorted: bool,
 }
 
 impl Default for EventBuffer {
@@ -55,39 +54,35 @@ impl EventBuffer {
     pub fn new() -> Self {
         Self {
             events: VecDeque::new(),
-            sorted: true,
         }
     }
 
-    pub fn push(&mut self, event: MaestroTimedEvent) {
-        if let Some(back) = self.events.back()
-            && (event.pos.wrapping_sub(back.pos) as i32) < 0
-        {
-            self.sorted = false;
-        }
+    pub fn insert(&mut self, event: MaestroTimedEvent, base: u32) {
+        let key = |e: &MaestroTimedEvent| e.pos.wrapping_sub(base) as i32;
+        let pos = key(&event);
 
-        self.events.push_back(event);
-    }
-
-    pub fn sort(&mut self, base: u32) {
-        if !self.sorted {
-            self.events
-                .make_contiguous()
-                .sort_by_key(|e| e.pos.wrapping_sub(base) as i32);
-            self.sorted = true;
+        if self.events.back().is_none_or(|back| key(back) <= pos) {
+            self.events.push_back(event);
+        } else {
+            let at = self.events.partition_point(|e| key(e) <= pos);
+            self.events.insert(at, event);
         }
     }
 
-    pub fn pop_front(&mut self) -> Option<MaestroTimedEvent> {
-        self.events.pop_front()
+    pub fn pop_before(&mut self, end: u32, base: u32) -> Option<MaestroTimedEvent> {
+        let key = |pos: u32| pos.wrapping_sub(base) as i32;
+
+        self.events
+            .front()
+            .is_some_and(|e| key(e.pos) < key(end))
+            .then(|| self.events.pop_front())
+            .flatten()
     }
 
     pub fn clear(&mut self) {
         for event in self.events.drain(..) {
             sysex::release(&event.event);
         }
-
-        self.sorted = true;
     }
 }
 

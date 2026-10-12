@@ -3537,6 +3537,7 @@ name = "maestro-daemon"
 version = "0.1.0"
 dependencies = [
  "alsa",
+ "alsa-sys",
  "arc-swap",
  "coremidi",
  "libc",

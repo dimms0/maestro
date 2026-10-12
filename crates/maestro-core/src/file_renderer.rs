@@ -7,12 +7,12 @@ use std::{
     thread,
 };
 
-use midi_parser::{EventRef, FileKind, MidiFile};
+use midi_parser::{EventRef, FileKind, MidiFile, TempoClock};
 
 use crate::{
     audio_params::AudioParameters,
     error::{FileRendererError, MaestroComponentError},
-    event::{MaestroEvent, MidiTranslator, sysex},
+    event::{MaestroEvent, MaestroTimedEvent, MidiTranslator, sysex},
     renderer::{
         MaestroRenderer,
         config::{EventProcessorConfig, PostProcessorConfig, RendererConfig},
@@ -252,7 +252,6 @@ impl MaestroFileRenderer {
             self.postproc,
         )?;
         renderer.load_soundfonts(&self.soundfonts)?;
-        renderer.set_clock_division(midi.division());
         renderer.set_statistics(self.stats.renderer_handle());
 
         let stats = &self.stats;
@@ -261,8 +260,10 @@ impl MaestroFileRenderer {
 
         let mut helper = RendererHelper::new(self.audio_params, renderer, encoder);
 
-        let samples_per_second =
-            self.audio_params.sample_rate as f64 * u16::from(self.audio_params.channels) as f64;
+        let channels = u64::from(u16::from(self.audio_params.channels));
+        let samples_per_second = self.audio_params.sample_rate as f64 * channels as f64;
+        let mut tempo = TempoClock::new(midi.division(), u64::from(self.audio_params.sample_rate));
+        let mut frames = 0;
         let mut last_render = 0.0;
 
         for batch in rcv {
@@ -291,26 +292,30 @@ impl MaestroFileRenderer {
             };
 
             if let Some(micros) = batch.tempo {
-                helper.renderer_mut().set_clock_tempo(micros);
+                tempo.set_tempo(micros);
             }
+            frames += tempo.advance(batch.ticks);
+            let target = frames * channels;
 
-            helper.renderer_mut().process_events_ticks(
+            helper.renderer_mut().process_timed_events(
                 port,
-                batch.events.into_iter(),
-                batch.ticks,
+                batch.events.into_iter().map(|event| MaestroTimedEvent {
+                    event,
+                    pos: target as u32,
+                }),
             )?;
 
-            let pos = helper.renderer_mut().clock_position() as f64 / samples_per_second;
+            let pos = target as f64 / samples_per_second;
             stats.set_time(pos);
             stats.add_processed(batch.counted, batch.notes);
 
             if pos - last_render > self.batch_size {
-                helper.render_batch()?;
+                helper.render_batch(target)?;
                 last_render = pos;
             }
         }
 
-        helper.render_batch()?;
+        helper.render_batch(frames * channels)?;
         helper.finalize()?;
 
         Ok(RenderOutcome::Completed)

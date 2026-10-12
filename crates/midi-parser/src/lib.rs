@@ -5,8 +5,8 @@
 //! memory costs almost nothing to open, and every track can be merged into one
 //! tick-ordered stream so a player never has to reconcile tracks itself.
 //!
-//! Timing is reported in ticks throughout. Turning ticks into seconds needs a
-//! tempo map, which belongs to whatever is doing the playing.
+//! Timing is reported in ticks throughout. [`TempoClock`] turns them into time
+//! at whatever rate the player counts in.
 //!
 //! ```no_run
 //! use midi_parser::MidiFile;
@@ -27,6 +27,7 @@ mod file;
 mod merge;
 mod scan;
 mod source;
+mod tempo;
 pub mod ump;
 mod varlen;
 pub mod writer;
@@ -37,5 +38,6 @@ pub use event::{EventRef, Meta, MidiMessage, meta};
 pub use file::{Division, FileKind, MidiFile, Options};
 pub use merge::{Merged, MergedEvent};
 pub use scan::{DEFAULT_TEMPO, MidiInfo};
+pub use tempo::TempoClock;
 pub use ump::Ump;
 pub use writer::{ClipWriter, SmfWriter};

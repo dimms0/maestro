@@ -1,49 +1,28 @@
-use midi_parser::Division;
 use std::{
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
-    thread,
-    time::Duration,
+    time::Instant,
 };
 
 use crate::{
-    audio_params::AudioParameters,
     error::RealtimeEngineError,
     event::{MaestroEvent, MaestroTimedEvent, MidiTranslator},
+    realtime::clock::RealtimeClock,
     realtime::{
         MaestroRealtimeStatistics, RealtimeEngineOptions,
         config::RealtimeConfig,
         event_sender::{coalescer::EventCoalescer, nps::NpsTracker},
         load::LoadLimiter,
     },
-    renderer::{RealtimeClock, sender::PortEventSender},
-    tempo::TempoClock,
+    renderer::sender::PortEventSender,
 };
 
 mod coalescer;
 mod nps;
 
 pub use crate::event::ump::UMP_GROUPS;
-
-const MAX_TICK_LOOKAHEAD_MS: u64 = 2000;
-
-struct TickState {
-    tempo: TempoClock,
-    pos: u64,
-    anchor: Option<u64>,
-}
-
-impl TickState {
-    fn new(sample_rate: u32) -> Self {
-        Self {
-            tempo: TempoClock::new(Division::Ppq(96), sample_rate),
-            pos: 0,
-            anchor: None,
-        }
-    }
-}
 
 impl Clone for RealtimeEventSender {
     fn clone(&self) -> Self {
@@ -54,9 +33,7 @@ impl Clone for RealtimeEventSender {
             precision: self.precision.clone(),
             clock: self.clock.clone(),
             translator: MidiTranslator::new(),
-            tick: Mutex::new(TickState::new(self.sample_rate)),
-            sample_rate: self.sample_rate,
-            channels: self.channels,
+            last_timed: Mutex::new(None),
         }
     }
 }
@@ -70,15 +47,12 @@ pub struct RealtimeEventSender {
 
     clock: Arc<RealtimeClock>,
     translator: MidiTranslator,
-    tick: Mutex<TickState>,
-    sample_rate: u32,
-    channels: u64,
+    last_timed: Mutex<Option<(Instant, u64)>>,
 }
 
 impl RealtimeEventSender {
     pub(super) fn new(
         options: &RealtimeEngineOptions,
-        params: &AudioParameters,
         clock: Arc<RealtimeClock>,
         port_senders: Box<[Arc<PortEventSender>]>,
         stats: MaestroRealtimeStatistics,
@@ -88,7 +62,6 @@ impl RealtimeEventSender {
         let nps = NpsTracker::new(ports as usize * 16, options.config.max_nps, stats)
             .map_err(RealtimeEngineError::Thread)?;
 
-        let sample_rate = params.sample_rate;
         let precision = Arc::new(AtomicBool::new(options.config.precision_playback));
 
         let coalescer = EventCoalescer::new(
@@ -107,9 +80,7 @@ impl RealtimeEventSender {
             precision,
             clock,
             translator: MidiTranslator::new(),
-            tick: Mutex::new(TickState::new(sample_rate)),
-            sample_rate,
-            channels: u16::from(params.channels) as u64,
+            last_timed: Mutex::new(None),
         })
     }
 
@@ -124,40 +95,32 @@ impl RealtimeEventSender {
         self.nps.limiter()
     }
 
-    fn push(&self, port: u8, event: MaestroEvent, delta_ticks: Option<u64>) {
-        // Do not filter timed events with wall-clock limiters
-        if delta_ticks.is_none() {
-            let tracked = |channel: u8| port as usize * 16 + channel as usize;
+    fn admit(&self, port: u8, event: MaestroEvent) -> bool {
+        let tracked = |channel: u8| port as usize * 16 + channel as usize;
 
-            match event {
-                MaestroEvent::NoteOn { channel, key, vel }
-                    if !self.nps.note_on(tracked(channel), key, vel) =>
-                {
-                    return;
-                }
-                MaestroEvent::NoteOff { channel, key }
-                    if !self.nps.note_off(tracked(channel), key) =>
-                {
-                    return;
-                }
-
-                _ => {}
+        match event {
+            MaestroEvent::NoteOn { channel, key, vel } => {
+                self.nps.note_on(tracked(channel), key, vel)
             }
+            MaestroEvent::NoteOff { channel, key } => self.nps.note_off(tracked(channel), key),
+            _ => true,
+        }
+    }
 
-            if self.coalescer.record(port, event) {
-                return;
-            }
-
-            self.nps.count_event();
+    fn push(&self, port: u8, event: MaestroEvent, at: Option<Instant>) {
+        // Timestamped events keep the timing they were given, so the coalescer
+        // has nothing to merge them into
+        if !self.admit(port, event) || (at.is_none() && self.coalescer.record(port, event)) {
+            return;
         }
 
-        // Timestamp only if it passes the filters to reduce cycles per send
-        let pos = if let Some(ticks) = delta_ticks {
-            self.tick_stamp(ticks)
-        } else {
-            self.stamp()
-        };
+        self.nps.count_event();
 
+        // Timestamp only if it passes the filters to reduce cycles per send
+        let pos = match at {
+            Some(at) => self.timed_stamp(at),
+            None => self.stamp(),
+        };
         self.ports[port as usize].send(MaestroTimedEvent { event, pos });
     }
 
@@ -169,70 +132,41 @@ impl RealtimeEventSender {
         }
     }
 
-    fn tick_stamp(&self, ticks: u64) -> u32 {
-        let mut tick = self.tick.lock().unwrap();
-        let anchor = *tick.anchor.get_or_insert_with(|| self.clock.get_position());
+    fn timed_stamp(&self, at: Instant) -> u32 {
+        let pos = self.clock.position_for(at);
 
-        let samples = tick.tempo.advance(ticks);
-        tick.pos += samples;
+        // A correction of the clock between two stamps can rewind the timeline
+        // under them, and the ports order what they hold by position, so a note
+        // off sent right after its note on could end up before it and leave the
+        // note playing. Latching to the last position keeps a source that sends
+        // in time order in that order. An earlier timestamp is taken as it is: it
+        // comes from a source that does not send in time order, and dragging it
+        // forward would only add latency.
+        let mut last = self.last_timed.lock().unwrap();
+        let pos = match *last {
+            Some((last_at, last_pos)) if at >= last_at => pos.max(last_pos),
+            _ => pos,
+        };
+        *last = Some((at, pos));
 
-        let pos = anchor + tick.pos * self.channels;
-        drop(tick);
-
-        self.wait_for_playback(pos);
         pos as u32
     }
 
-    fn wait_for_playback(&self, pos: u64) {
-        let rate = self.sample_rate as u64;
-        let limit = rate * self.channels * MAX_TICK_LOOKAHEAD_MS / 1000;
-
-        loop {
-            let ahead = pos.saturating_sub(self.clock.get_position());
-            if ahead <= limit {
-                return;
-            }
-
-            let frames = ((ahead - limit) / self.channels).max(1);
-            thread::sleep(Duration::from_nanos(frames * 1_000_000_000 / rate));
-        }
-    }
-
-    pub fn set_tick_division(&self, division: Division) {
-        *self.tick.lock().unwrap() = TickState {
-            tempo: TempoClock::new(division, self.sample_rate),
-            pos: 0,
-            anchor: None,
-        };
-    }
-
-    pub fn set_tick_tempo(&self, micros_per_quarter: u32) {
-        self.tick
-            .lock()
-            .unwrap()
-            .tempo
-            .set_tempo(micros_per_quarter);
-    }
-
-    pub fn advance_ticks(&self, ticks: u64) {
-        self.tick_stamp(ticks);
-    }
-
-    pub fn process_short(&self, port: u8, short: u32, delta_ticks: Option<u64>) {
+    pub fn process_short(&self, port: u8, short: u32, at: Option<Instant>) {
         self.translator.short(port, short, |event| {
-            self.push(port, event, delta_ticks);
+            self.push(port, event, at);
         });
     }
 
-    pub fn process_long(&self, port: u8, long: &[u8], delta_ticks: Option<u64>) {
+    pub fn process_long(&self, port: u8, long: &[u8], at: Option<Instant>) {
         self.translator.long(port, long, |event| {
-            self.push(port, event, delta_ticks);
+            self.push(port, event, at);
         });
     }
 
-    pub fn process_ump(&self, words: &[u32], delta_ticks: Option<u64>) {
+    pub fn process_ump(&self, words: &[u32], at: Option<Instant>) {
         self.translator.ump(words, |group, event| {
-            self.push(group, event, delta_ticks);
+            self.push(group, event, at);
         });
     }
 
@@ -244,9 +178,5 @@ impl RealtimeEventSender {
 
         self.translator.reset();
         self.nps.reset();
-
-        let mut tick = self.tick.lock().unwrap();
-        tick.pos = 0;
-        tick.anchor = None;
     }
 }

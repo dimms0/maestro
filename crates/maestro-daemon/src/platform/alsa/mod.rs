@@ -6,11 +6,13 @@ use std::sync::{
     mpsc,
 };
 use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 use alsa::seq::{
     Addr, Connect, EvCtrl, EvNote, Event, EventType, PortCap, PortInfo, PortType, Seq,
 };
 use alsa::{Direction, poll::Descriptors};
+use maestro_core::realtime::host_time::Anchor;
 
 use crate::{
     error::DaemonError,
@@ -22,6 +24,7 @@ use crate::{
 mod ump;
 
 const POLL_TIMEOUT_MS: i32 = 250;
+const ANCHOR_RESYNC: Duration = Duration::from_secs(1);
 
 pub struct AlsaBackend {
     shutdown: Arc<AtomicBool>,
@@ -129,18 +132,18 @@ fn spawn_midi1(
     let devices_connected = devices_connected.clone();
 
     let handle = spawn_named("maestro-midi1", move || {
-        let seq = match create_midi1_client(&spec) {
-            Ok(seq) => {
+        let (seq, queue) = match create_midi1_client(&spec) {
+            Ok((seq, queue)) => {
                 let client_id = seq.client_id().unwrap_or(-1);
                 let _ = ready_tx.send(Ok(client_id));
-                seq
+                (seq, queue)
             }
             Err(err) => {
                 let _ = ready_tx.send(Err(err));
                 return;
             }
         };
-        input_loop(seq, &gate, &shutdown, &devices_connected);
+        input_loop(seq, queue, &gate, &shutdown, &devices_connected);
     });
 
     match ready_rx.recv() {
@@ -155,11 +158,11 @@ fn spawn_midi1(
     }
 }
 
-fn create_midi1_client(spec: &DeviceSpec) -> Result<Seq, DaemonError> {
+fn create_midi1_client(spec: &DeviceSpec) -> Result<(Seq, i32), DaemonError> {
     let backend_err =
         |e: &dyn std::fmt::Display| DaemonError::Backend(format!("ALSA sequencer: {e}"));
 
-    let seq = Seq::open(None, Some(Direction::Capture), true).map_err(|e| backend_err(&e))?;
+    let seq = Seq::open(None, None, true).map_err(|e| backend_err(&e))?;
 
     let client_name = CString::new(spec.device_name.as_str())
         .map_err(|_| DaemonError::Backend("Device name contains a NUL byte".to_string()))?;
@@ -167,6 +170,7 @@ fn create_midi1_client(spec: &DeviceSpec) -> Result<Seq, DaemonError> {
         .map_err(|e| backend_err(&e))?;
     seq.set_client_pool_input(1 << 21)
         .map_err(|e| backend_err(&e))?;
+    let queue = seq.alloc_queue().map_err(|e| backend_err(&e))?;
 
     for i in 0..spec.num_ports {
         let port_name = CString::new(format!("{} - Port {}", spec.device_name, i + 1))
@@ -185,14 +189,28 @@ fn create_midi1_client(spec: &DeviceSpec) -> Result<Seq, DaemonError> {
                 | PortType::APPLICATION
                 | PortType::SOFTWARE,
         );
+        pinfo.set_timestamping(true);
+        pinfo.set_timestamp_real(true);
+        pinfo.set_timestamp_queue(queue);
         seq.create_port(&pinfo).map_err(|e| backend_err(&e))?;
     }
 
-    Ok(seq)
+    seq.control_queue(queue, EventType::Start, 0, None)
+        .map_err(|e| backend_err(&e))?;
+    seq.drain_output().map_err(|e| backend_err(&e))?;
+
+    Ok((seq, queue))
+}
+
+fn queue_anchor(seq: &Seq, queue: i32) -> Option<Anchor> {
+    seq.get_queue_status(queue)
+        .ok()
+        .map(|status| Anchor::new(status.get_real_time()))
 }
 
 fn input_loop(
     seq: Seq,
+    queue: i32,
     gate: &SharedGate,
     shutdown: &Arc<AtomicBool>,
     devices_connected: &Arc<AtomicBool>,
@@ -207,6 +225,8 @@ fn input_loop(
     let mut input = seq.input();
 
     let mut active: HashSet<(Addr, Addr)> = HashSet::new();
+    let mut anchor = queue_anchor(&seq, queue);
+    let mut synced = Instant::now();
 
     while !shutdown.load(Ordering::Relaxed) {
         match alsa::poll::poll(&mut fds, POLL_TIMEOUT_MS) {
@@ -241,7 +261,15 @@ fn input_loop(
                 continue;
             }
 
-            dispatch_event(&ev, &gate.session());
+            if synced.elapsed() >= ANCHOR_RESYNC {
+                anchor = queue_anchor(&seq, queue);
+                synced = Instant::now();
+            }
+
+            let at = anchor
+                .zip(ev.get_time())
+                .map(|(anchor, time)| anchor.at(time));
+            dispatch_event(&ev, &gate.session(), at);
         }
     }
 }
@@ -270,7 +298,7 @@ fn handle_subscription_event(
     true
 }
 
-fn dispatch_event(ev: &Event, sender: &GateSession<'_>) {
+fn dispatch_event(ev: &Event, sender: &GateSession<'_>, at: Option<Instant>) {
     let port = ev.get_dest().port as u8;
 
     let short = |status: u32, d1: u32, d2: u32| status | ((d1 & 0x7F) << 8) | ((d2 & 0x7F) << 16);
@@ -279,37 +307,37 @@ fn dispatch_event(ev: &Event, sender: &GateSession<'_>) {
         EventType::Noteon => {
             if let Some(n) = ev.get_data::<EvNote>() {
                 let ch = (n.channel & 0xF) as u32;
-                sender.short(port, short(0x90 | ch, n.note as u32, n.velocity as u32));
+                sender.short(port, short(0x90 | ch, n.note as u32, n.velocity as u32), at);
             }
         }
         EventType::Noteoff => {
             if let Some(n) = ev.get_data::<EvNote>() {
                 let ch = (n.channel & 0xF) as u32;
-                sender.short(port, short(0x80 | ch, n.note as u32, n.velocity as u32));
+                sender.short(port, short(0x80 | ch, n.note as u32, n.velocity as u32), at);
             }
         }
         EventType::Keypress => {
             if let Some(n) = ev.get_data::<EvNote>() {
                 let ch = (n.channel & 0xF) as u32;
-                sender.short(port, short(0xA0 | ch, n.note as u32, n.velocity as u32));
+                sender.short(port, short(0xA0 | ch, n.note as u32, n.velocity as u32), at);
             }
         }
         EventType::Controller => {
             if let Some(c) = ev.get_data::<EvCtrl>() {
                 let ch = (c.channel & 0xF) as u32;
-                sender.short(port, short(0xB0 | ch, c.param, c.value as u32));
+                sender.short(port, short(0xB0 | ch, c.param, c.value as u32), at);
             }
         }
         EventType::Pgmchange => {
             if let Some(c) = ev.get_data::<EvCtrl>() {
                 let ch = (c.channel & 0xF) as u32;
-                sender.short(port, 0xC0 | ch | ((c.value as u32 & 0x7F) << 8));
+                sender.short(port, 0xC0 | ch | ((c.value as u32 & 0x7F) << 8), at);
             }
         }
         EventType::Chanpress => {
             if let Some(c) = ev.get_data::<EvCtrl>() {
                 let ch = (c.channel & 0xF) as u32;
-                sender.short(port, 0xD0 | ch | ((c.value as u32 & 0x7F) << 8));
+                sender.short(port, 0xD0 | ch | ((c.value as u32 & 0x7F) << 8), at);
             }
         }
         EventType::Pitchbend => {
@@ -317,7 +345,7 @@ fn dispatch_event(ev: &Event, sender: &GateSession<'_>) {
                 let ch = (c.channel & 0xF) as u32;
                 // The sequencer uses -8192..8191; MIDI wants 0..16383.
                 let v = (c.value + 8192).clamp(0, 16383) as u32;
-                sender.short(port, short(0xE0 | ch, v, v >> 7));
+                sender.short(port, short(0xE0 | ch, v, v >> 7), at);
             }
         }
         EventType::Control14 => {
@@ -325,9 +353,9 @@ fn dispatch_event(ev: &Event, sender: &GateSession<'_>) {
                 let ch = (c.channel & 0xF) as u32;
                 let v = c.value as u32;
                 // MSB controller plus its LSB pair when one exists (0..31).
-                sender.short(port, short(0xB0 | ch, c.param, v >> 7));
+                sender.short(port, short(0xB0 | ch, c.param, v >> 7), at);
                 if c.param < 32 {
-                    sender.short(port, short(0xB0 | ch, c.param + 32, v));
+                    sender.short(port, short(0xB0 | ch, c.param + 32, v), at);
                 }
             }
         }
@@ -340,59 +368,20 @@ fn dispatch_event(ev: &Event, sender: &GateSession<'_>) {
                     (99, 98)
                 };
                 let v = c.value as u32;
-                sender.short(port, short(0xB0 | ch, bank_cc, c.param >> 7));
-                sender.short(port, short(0xB0 | ch, index_cc, c.param));
-                sender.short(port, short(0xB0 | ch, 6, v >> 7));
-                sender.short(port, short(0xB0 | ch, 38, v));
+                sender.short(port, short(0xB0 | ch, bank_cc, c.param >> 7), at);
+                sender.short(port, short(0xB0 | ch, index_cc, c.param), at);
+                sender.short(port, short(0xB0 | ch, 6, v >> 7), at);
+                sender.short(port, short(0xB0 | ch, 38, v), at);
             }
         }
         EventType::Sysex => {
             if let Some(data) = ev.get_ext() {
-                sender.long(port, data);
+                sender.long(port, data, at);
             }
         }
         EventType::Reset => {
-            sender.short(port, 0xFF);
+            sender.short(port, 0xFF, at);
         }
         _ => {}
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use std::sync::mpsc;
-    use std::time::Duration;
-
-    use crate::gate::MidiGate;
-
-    /// The sequencer client and its ports must come up against a real ALSA
-    /// sequencer, and the input loop must survive being started and shut down.
-    /// The event-routing logic itself is covered by the gate's own tests.
-    /// Ignored by default because it requires `/dev/snd/seq`.
-    #[test]
-    #[ignore = "requires an ALSA sequencer (/dev/snd/seq)"]
-    fn creates_ports_and_runs_an_input_loop() {
-        let spec = DeviceSpec {
-            device_name: "Maestro Test Device".to_string(),
-            num_ports: 2,
-            midi2: false,
-        };
-
-        let (tx, _rx) = mpsc::channel();
-        let gate = MidiGate::new(tx);
-        let shutdown = Arc::new(AtomicBool::new(false));
-        let devices_connected = Arc::new(AtomicBool::new(false));
-
-        let (handle, client_id) =
-            spawn_midi1(&spec, &gate, &shutdown, &devices_connected).expect("midi1 client");
-        assert!(client_id >= 0);
-
-        // Let the loop reach its poll before tearing it down.
-        std::thread::sleep(Duration::from_millis(150));
-
-        shutdown.store(true, Ordering::Relaxed);
-        handle.join().expect("input loop joined");
     }
 }

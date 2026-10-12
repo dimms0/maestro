@@ -1,14 +1,11 @@
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
-use midi_parser::Division;
-
 use crate::{
     audio_params::AudioParameters,
     error::RendererError,
-    event::{MaestroEvent, MaestroTimedEvent, sysex},
+    event::{MaestroTimedEvent, sysex},
     helpers::{prepapre_cache_vec, sum_buffer},
     renderer::{
-        clock::RendererClock,
         config::{EventProcessorConfig, PostProcessorConfig, RendererConfig, SynthConfig},
         event_processor::PortEventProcessor,
         port::{PortRenderer, PortSynthManager},
@@ -24,7 +21,6 @@ use crate::{
     statistics::MaestroRenderStatistics,
 };
 
-mod clock;
 pub mod config;
 mod event_processor;
 mod port;
@@ -34,7 +30,6 @@ mod synth;
 
 pub use synth::probe::{LibraryStatus, probe_libraries};
 
-pub(crate) use clock::RealtimeClock;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
 
 pub(crate) struct MaestroRenderer {
@@ -47,8 +42,6 @@ pub(crate) struct MaestroRenderer {
     evproc: Option<EventProcessorConfig>,
     postproc: Option<PostProcessorConfig>,
     audio_params: AudioParameters,
-    clock: RendererClock,
-    rt_clock: Option<Arc<RealtimeClock>>,
     post_proc: Option<AudioPostProcessor>,
 
     stats: Arc<MaestroRenderStatistics>,
@@ -119,44 +112,12 @@ impl MaestroRenderer {
             evproc,
             postproc,
             audio_params: *audio_params,
-            clock: RendererClock::new(audio_params),
-            rt_clock: None,
             post_proc,
             stats: Arc::new(MaestroRenderStatistics::new()),
             audio_dur_div,
             audio_channels: audio_params.channels as usize,
             threadpool,
         })
-    }
-
-    pub(crate) fn set_realtime_clock(&mut self, clock: Arc<RealtimeClock>) {
-        self.rt_clock = Some(clock);
-    }
-
-    pub(crate) fn clock_position(&self) -> u64 {
-        self.clock.get_position()
-    }
-
-    pub(crate) fn set_clock_division(&mut self, division: Division) {
-        self.clock.set_division(division);
-    }
-
-    pub(crate) fn set_clock_tempo(&mut self, micros_per_quarter: u32) {
-        self.clock.set_tempo(micros_per_quarter);
-    }
-
-    pub fn process_events_ticks<I>(
-        &mut self,
-        port: u8,
-        events: I,
-        ticks: u64,
-    ) -> Result<(), RendererError>
-    where
-        I: Iterator<Item = MaestroEvent>,
-    {
-        self.clock.advance_by_ticks(ticks);
-        let pos = self.clock.get_position() as u32;
-        self.process_timed_events(port, events.map(|e| MaestroTimedEvent { event: e, pos }))
     }
 
     pub fn process_timed_events<I>(&mut self, port: u8, events: I) -> Result<(), RendererError>
@@ -185,10 +146,6 @@ impl MaestroRenderer {
         let render_len = buffer.len();
         if render_len < self.audio_channels || !render_len.is_multiple_of(self.audio_channels) {
             return 0;
-        }
-
-        if let Some(clock) = &self.rt_clock {
-            clock.begin_block(render_len as u64);
         }
 
         if let Some(pool) = &self.threadpool {
