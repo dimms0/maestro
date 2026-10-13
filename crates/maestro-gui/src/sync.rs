@@ -2,14 +2,14 @@ use std::ffi::OsStr;
 
 use crate::{
     AudioDeviceState, DeviceManagerState, MainWindow, RendererState, SettingsEditorState,
-    SflistState, SlintAudioParameters, SlintComponentConfig, SlintComponentSummary,
+    SflistState, SlintApiApp, SlintAudioParameters, SlintComponentConfig, SlintComponentSummary,
     SlintPortAssignment, SlintRealtimeConfig, SlintRendererConfig, SlintSoundFont,
     SoundfontEditorState,
     slint_conv::{
         converter_custom_to_slint, evproc_to_slint, postproc_to_slint, synth_to_slint,
         system_custom_to_slint,
     },
-    state::{AppData, ConfigComponent},
+    state::{AppData, ConfigComponent, app_id},
 };
 use maestro_core::{
     audio_params::{COMMON_SAMPLE_RATES, ChannelCount},
@@ -250,9 +250,7 @@ pub fn build_slint_component_config(state: &AppData) -> Option<SlintComponentCon
     let nps_limit = file.realtime.max_nps.unwrap_or(rem.nps_limit);
 
     Some(SlintComponentConfig {
-        name: ConfigComponent::from_name(&file.name)?
-            .display_name()
-            .into(),
+        name: file.display_name().into(),
         dirty: file.dirty,
         has_enabled: p.has_enabled,
         enabled: file.enabled,
@@ -347,6 +345,19 @@ pub fn sync_device_to_slint(ui: &MainWindow, state: &AppData) {
     if let Some(kd) = state.config(ConfigComponent::KDMAPI) {
         dev.set_kdmapi(summary(state, kd));
     }
+    if let Some(api) = state.config(ConfigComponent::Api) {
+        dev.set_api(summary(state, api));
+    }
+    let apps: Vec<SlintApiApp> = state
+        .config_files
+        .iter()
+        .filter(|c| app_id(&c.name).is_some())
+        .map(|c| SlintApiApp {
+            name: c.display_name().into(),
+            config: c.name.as_str().into(),
+        })
+        .collect();
+    dev.set_api_apps(ModelRc::new(VecModel::from(apps)));
 
     sync_available_sflists_to_slint(ui, state);
 }

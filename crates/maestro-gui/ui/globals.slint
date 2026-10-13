@@ -9,7 +9,7 @@ import {
     DeviceComponent,
     RenderStatus,
     ServiceAction,
-    KdmapiAction,
+    InstallAction,
     LibraryAction,
     EventFlagKind,
     QuitStage,
@@ -20,6 +20,7 @@ import {
     SlintComponentConfig,
     SlintComponentStats,
     SlintComponentSummary,
+    SlintApiApp,
     SlintAudioParameters,
     SlintRealtimeConfig,
     SlintRendererConfig,
@@ -241,6 +242,10 @@ export global DeviceManagerState {
     in-out property <SlintSystemCustom> system_custom;
     in-out property <SlintComponentSummary> system;
     in-out property <SlintComponentSummary> kdmapi;
+    in-out property <SlintComponentSummary> api;
+    // Every application that has connected through the Maestro API, each with
+    // its own profile.
+    in-out property <[SlintApiApp]> api_apps;
 
     in-out property <[SlintComponentStats]> stats;
 
@@ -289,6 +294,8 @@ export global SystemIntegrationState {
     // uninstall actions are withheld until the user removes it.
     in-out property <bool> kdmapi_blocked;
 
+    in-out property <SlintIntegrationItem> api;
+
     in-out property <[SlintLibraryItem]> libraries;
     in-out property <string> lib_dir;
     in-out property <string> lib_arch_hint;
@@ -301,7 +308,8 @@ export global SystemIntegrationState {
     callback refresh();
     callback service_action(ServiceAction);
     callback set_autostart(bool);
-    callback kdmapi_action(KdmapiAction);
+    callback kdmapi_action(InstallAction);
+    callback api_action(InstallAction);
     callback library_action(int, LibraryAction);
 }
 

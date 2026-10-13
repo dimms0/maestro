@@ -29,7 +29,7 @@ export enum ServiceAction {
     uninstall_files,
 }
 
-export enum KdmapiAction {
+export enum InstallAction {
     install,
     uninstall,
 }
@@ -76,11 +76,12 @@ export enum NameEntryAction {
     rename_list,
 }
 
-// The two components the Virtual MIDI Device tab manages. Its cards are one
-// reusable component parameterised by this, so both behave identically.
+// The components the Virtual MIDI Device tab manages. Its cards are one
+// reusable component parameterised by this, so they all behave identically.
 export enum DeviceComponent {
     system,
     kdmapi,
+    api,
 }
 
 // Which of the event processor's four per-index lists a toggle in the

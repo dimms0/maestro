@@ -84,6 +84,7 @@ Source: "{#BuildDir}\maestrod.exe"; DestDir: "{app}"; Flags: ignoreversion
 ; System32 / SysWOW64 by the [Run] entries below.
 Source: "{#BuildDir}\maestrodrv.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\OmniMIDI.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#BuildDir}\maestro.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#VendorDir}\*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#VendorDir}\*.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\assets\soundfont\*"; DestDir: "{app}\soundfonts"; Flags: ignoreversion
@@ -91,12 +92,14 @@ Source: "..\..\assets\soundfont\*"; DestDir: "{app}\soundfonts"; Flags: ignoreve
 #ifdef Companion1Arch
 Source: "{#Companion1BuildDir}\maestrodrv.dll"; DestDir: "{app}\{#Companion1Arch}"; Flags: ignoreversion
 Source: "{#Companion1BuildDir}\OmniMIDI.dll"; DestDir: "{app}\{#Companion1Arch}"; Flags: ignoreversion
+Source: "{#Companion1BuildDir}\maestro.dll"; DestDir: "{app}\{#Companion1Arch}"; Flags: ignoreversion
 Source: "{#Companion1VendorDir}\*.dll"; DestDir: "{app}\{#Companion1Arch}"; Flags: ignoreversion
 #endif
 
 #ifdef Companion2Arch
 Source: "{#Companion2BuildDir}\maestrodrv.dll"; DestDir: "{app}\{#Companion2Arch}"; Flags: ignoreversion
 Source: "{#Companion2BuildDir}\OmniMIDI.dll"; DestDir: "{app}\{#Companion2Arch}"; Flags: ignoreversion
+Source: "{#Companion2BuildDir}\maestro.dll"; DestDir: "{app}\{#Companion2Arch}"; Flags: ignoreversion
 Source: "{#Companion2VendorDir}\*.dll"; DestDir: "{app}\{#Companion2Arch}"; Flags: ignoreversion
 #endif
 
@@ -112,12 +115,15 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\maestro.exe"; AppUserModelID:
 ; Integration tab. Exit codes are ignored: that tab stays the recovery path.
 Filename: "{app}\maestro.exe"; Parameters: "install-driver"; StatusMsg: "Installing the MIDI driver..."; Flags: runhidden waituntilterminated
 Filename: "{sys}\rundll32.exe"; Parameters: """{app}\maestrodrv.dll"",Maestro_Register"; StatusMsg: "Registering the MIDI driver..."; Flags: runhidden waituntilterminated
+; Applications load the Maestro API as maestro.dll from System32 / SysWOW64.
+Filename: "{app}\maestro.exe"; Parameters: "install-api"; StatusMsg: "Installing the Maestro API..."; Flags: runhidden waituntilterminated
 Filename: "{app}\maestro.exe"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent runasoriginaluser
 
 [UninstallRun]
 ; Unregister while the files are still on disk.
 Filename: "{sys}\rundll32.exe"; Parameters: """{app}\maestrodrv.dll"",Maestro_Unregister"; RunOnceId: "UnregisterDriver"; Flags: runhidden waituntilterminated
 Filename: "{app}\maestro.exe"; Parameters: "uninstall-driver"; RunOnceId: "UnlinkDriver"; Flags: runhidden waituntilterminated
+Filename: "{app}\maestro.exe"; Parameters: "uninstall-api"; RunOnceId: "UnlinkApi"; Flags: runhidden waituntilterminated
 
 [Code]
 const

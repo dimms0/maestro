@@ -39,7 +39,7 @@ pub fn run(args: &[String]) {
         std::process::exit(code);
     }
 
-    if !maestro_core::ipc::try_lock_single_instance("gui") {
+    if !startup::is_standalone(args) && !maestro_core::ipc::try_lock_single_instance("gui") {
         return;
     }
 

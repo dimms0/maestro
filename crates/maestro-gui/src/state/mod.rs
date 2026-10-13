@@ -1,7 +1,8 @@
 mod component;
 
 pub use component::{
-    ComponentProfile, ConfigComponent, ConverterCustom, SystemCustomSettings, is_valid_output_dir,
+    ComponentProfile, ConfigComponent, ConverterCustom, SystemCustomSettings, app_id,
+    is_valid_output_dir,
 };
 
 use maestro_core::{
@@ -99,6 +100,20 @@ pub struct ComponentConfigCache {
     pub system_custom: SystemCustomSettings,
 
     pub remembered: RememberedSettings,
+}
+
+impl ComponentConfigCache {
+    pub fn display_name(&self) -> String {
+        match app_id(&self.name) {
+            Some(id) => self
+                .val
+                .get("app_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or(id)
+                .to_string(),
+            None => self.profile.kind.display_name(),
+        }
+    }
 }
 
 pub struct AppData {
@@ -223,7 +238,7 @@ impl AppData {
     pub fn config_position(&self, kind: ConfigComponent) -> Option<usize> {
         self.config_files
             .iter()
-            .position(|c| c.profile.kind == kind)
+            .position(|c| c.profile.kind == kind && app_id(&c.name).is_none())
     }
 
     pub fn config(&self, kind: ConfigComponent) -> Option<&ComponentConfigCache> {
@@ -259,12 +274,11 @@ impl AppData {
         lists
             .into_iter()
             .map(|i| format!("SoundFont list '{}'", self.sflist_files[i].name))
-            .chain(configs.into_iter().map(|i| {
-                format!(
-                    "{} settings",
-                    self.config_files[i].profile.kind.display_name()
-                )
-            }))
+            .chain(
+                configs
+                    .into_iter()
+                    .map(|i| format!("{} settings", self.config_files[i].display_name())),
+            )
             .collect()
     }
 }

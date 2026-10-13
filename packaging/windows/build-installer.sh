@@ -43,7 +43,7 @@ ensure_rust_target "$TARGET"
 VERSION="$(workspace_version)"
 OUT_BASE="maestro-$VERSION-$DIST_ARCH-setup"
 
-cargo build --release --target "$TARGET" -p maestro-gui -p maestro-daemon -p maestro-kdmapi
+cargo build --release --target "$TARGET" -p maestro-gui -p maestro-daemon -p maestro-kdmapi -p maestro-abi
 
 # The shims and synth libraries for host applications of another architecture.
 # maestro.iss has two companion slots, which covers every real layout: x86 next
@@ -56,7 +56,7 @@ for a in $(companion_archs windows "$ARCH"); do
     t="$(rust_target windows "$a")"
     ensure_vendor_libs windows "$a"
     ensure_rust_target "$t"
-    cargo build --release --lib --target "$t" -p maestro-daemon -p maestro-kdmapi
+    cargo build --release --lib --target "$t" -p maestro-daemon -p maestro-kdmapi -p maestro-abi
     COMPANION_ARGS+=(
         "/DCompanion${SLOT}Arch=$a"
         "/DCompanion${SLOT}BuildDir=..\\..\\target\\$t\\release"

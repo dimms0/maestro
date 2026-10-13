@@ -1,6 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use maestro_core::{soundfont::SoundFontList, system_cfg::MaestroConfigManager};
+use maestro_core::{
+    soundfont::SoundFontList,
+    system_cfg::{APP_PROFILE_DIR, MaestroConfigManager},
+};
 
 use crate::{
     StandaloneMode,
@@ -13,6 +16,10 @@ use crate::{
 
 const EDIT_LIST_ARG: &str = "edit-list";
 const EDIT_CONFIG_ARG: &str = "edit-config";
+
+pub fn is_standalone(args: &[String]) -> bool {
+    matches!(args, [_, mode, _, ..] if mode == EDIT_LIST_ARG || mode == EDIT_CONFIG_ARG)
+}
 
 pub fn load(args: &[String]) -> AppData {
     let mut data = match args {
@@ -79,7 +86,16 @@ fn single_list(path: PathBuf) -> AppData {
 
 /// `edit-config`: a single component config read straight from the given path.
 fn single_config(path: PathBuf) -> AppData {
-    let name = stem_or(&path, "config");
+    let stem = stem_or(&path, "config");
+    let in_apps = path
+        .parent()
+        .and_then(Path::file_name)
+        .is_some_and(|dir| dir == APP_PROFILE_DIR);
+    let name = if in_apps {
+        format!("{APP_PROFILE_DIR}/{stem}")
+    } else {
+        stem
+    };
     let mut data = empty(StandaloneMode::EditConfig);
     let Some(cache) = load_config_cache(name, path) else {
         errors::report(

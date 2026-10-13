@@ -3,6 +3,7 @@ use std::thread;
 
 use slint::{ComponentHandle, Global, ModelRc, VecModel};
 
+mod api;
 mod kdmapi;
 mod libraries;
 pub mod service;
@@ -17,6 +18,7 @@ struct Snapshot {
     autostart: bool,
     kdmapi: SlintIntegrationItem,
     kdmapi_blocked: bool,
+    api: SlintIntegrationItem,
     libraries: Vec<SlintLibraryItem>,
 }
 
@@ -30,6 +32,7 @@ fn probe() -> Snapshot {
         autostart: service.autostart,
         kdmapi: kdmapi.item,
         kdmapi_blocked: kdmapi.blocked,
+        api: api::probe(),
         libraries: libraries::probe(),
     }
 }
@@ -46,6 +49,7 @@ fn publish(ui: &MainWindow, snapshot: Snapshot) {
     state.set_autostart(snapshot.autostart);
     state.set_kdmapi(snapshot.kdmapi);
     state.set_kdmapi_blocked(snapshot.kdmapi_blocked);
+    state.set_api(snapshot.api);
     state.set_libraries(ModelRc::new(VecModel::from(snapshot.libraries)));
     state.set_startup_issue(issue);
 }
@@ -134,6 +138,11 @@ pub fn setup(ui: &MainWindow) {
     state.on_kdmapi_action({
         let weak = weak.clone();
         move |action| run(&weak, move || kdmapi::act(action))
+    });
+
+    state.on_api_action({
+        let weak = weak.clone();
+        move |action| run(&weak, move || api::act(action))
     });
 
     state.on_library_action({

@@ -178,6 +178,10 @@ impl MaestroRealtimeEngine {
         self.sender.clone()
     }
 
+    pub fn stream_params(&self) -> AudioParameters {
+        self.stream_params
+    }
+
     pub fn pause(&mut self) -> Result<(), cpal::Error> {
         self.stream.as_ref().map_or(Ok(()), |s| s.pause())
     }

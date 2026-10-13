@@ -4,6 +4,7 @@ default-members = [
     "crates/maestro-gui",
     "crates/maestro-daemon",
     "crates/maestro-kdmapi",
+    "crates/maestro-abi",
 ]
 resolver = "3"
 

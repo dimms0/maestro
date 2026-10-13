@@ -22,6 +22,7 @@ impl From<DeviceComponent> for ConfigComponent {
         match component {
             DeviceComponent::System => ConfigComponent::System,
             DeviceComponent::Kdmapi => ConfigComponent::KDMAPI,
+            DeviceComponent::Api => ConfigComponent::Api,
         }
     }
 }
@@ -30,6 +31,7 @@ fn error_title(component: DeviceComponent) -> &'static str {
     match component {
         DeviceComponent::System => "Virtual MIDI Device",
         DeviceComponent::Kdmapi => "KDMAPI",
+        DeviceComponent::Api => "Maestro API",
     }
 }
 

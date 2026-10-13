@@ -59,6 +59,7 @@ copyright = "2026, dimms"
 license-file = ["../../LICENSE.md", "0"]
 extended-description = "A MIDI synthesizer host."
 depends = "$auto, libfluidsynth3"
+maintainer-scripts = "../../packaging/linux/debian/"
 section = "sound"
 priority = "optional"
 assets = [
@@ -153,6 +154,11 @@ assets = [
         "755",
     ],
     [
+        "target/release/libmaestro.so",
+        "usr/share/maestro/lib/",
+        "755",
+    ],
+    [
         "../../packaging/linux/vendor/staged/libbass.so",
         "usr/share/maestro/lib/",
         "755",
@@ -197,6 +203,9 @@ assets = [
 [package.metadata.generate-rpm]
 name = "maestro"
 requires = { "fluidsynth-libs" = "*" }
+# Links the Maestro API into the system library path; see privileged.rs.
+post_install_script = "/usr/bin/maestro install-api || :"
+pre_uninstall_script = "if [ \"$1\" -eq 0 ]; then /usr/bin/maestro uninstall-api || :; fi"
 assets = [
     { source = "target/release/maestro", dest = "/usr/bin/maestro", mode = "0755" },
     { source = "target/release/maestrod", dest = "/usr/bin/maestrod", mode = "0755" },
@@ -216,6 +225,7 @@ assets = [
     { source = "../../THIRD-PARTY-NOTICES.md", dest = "/usr/share/doc/maestro/THIRD-PARTY-NOTICES.md", mode = "0644" },
     { source = "../../assets/fonts/OFL.txt", dest = "/usr/share/doc/maestro/OFL.txt", mode = "0644" },
     { source = "target/release/libOmniMIDI.so", dest = "/usr/share/maestro/lib/libOmniMIDI.so", mode = "0755" },
+    { source = "target/release/libmaestro.so", dest = "/usr/share/maestro/lib/libmaestro.so", mode = "0755" },
     { source = "../../packaging/linux/vendor/staged/libbass.so", dest = "/usr/share/maestro/lib/libbass.so", mode = "0755" },
     { source = "../../packaging/linux/vendor/staged/libbassmidi.so", dest = "/usr/share/maestro/lib/libbassmidi.so", mode = "0755" },
     { source = "../../packaging/linux/vendor/staged/libbassflac.so", dest = "/usr/share/maestro/lib/libbassflac.so", mode = "0755" },

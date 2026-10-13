@@ -7,6 +7,8 @@ use maestro_core::paths;
 
 pub const INSTALL_KDMAPI: &str = "install-kdmapi";
 pub const UNINSTALL_KDMAPI: &str = "uninstall-kdmapi";
+pub const INSTALL_API: &str = "install-api";
+pub const UNINSTALL_API: &str = "uninstall-api";
 #[cfg(windows)]
 pub const INSTALL_DRIVER: &str = "install-driver";
 #[cfg(windows)]
@@ -18,6 +20,24 @@ pub const KDMAPI_FILENAME: &str = "OmniMIDI.dll";
 pub const KDMAPI_FILENAME: &str = "libOmniMIDI.dylib";
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 pub const KDMAPI_FILENAME: &str = "libOmniMIDI.so";
+
+#[cfg(target_os = "windows")]
+pub const API_FILENAME: &str = "maestro.dll";
+#[cfg(target_os = "macos")]
+pub const API_FILENAME: &str = "libmaestro.dylib";
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+pub const API_FILENAME: &str = "libmaestro.so";
+
+// The versioned name applications load the Maestro API by
+#[cfg(target_os = "windows")]
+const API_LINK_NAME: &str = "maestro.dll";
+#[cfg(target_os = "macos")]
+const API_LINK_NAME: &str = "libmaestro.1.dylib";
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+const API_LINK_NAME: &str = "libmaestro.so.1";
+
+const KDMAPI_MARKER: &[u8] = b"Maestro_KDMAPI_Version\0";
+const API_MARKER: &[u8] = b"maestro_get_version\0";
 
 pub fn kdmapi_target() -> PathBuf {
     #[cfg(target_os = "windows")]
@@ -38,12 +58,39 @@ pub fn kdmapi_target() -> PathBuf {
     }
 }
 
+pub fn api_target() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        system_dir("System32").join(API_LINK_NAME)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        PathBuf::from("/usr/local/lib").join(API_LINK_NAME)
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        // Debian's multiarch directory, then Fedora's lib64, then plain lib
+        let multiarch = format!("/usr/lib/{}-linux-gnu", std::env::consts::ARCH);
+        let dir = [multiarch.as_str(), "/usr/lib64", "/usr/lib"]
+            .into_iter()
+            .find(|d| Path::new(d).is_dir())
+            .unwrap_or("/usr/lib");
+        PathBuf::from(dir).join(API_LINK_NAME)
+    }
+}
+
 pub fn is_maestro_lib(path: &Path) -> bool {
+    has_marker(path, KDMAPI_MARKER)
+}
+
+pub fn is_maestro_api(path: &Path) -> bool {
+    has_marker(path, API_MARKER)
+}
+
+fn has_marker(path: &Path, marker: &[u8]) -> bool {
     let exports_marker = unsafe {
-        libloading::Library::new(path).is_ok_and(|lib| {
-            lib.get::<unsafe extern "C" fn() -> u32>(b"Maestro_KDMAPI_Version\0")
-                .is_ok()
-        })
+        libloading::Library::new(path)
+            .is_ok_and(|lib| lib.get::<unsafe extern "C" fn() -> u32>(marker).is_ok())
     };
     exports_marker
         || fs::read_link(path).is_ok_and(|t| paths::lib_source(&t) != paths::LibSource::System)
@@ -76,13 +123,22 @@ fn symlink(src: &Path, dst: &Path) -> io::Result<()> {
     return std::os::unix::fs::symlink(src, dst);
 }
 
-#[allow(unused_mut)]
 pub fn kdmapi_links() -> Vec<(Option<PathBuf>, PathBuf)> {
-    let mut links = vec![(paths::resolve_lib(KDMAPI_FILENAME), kdmapi_target())];
+    links(KDMAPI_FILENAME, kdmapi_target(), KDMAPI_FILENAME)
+}
+
+pub fn api_links() -> Vec<(Option<PathBuf>, PathBuf)> {
+    links(API_FILENAME, api_target(), API_LINK_NAME)
+}
+
+// The native library, plus the 32-bit companion build for 32-bit hosts
+#[allow(unused_mut, unused_variables)]
+fn links(filename: &str, target: PathBuf, link_name: &str) -> Vec<(Option<PathBuf>, PathBuf)> {
+    let mut links = vec![(paths::resolve_lib(filename), target)];
     #[cfg(target_os = "windows")]
     links.push((
-        paths::resolve_lib_for_arch("x86", KDMAPI_FILENAME),
-        system_dir("SysWOW64").join(KDMAPI_FILENAME),
+        paths::resolve_lib_for_arch("x86", filename),
+        system_dir("SysWOW64").join(link_name),
     ));
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     if let Some(dir) = ["/usr/lib32", "/usr/lib/i386-linux-gnu"]
@@ -90,15 +146,15 @@ pub fn kdmapi_links() -> Vec<(Option<PathBuf>, PathBuf)> {
         .find(|d| Path::new(d).is_dir())
     {
         links.push((
-            paths::resolve_lib_for_arch("x86", KDMAPI_FILENAME),
-            PathBuf::from(dir).join(KDMAPI_FILENAME),
+            paths::resolve_lib_for_arch("x86", filename),
+            PathBuf::from(dir).join(link_name),
         ));
     }
     links
 }
 
-fn link_kdmapi() -> i32 {
-    let mut links = kdmapi_links().into_iter();
+fn link(links: Vec<(Option<PathBuf>, PathBuf)>, is_ours: fn(&Path) -> bool) -> i32 {
+    let mut links = links.into_iter();
     let Some((Some(native), native_target)) = links.next() else {
         return 1;
     };
@@ -106,7 +162,7 @@ fn link_kdmapi() -> i32 {
         .chain(links.filter_map(|(src, target)| Some((src?, target))))
     {
         if target.exists() {
-            if !is_maestro_lib(&target) {
+            if !is_ours(&target) {
                 return 2;
             }
             if fs::remove_file(&target).is_err() {
@@ -120,12 +176,12 @@ fn link_kdmapi() -> i32 {
     0
 }
 
-fn unlink_kdmapi() -> i32 {
-    for (_, target) in kdmapi_links() {
+fn unlink(links: Vec<(Option<PathBuf>, PathBuf)>, is_ours: fn(&Path) -> bool) -> i32 {
+    for (_, target) in links {
         if !target.exists() {
             continue;
         }
-        if !is_maestro_lib(&target) {
+        if !is_ours(&target) {
             return 2;
         }
         if fs::remove_file(&target).is_err() {
@@ -161,8 +217,10 @@ fn unlink_driver() -> i32 {
 
 pub fn handle(args: &[String]) -> Option<i32> {
     match args.get(1).map(String::as_str)? {
-        INSTALL_KDMAPI => Some(link_kdmapi()),
-        UNINSTALL_KDMAPI => Some(unlink_kdmapi()),
+        INSTALL_KDMAPI => Some(link(kdmapi_links(), is_maestro_lib)),
+        UNINSTALL_KDMAPI => Some(unlink(kdmapi_links(), is_maestro_lib)),
+        INSTALL_API => Some(link(api_links(), is_maestro_api)),
+        UNINSTALL_API => Some(unlink(api_links(), is_maestro_api)),
         #[cfg(windows)]
         INSTALL_DRIVER => Some(link_driver()),
         #[cfg(windows)]

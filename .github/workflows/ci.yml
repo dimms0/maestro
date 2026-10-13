@@ -32,7 +32,7 @@ jobs:
       - if: matrix.os == 'windows-latest'
         run: rustup target add i686-pc-windows-msvc
       - if: matrix.os == 'windows-latest'
-        run: cargo clippy --lib --target i686-pc-windows-msvc -p maestro-daemon -p maestro-kdmapi --all-features -- -D warnings
+        run: cargo clippy --lib --target i686-pc-windows-msvc -p maestro-daemon -p maestro-kdmapi -p maestro-abi --all-features -- -D warnings
 
   # Catches upstream layout or URL changes in the synth libraries the
   # installers download, before a release build trips over them.

@@ -196,6 +196,13 @@ export struct SlintComponentSummary {
     sflist_index: int,
 }
 
+// An application with a Maestro API profile. `config` is the profile's name
+// for SettingsEditorState.open_settings.
+export struct SlintApiApp {
+    name: string,
+    config: string,
+}
+
 // Live statistics of one process using a Maestro component, read from that
 // process's statistics pipe.
 //
