@@ -107,7 +107,7 @@ fn send_path(c: &mut Criterion) {
     let events = events();
 
     let bare = RealtimeConfig {
-        precision_playback: false,
+        auto_timestamp: false,
         max_nps: None,
         ..RealtimeConfig::default()
     };
@@ -118,9 +118,9 @@ fn send_path(c: &mut Criterion) {
     let cases: Vec<(&str, RealtimeConfig, Option<EventProcessorConfig>)> = vec![
         ("bare", bare.clone(), None),
         (
-            "precision",
+            "auto_timestamp",
             RealtimeConfig {
-                precision_playback: true,
+                auto_timestamp: true,
                 ..bare.clone()
             },
             None,

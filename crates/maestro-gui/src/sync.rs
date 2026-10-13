@@ -274,7 +274,7 @@ pub fn build_slint_component_config(state: &AppData) -> Option<SlintComponentCon
         realtime: SlintRealtimeConfig {
             device_audio_params: file.realtime.device_audio_params,
             render_buffer_ms: file.realtime.render_buffer_ms,
-            precision_playback: file.realtime.precision_playback,
+            auto_timestamp: file.realtime.auto_timestamp,
             max_nps: nps_limit.max as i32,
             has_max_nps: file.realtime.max_nps.is_some(),
             load_limiter: nps_limit.load_limiter,

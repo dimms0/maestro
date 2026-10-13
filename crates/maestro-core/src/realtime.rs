@@ -79,7 +79,10 @@ impl MaestroRealtimeEngine {
         let stats = MaestroRealtimeStatistics::new();
         renderer.set_statistics(stats.renderer_handle());
 
-        let clock = Arc::new(RealtimeClock::new(&stream_params));
+        let clock = Arc::new(RealtimeClock::new(
+            &stream_params,
+            options.config.auto_timestamp,
+        ));
         let sender = RealtimeEventSender::new(
             &options,
             clock.clone(),
@@ -129,7 +132,7 @@ impl MaestroRealtimeEngine {
 
         // Whatever the sender doesn't handle belongs to the output stream
         let stream_config = |c: &config::RealtimeConfig| config::RealtimeConfig {
-            precision_playback: false,
+            auto_timestamp: false,
             max_nps: None,
             coalesce_window_ms: None,
             ..c.clone()

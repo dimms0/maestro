@@ -1,10 +1,4 @@
-use std::{
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::Instant,
-};
+use std::{sync::Arc, time::Instant};
 
 use crate::{
     error::RealtimeEngineError,
@@ -30,10 +24,8 @@ impl Clone for RealtimeEventSender {
             ports: self.ports.clone(),
             nps: self.nps.clone(),
             coalescer: self.coalescer.clone(),
-            precision: self.precision.clone(),
             clock: self.clock.clone(),
             translator: MidiTranslator::new(),
-            last_timed: Mutex::new(None),
         }
     }
 }
@@ -43,11 +35,9 @@ pub struct RealtimeEventSender {
 
     nps: NpsTracker,
     coalescer: EventCoalescer,
-    precision: Arc<AtomicBool>,
 
     clock: Arc<RealtimeClock>,
     translator: MidiTranslator,
-    last_timed: Mutex<Option<(Instant, u64)>>,
 }
 
 impl RealtimeEventSender {
@@ -62,12 +52,9 @@ impl RealtimeEventSender {
         let nps = NpsTracker::new(ports as usize * 16, options.config.max_nps, stats)
             .map_err(RealtimeEngineError::Thread)?;
 
-        let precision = Arc::new(AtomicBool::new(options.config.precision_playback));
-
         let coalescer = EventCoalescer::new(
             port_senders.clone(),
             clock.clone(),
-            precision.clone(),
             options.config.coalesce_window_ms,
             nps.event_counter(),
         )
@@ -77,16 +64,13 @@ impl RealtimeEventSender {
             ports: port_senders,
             nps,
             coalescer,
-            precision,
             clock,
             translator: MidiTranslator::new(),
-            last_timed: Mutex::new(None),
         })
     }
 
     pub(super) fn reload_config(&self, config: &RealtimeConfig) {
-        self.precision
-            .store(config.precision_playback, Ordering::Relaxed);
+        self.clock.set_auto_timestamp(config.auto_timestamp);
         self.nps.set_limit(config.max_nps);
         self.coalescer.set_window(config.coalesce_window_ms);
     }
@@ -114,49 +98,17 @@ impl RealtimeEventSender {
             return;
         };
 
-        // Timestamped events keep the timing they were given, so the coalescer
-        // has nothing to merge them into
-        if !self.admit(port, event) || (at.is_none() && self.coalescer.record(port, event)) {
+        if !self.admit(port, event) || self.coalescer.record(port, event) {
             return;
         }
 
         self.nps.count_event();
 
         // Timestamp only if it passes the filters to reduce cycles per send
-        let pos = match at {
-            Some(at) => self.timed_stamp(at),
-            None => self.stamp(),
-        };
-        sender.send(MaestroTimedEvent { event, pos });
-    }
-
-    #[inline]
-    fn stamp(&self) -> u32 {
-        if self.precision.load(Ordering::Relaxed) {
-            self.clock.get_position() as u32
-        } else {
-            self.clock.unstamped_position()
-        }
-    }
-
-    fn timed_stamp(&self, at: Instant) -> u32 {
-        let pos = self.clock.position_for(at);
-
-        // A correction of the clock between two stamps can rewind the timeline
-        // under them, and the ports order what they hold by position, so a note
-        // off sent right after its note on could end up before it and leave the
-        // note playing. Latching to the last position keeps a source that sends
-        // in time order in that order. An earlier timestamp is taken as it is: it
-        // comes from a source that does not send in time order, and dragging it
-        // forward would only add latency.
-        let mut last = self.last_timed.lock().unwrap();
-        let pos = match *last {
-            Some((last_at, last_pos)) if at >= last_at => pos.max(last_pos),
-            _ => pos,
-        };
-        *last = Some((at, pos));
-
-        pos as u32
+        sender.send(MaestroTimedEvent {
+            event,
+            pos: self.clock.stamp(at),
+        });
     }
 
     pub fn process_short(&self, port: u8, short: u32, at: Option<Instant>) {

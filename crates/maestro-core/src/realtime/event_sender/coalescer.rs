@@ -292,7 +292,6 @@ struct Shared {
     senders: Box<[Arc<PortEventSender>]>,
     ports: Box<[Mutex<PortState>]>,
     clock: Arc<RealtimeClock>,
-    precision: Arc<AtomicBool>,
     event_counter: Arc<AtomicU64>,
     window_ms: AtomicU32, // 0 while coalescing is off
     stop: AtomicBool,
@@ -300,11 +299,7 @@ struct Shared {
 
 impl Shared {
     fn flush(&self, pending: &mut Vec<MaestroEvent>) {
-        let pos = if self.precision.load(Ordering::Relaxed) {
-            self.clock.get_position() as u32
-        } else {
-            self.clock.unstamped_position()
-        };
+        let pos = self.clock.stamp(None);
 
         for (sender, state) in self.senders.iter().zip(self.ports.iter()) {
             let mut state = state.lock().unwrap();
@@ -328,7 +323,6 @@ impl EventCoalescer {
     pub fn new(
         senders: Box<[Arc<PortEventSender>]>,
         clock: Arc<RealtimeClock>,
-        precision: Arc<AtomicBool>,
         window_ms: Option<u32>,
         event_counter: Arc<AtomicU64>,
     ) -> io::Result<Self> {
@@ -339,7 +333,6 @@ impl EventCoalescer {
                 .collect(),
             senders,
             clock,
-            precision,
             event_counter,
             window_ms: AtomicU32::new(window(window_ms)),
             stop: AtomicBool::new(false),

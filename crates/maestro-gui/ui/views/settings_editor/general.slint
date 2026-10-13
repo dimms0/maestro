@@ -353,21 +353,21 @@ export component RealtimeSection inherits SectionCard {
     }
 
     Setting {
-        text: "Use the high precision event playback clock";
-        subtext: "Events will be precisely timed according to the time they were sent to the realtime module and the playback position so they are rendered at their correct position. This is only relevant for MIDI players that send events with accurate timings. This is not perfect as the system's MIDI chain may add latency/overhead.";
+        text: "Automatically add timestamp to events";
+        subtext: "Events sent without a timestamp are stamped with the time they arrive, so they keep their exact spacing instead of being grouped into render blocks. Events that come with their own timestamp always keep it.";
 
         has-switch: true;
-        checked: SettingsEditorState.current_config.realtime.precision_playback;
+        checked: SettingsEditorState.current_config.realtime.auto_timestamp;
         toggled(v) => {
             root.edit = SettingsEditorState.current_config.realtime;
-            root.edit.precision_playback = v;
+            root.edit.auto_timestamp = v;
             SettingsEditorState.update_realtime(root.edit);
         }
     }
 
     Setting {
         text: "Limit the maximum notes per second (NPS)";
-        subtext: "When the limit is reached, Maestro chooses to ignore notes with lower velocities. Does not apply to timed events (ticks).";
+        subtext: "When the limit is reached, Maestro chooses to ignore notes with lower velocities.";
 
         has-switch: true;
         checked: SettingsEditorState.current_config.realtime.has_max_nps;
@@ -406,7 +406,7 @@ export component RealtimeSection inherits SectionCard {
 
     Setting {
         text: "Coalesce control events every (ms)";
-        subtext: "Collects CC, program change, pitch and aftertouch events and sends the latest changes once per set ms to the synthesizer. Enabling this will quantize the events. Does not apply to timed events (ticks).";
+        subtext: "Collects CC, program change, pitch and aftertouch events and sends the latest changes once per set ms to the synthesizer. Enabling this will quantize the events.";
 
         has-switch: true;
         checked: SettingsEditorState.current_config.realtime.has_coalesce;

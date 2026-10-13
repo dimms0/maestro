@@ -1,5 +1,5 @@
 use std::{
-    sync::atomic::{AtomicI64, AtomicU32, AtomicU64, Ordering},
+    sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, Ordering},
     time::Instant,
 };
 
@@ -20,6 +20,10 @@ const MAX_SCHEDULE_SECS: u64 = 2;
 const SYNC_WINDOW_NS: u64 = 500_000_000;
 
 /// Clock used to timestamp events during realtime playback.
+///
+/// Every event is stamped from a wall-clock instant: the one it was sent with,
+/// or its arrival when `auto_timestamp` is on. Events with neither are
+/// unstamped and play at the start of the next block.
 ///
 /// Events have to keep the exact spacing the sender gave them, so the mapping
 /// from wall time to sample positions is a plain affine one:
@@ -48,7 +52,10 @@ const SYNC_WINDOW_NS: u64 = 500_000_000;
 /// they carry, so a note off landing before its note on leaves the note playing
 /// forever. `handed_out` latches the stamps to the furthest one taken, which
 /// costs a stamp one read-modify-write and holds the timeline still for as long
-/// as the correction reaches back, instead of letting it rewind.
+/// as the correction reaches back, instead of letting it rewind. Corrections
+/// stay within the lookahead, so events scheduled past it skip the latch: the
+/// ports order them anyway, and latching them would drag every event sent
+/// after them out to where they were scheduled.
 ///
 /// Everything else the render thread keeps for itself, and no state is
 /// published alongside these values, so nothing here needs an ordering beyond
@@ -57,21 +64,21 @@ pub(crate) struct RealtimeClock {
     /// Frame offset between wall time and the playback timeline, and the only
     /// part of the mapping that ever moves.
     offset: AtomicI64,
-    /// The furthest frame an event may be stamped at, i.e. `committed` plus the
-    /// lookahead limit. Kept ready-made rather than added up on every event.
-    cap: AtomicU64,
+    /// `committed` plus the lookahead limit, past which stamps skip the
+    /// latch. Kept ready-made rather than added up on every event.
+    lookahead_end: AtomicU64,
 
     /// Frames the renderer has committed to producing, i.e. where the block
     /// after the one being rendered starts. Events stamped while a block
     /// renders are consumed by the block after it, so this is what they are
     /// measured against.
     committed: AtomicU64,
-    /// How far ahead of `committed` an event may be stamped. Bounds how far
-    /// into the future a stalled renderer can push events, and doubles as the
-    /// threshold that tells a desync from the render thread's normal swing.
+    /// How far ahead of `committed` the timeline may run. Tells a desync from
+    /// the render thread's normal swing.
     max_lookahead: AtomicU64,
 
     unstamped: AtomicU32,
+    auto_timestamp: AtomicBool,
 
     /// The furthest position any event has been stamped at. No stamp may ever
     /// land before it, whatever the corrections do to the timeline.
@@ -96,17 +103,18 @@ pub(crate) struct RealtimeClock {
 }
 
 impl RealtimeClock {
-    pub fn new(audio_params: &AudioParameters) -> Self {
+    pub fn new(audio_params: &AudioParameters, auto_timestamp: bool) -> Self {
         let sample_rate = audio_params.sample_rate as u64;
         let min_lookahead = sample_rate / 10;
         let sync_window = sample_rate * SYNC_WINDOW_NS / NANOS_PER_SEC;
 
         Self {
             offset: AtomicI64::new(0),
-            cap: AtomicU64::new(min_lookahead),
+            lookahead_end: AtomicU64::new(min_lookahead),
             committed: AtomicU64::new(0),
             max_lookahead: AtomicU64::new(min_lookahead),
             unstamped: AtomicU32::new(0),
+            auto_timestamp: AtomicBool::new(auto_timestamp),
             handed_out: AtomicU64::new(0),
             window_min: AtomicI64::new(i64::MAX),
             window_max: AtomicI64::new(i64::MIN),
@@ -148,7 +156,8 @@ impl RealtimeClock {
         let lookahead = self.max_lookahead.load(Ordering::Relaxed);
         let committed = self.committed.load(Ordering::Relaxed) + frames;
         self.committed.store(committed, Ordering::Relaxed);
-        self.cap.store(committed + lookahead, Ordering::Relaxed);
+        self.lookahead_end
+            .store(committed + lookahead, Ordering::Relaxed);
         self.unstamped.store(
             (committed.saturating_sub(self.sample_rate) * self.channels) as u32,
             Ordering::Relaxed,
@@ -194,45 +203,41 @@ impl RealtimeClock {
         let lookahead = (2 * swing + target as u64).max(self.min_lookahead);
 
         self.max_lookahead.store(lookahead, Ordering::Relaxed);
-        self.cap.store(committed + lookahead, Ordering::Relaxed);
+        self.lookahead_end
+            .store(committed + lookahead, Ordering::Relaxed);
         self.clear_measurements();
         self.window_end
             .store(now + self.sync_window, Ordering::Relaxed);
     }
 
-    pub fn get_position(&self) -> u64 {
-        let timeline = self.timeline(self.frames(Instant::now()));
-        let frames = (timeline.max(0) as u64).min(self.cap.load(Ordering::Relaxed));
+    pub fn set_auto_timestamp(&self, auto_timestamp: bool) {
+        self.auto_timestamp.store(auto_timestamp, Ordering::Relaxed);
+    }
 
-        // Events keep the order they were sent in, even across a correction
-        // that rewound the timeline under them.
+    pub fn stamp(&self, at: Option<Instant>) -> u32 {
+        let Some(at) = at.or_else(|| {
+            self.auto_timestamp
+                .load(Ordering::Relaxed)
+                .then(Instant::now)
+        }) else {
+            return self.unstamped.load(Ordering::Relaxed);
+        };
+
+        // A bogus timestamp cannot hold an event back indefinitely
+        let committed = self.committed.load(Ordering::Relaxed);
+        let frames =
+            (self.timeline(self.frames(at)).max(0) as u64).min(committed + self.max_schedule);
+
         // Stamps landing on an already handed out frame skip the read-modify-write
         let handed_out = self.handed_out.load(Ordering::Relaxed);
-        let frames = if frames > handed_out {
+        let frames = if frames > self.lookahead_end.load(Ordering::Relaxed) {
+            frames
+        } else if frames > handed_out {
             frames.max(self.handed_out.fetch_max(frames, Ordering::Relaxed))
         } else {
             handed_out
         };
 
-        frames * self.channels
-    }
-
-    /// Position of an event that carries its own timestamp.
-    ///
-    /// Neither the lookahead cap nor the `handed_out` latch applies here: the
-    /// ports hold these events back until the block they fall into and order
-    /// them there, so they may land well past the committed block, or before
-    /// stamps that were already handed out. Only a timestamp further ahead
-    /// than [`MAX_SCHEDULE_SECS`] is pulled in, so that a bogus one cannot
-    /// hold an event back indefinitely.
-    pub fn position_for(&self, at: Instant) -> u64 {
-        let timeline = self.timeline(self.frames(at)).max(0) as u64;
-        let limit = self.committed.load(Ordering::Relaxed) + self.max_schedule;
-
-        timeline.min(limit) * self.channels
-    }
-
-    pub fn unstamped_position(&self) -> u32 {
-        self.unstamped.load(Ordering::Relaxed)
+        (frames * self.channels) as u32
     }
 }

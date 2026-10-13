@@ -5,10 +5,9 @@ pub struct RealtimeConfig {
     /// different from the device buffer size.
     pub render_buffer_ms: f32,
 
-    /// Use the high precision realtine clock for timestamping events.
-    /// The timestamps are determined by the exact time the event is
-    /// received by the engine.
-    pub precision_playback: bool,
+    /// Stamp events sent without a timestamp with their arrival time, instead
+    /// of playing them at the start of the next render block.
+    pub auto_timestamp: bool,
 
     /// Limit on notes per second. `None` lets every note through.
     pub max_nps: Option<NpsLimit>,
@@ -41,7 +40,7 @@ impl Default for RealtimeConfig {
         Self {
             device_audio_params: true,
             render_buffer_ms: 20.0,
-            precision_playback: true,
+            auto_timestamp: true,
             max_nps: Some(NpsLimit::default()),
             coalesce_window_ms: Some(10),
             audio_host: None,
