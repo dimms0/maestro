@@ -131,9 +131,11 @@ typedef struct MaestroInfo {
 
 typedef struct MaestroStats {
   uint32_t struct_size;
-  uint64_t nps;       /* notes per second processed by the synth */
-  uint64_t eps;       /* events per second processed by the synth */
-  uint64_t nps_limit; /* the current limit, after the load limiter */
+  uint64_t voice_count; /* number of current active voices */
+  float render_time;    /* render load percentage */
+  uint64_t nps;         /* notes per second processed by the synth */
+  uint64_t eps;         /* events per second processed by the synth */
+  uint64_t nps_limit;   /* the current limit, after the load limiter */
 } MaestroStats;
 
 /* ---- Core ---- */

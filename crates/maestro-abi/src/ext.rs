@@ -196,6 +196,8 @@ unsafe extern "C" fn stats_get(
         unsafe {
             write_sized(out, |struct_size| MaestroStats {
                 struct_size,
+                voice_count: live.stats.get_renderer().read_voice_count(),
+                render_time: live.stats.get_renderer().get_average_render_time(),
                 nps: live.stats.read_nps(),
                 eps: live.stats.read_eps(),
                 nps_limit: live.stats.read_nps_limit(),

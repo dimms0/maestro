@@ -32,7 +32,8 @@ pub const MAESTRO_NOTIFY_SETTINGS_CHANGED: u32 = 0;
 pub const MAESTRO_NOTIFY_ENGINE_STOPPED: u32 = 1;
 pub const MAESTRO_NOTIFY_ENGINE_STARTED: u32 = 2;
 
-pub type MaestroLogFn = Option<unsafe extern "C" fn(user: *mut c_void, level: u32, message: *const c_char)>;
+pub type MaestroLogFn =
+    Option<unsafe extern "C" fn(user: *mut c_void, level: u32, message: *const c_char)>;
 pub type MaestroNotifyFn = Option<unsafe extern "C" fn(user: *mut c_void, what: u32)>;
 
 #[repr(C)]
@@ -65,14 +66,18 @@ pub struct MaestroInfo {
 #[repr(C)]
 pub struct MaestroStats {
     pub struct_size: u32,
+    pub voice_count: u64,
+    pub render_time: f32,
     pub nps: u64,
     pub eps: u64,
     pub nps_limit: u64,
 }
 
 type SendShort = unsafe extern "C" fn(*mut MaestroInstance, u8, u32, MaestroTime) -> MaestroResult;
-type SendLong = unsafe extern "C" fn(*mut MaestroInstance, u8, *const u8, usize, MaestroTime) -> MaestroResult;
-type SendUmp = unsafe extern "C" fn(*mut MaestroInstance, *const u32, usize, MaestroTime) -> MaestroResult;
+type SendLong =
+    unsafe extern "C" fn(*mut MaestroInstance, u8, *const u8, usize, MaestroTime) -> MaestroResult;
+type SendUmp =
+    unsafe extern "C" fn(*mut MaestroInstance, *const u32, usize, MaestroTime) -> MaestroResult;
 type Control = unsafe extern "C" fn(*mut MaestroInstance) -> MaestroResult;
 type Get<T> = unsafe extern "C" fn(*mut MaestroInstance, *mut T) -> MaestroResult;
 
