@@ -120,7 +120,7 @@ unsafe extern "C" fn control_reset(inst: *mut MaestroInstance) -> MaestroResult 
         let mut engine = shared.engine.write().unwrap();
         let live = engine.as_mut().ok_or_else(Failure::not_running)?;
         live.engine.reset();
-        if let Some(sender) = shared.sender.load().as_deref() {
+        if let Some(sender) = shared.sender() {
             sender.reset();
         }
         Ok(())

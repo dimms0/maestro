@@ -1,5 +1,6 @@
 [package]
 name = "maestro-abi"
+publish = false
 description = "The Maestro API: a stable C ABI to Maestro's realtime engine"
 
 license.workspace = true
@@ -16,7 +17,6 @@ name = "maestro"
 crate-type = ["cdylib"]
 
 [dependencies]
-arc-swap = "1.7"
 maestro-core = { path = "../maestro-core", features = ["config-watcher"] }
 serde = { version = "1.0", features = ["derive"] }
 

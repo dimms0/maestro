@@ -1,11 +1,10 @@
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::mem::offset_of;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
+use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
-
-use arc_swap::ArcSwapOption;
 
 use maestro_core::{
     realtime::{MaestroRealtimeEngine, MaestroRealtimeStatistics, RealtimeEventSender, UMP_GROUPS},
@@ -62,7 +61,10 @@ pub struct Shared {
     pub ports: u8,
     pub midi2: bool,
     pub engine: RwLock<Option<Live>>,
-    pub sender: ArcSwapOption<RealtimeEventSender>,
+    sender: AtomicPtr<RealtimeEventSender>,
+    // Kept until close, so a send racing a restart never reaches a freed sender
+    #[allow(clippy::vec_box)]
+    senders: Mutex<Vec<Box<RealtimeEventSender>>>,
     pub config: Mutex<ApiConfig>,
     callbacks: Callbacks,
 }
@@ -212,7 +214,8 @@ impl Instance {
             ports,
             midi2: hints.midi2,
             engine: RwLock::new(None),
-            sender: ArcSwapOption::empty(),
+            sender: AtomicPtr::default(),
+            senders: Mutex::default(),
             config: Mutex::new(config.clone()),
             callbacks,
         });
@@ -292,19 +295,21 @@ impl Shared {
             })?;
         self.load_soundfonts(manager, &engine, &config.sflist);
 
-        let sender = Arc::new(engine.get_event_sender());
+        let sender = Box::new(engine.get_event_sender());
         let live = Live {
             stats: engine.get_statistics(),
             engine,
         };
         stats::set(self.id(), Some(live.stats.clone()));
         *self.engine.write().unwrap() = Some(live);
-        self.sender.store(Some(sender));
+        self.sender
+            .store(std::ptr::from_ref(&*sender).cast_mut(), Ordering::Release);
+        self.senders.lock().unwrap().push(sender);
         Ok(())
     }
 
     fn stop(&self) {
-        self.sender.store(None);
+        self.sender.store(std::ptr::null_mut(), Ordering::Release);
         let live = self.engine.write().unwrap().take();
         if live.is_some() {
             drop(live);
@@ -405,6 +410,10 @@ impl Shared {
         }
     }
 
+    pub fn sender(&self) -> Option<&RealtimeEventSender> {
+        unsafe { self.sender.load(Ordering::Acquire).as_ref() }
+    }
+
     pub fn with_sender(
         &self,
         port: Option<u8>,
@@ -418,8 +427,7 @@ impl Shared {
                 self.ports
             )));
         }
-        let sender = self.sender.load();
-        send(sender.as_deref().ok_or_else(Failure::not_running)?);
+        send(self.sender().ok_or_else(Failure::not_running)?);
         Ok(())
     }
 }
