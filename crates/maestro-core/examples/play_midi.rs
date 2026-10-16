@@ -6,8 +6,14 @@ use std::{
 };
 
 use maestro_core::{
-    realtime::{MaestroRealtimeEngine, RealtimeEngineOptions},
-    renderer::config::{RendererConfig, SynthConfig},
+    realtime::{
+        MaestroRealtimeEngine, RealtimeEngineOptions,
+        config::{NpsLimit, RealtimeConfig},
+    },
+    renderer::config::{
+        RendererConfig, SynthConfig,
+        bassmidi::{BASSMIDIConfig, BASSMIDIThreading},
+    },
     soundfont::SoundFontList,
 };
 use midi_parser::{EventRef, MidiFile, TempoClock};
@@ -39,7 +45,21 @@ fn main() {
     let options = RealtimeEngineOptions {
         ports: None,
         renderer: RendererConfig {
-            synth: SynthConfig::BASSMIDI(Default::default()),
+            synth: SynthConfig::BASSMIDI(BASSMIDIConfig {
+                voice_limit: 3000,
+                multithreading: Some(BASSMIDIThreading {
+                    thread_count: 0,
+                    divide_channels: false,
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        config: RealtimeConfig {
+            max_nps: Some(NpsLimit {
+                max: 200_000,
+                load_limiter: false,
+            }),
             ..Default::default()
         },
         ..Default::default()

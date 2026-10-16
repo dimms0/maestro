@@ -62,6 +62,10 @@ harness = false
 name = "file_render"
 harness = false
 
+[[bench]]
+name = "long_vs_short"
+harness = false
+
 [features]
 config-watcher = ["dep:notify"]
 encoders = ["dep:flacenc", "dep:mp3lame-encoder", "dep:vorbis_rs"]
