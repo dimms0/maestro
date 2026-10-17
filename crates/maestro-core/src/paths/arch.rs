@@ -94,46 +94,68 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    fn vendored(platform: &str, arch: &str, name: &str) -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../packaging")
-            .join(platform)
-            .join("vendor")
-            .join(arch)
-            .join(name)
+    fn file_with(name: &str, patches: &[(usize, &[u8])]) -> PathBuf {
+        let mut buf = vec![0u8; 0x100];
+        for (at, bytes) in patches {
+            buf[*at..*at + bytes.len()].copy_from_slice(bytes);
+        }
+        let path = std::env::temp_dir().join(format!("maestro-arch-{}-{name}", std::process::id()));
+        std::fs::write(&path, buf).unwrap();
+        path
     }
 
     #[test]
     fn reads_elf() {
-        assert_eq!(
-            file_arch(&vendored("linux", "x86_64", "libbass.so")),
-            Some("x86_64")
-        );
-        assert_eq!(
-            file_arch(&vendored("linux", "aarch64", "libbass.so")),
-            Some("aarch64")
-        );
+        let elf = |m: u16| {
+            file_with(
+                &format!("elf{m}"),
+                &[(0, b"\x7FELF\x02\x01"), (0x12, &m.to_le_bytes())],
+            )
+        };
+        assert_eq!(file_arch(&elf(0x3E)), Some("x86_64"));
+        assert_eq!(file_arch(&elf(0xB7)), Some("aarch64"));
     }
 
     #[test]
     fn reads_pe() {
-        assert_eq!(
-            file_arch(&vendored("windows", "x86_64", "bass.dll")),
-            Some("x86_64")
-        );
-        assert_eq!(
-            file_arch(&vendored("windows", "aarch64", "bass.dll")),
-            Some("aarch64")
-        );
+        let pe = |m: u16| {
+            file_with(
+                &format!("pe{m}"),
+                &[
+                    (0, b"MZ"),
+                    (0x3C, &[0x40]),
+                    (0x40, b"PE\0\0"),
+                    (0x44, &m.to_le_bytes()),
+                ],
+            )
+        };
+        assert_eq!(file_arch(&pe(0x8664)), Some("x86_64"));
+        assert_eq!(file_arch(&pe(0xAA64)), Some("aarch64"));
     }
 
     #[test]
     fn reads_macho() {
-        assert!(file_arch(&vendored("macos", "x86_64", "libbass.dylib")).is_some());
+        let thin = file_with(
+            "macho",
+            &[
+                (0, &[0xCF, 0xFA, 0xED, 0xFE]),
+                (4, &0x0100_0007u32.to_le_bytes()),
+            ],
+        );
+        assert_eq!(file_arch(&thin), Some("x86_64"));
+        let fat = file_with(
+            "fat",
+            &[
+                (0, &[0xCA, 0xFE, 0xBA, 0xBE]),
+                (4, &1u32.to_be_bytes()),
+                (8, &0x0100_000Cu32.to_be_bytes()),
+            ],
+        );
+        assert_eq!(file_arch(&fat), Some("aarch64"));
     }
 
     #[test]
     fn ignores_other_files() {
-        assert_eq!(file_arch(&vendored("windows", "x86_64", "bass.txt")), None);
+        assert_eq!(file_arch(&file_with("txt", &[(0, b"BASS license")])), None);
     }
 }
