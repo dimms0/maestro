@@ -49,7 +49,7 @@ pub extern "system" fn modMessage(
 
             let guard = state.sender.load();
             if let Some(snd) = guard.as_ref() {
-                snd.process_short(client.port, short, None);
+                snd.process_short(client.port, short, 0);
             }
             MMSYSERR_NOERROR
         }
@@ -75,7 +75,7 @@ pub extern "system" fn modMessage(
 
                 let guard = state.sender.load();
                 if let Some(snd) = guard.as_ref() {
-                    snd.process_long(client.port, data, None);
+                    snd.process_long(client.port, data, 0);
                 }
 
                 (*header).dwFlags |= MHDR_DONE;
@@ -167,7 +167,7 @@ pub extern "system" fn modMessage(
             let client = unsafe { &*(dwUser as *const state::OutClient) };
             let guard = state.sender.load();
             if let Some(snd) = guard.as_ref() {
-                snd.process_short(client.port, 0xFF, None);
+                snd.process_short(client.port, 0xFF, 0);
             }
             MMSYSERR_NOERROR
         }

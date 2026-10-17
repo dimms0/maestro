@@ -9,6 +9,7 @@ use maestro_core::{
     realtime::{
         MaestroRealtimeEngine, RealtimeEngineOptions,
         config::{NpsLimit, RealtimeConfig},
+        host_time,
     },
     renderer::config::{
         RendererConfig, SynthConfig,
@@ -85,8 +86,8 @@ fn main() {
     let mut tempo = TempoClock::new(midi.division(), 1_000_000_000);
     let mut merged = midi.merged().unwrap();
 
-    let now = Instant::now();
-    let start = now + Duration::from_millis(500);
+    let start = Instant::now() + Duration::from_millis(500);
+    let start_ticks = host_time::host_now() + host_time::ns_to_ticks(500_000_000);
     let mut nanos = 0;
     let mut batch = Vec::new();
     let mut sysex = Vec::new();
@@ -94,6 +95,7 @@ fn main() {
     while let Some(Ok((delta, _, group))) = merged.next_batch(&mut batch) {
         nanos += tempo.advance(delta);
         let due = start + Duration::from_nanos(nanos);
+        let at = start_ticks + host_time::ns_to_ticks(nanos);
         if let Some(wait) = due.checked_duration_since(Instant::now() + LOOKAHEAD) {
             thread::sleep(wait);
         }
@@ -101,17 +103,13 @@ fn main() {
         let mut set_tempo = None;
         for event in &batch {
             match *event {
-                EventRef::Midi(m) => {
-                    realtime
-                        .sender()
-                        .process_short(group, m.as_short(), Some(due))
-                }
+                EventRef::Midi(m) => realtime.sender().process_short(group, m.as_short(), at),
                 EventRef::SysEx(data) => {
                     sysex.clear();
                     sysex.push(0xF0);
                     sysex.extend_from_slice(data);
                     sysex.push(0xF7);
-                    realtime.sender().process_long(group, &sysex, Some(due));
+                    realtime.sender().process_long(group, &sysex, at);
                 }
                 EventRef::Meta(m) => set_tempo = m.tempo().or(set_tempo),
                 EventRef::Ump(packet) => set_tempo = packet.tempo().or(set_tempo),

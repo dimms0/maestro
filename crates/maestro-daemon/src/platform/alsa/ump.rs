@@ -375,7 +375,9 @@ impl UmpEndpoint {
 
                 let at = anchor
                     .filter(|_| event.flags & SND_SEQ_TIME_STAMP_REAL != 0)
-                    .map(|anchor| anchor.at(Duration::new(event.time[0].into(), event.time[1])));
+                    .map_or(0, |anchor| {
+                        anchor.at(Duration::new(event.time[0].into(), event.time[1]))
+                    });
                 gate.session().ump(&event.ump, at);
             }
         }

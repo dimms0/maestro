@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Instant};
+use std::sync::{Arc, MutexGuard};
 
 use crate::{
     error::RealtimeEngineError,
@@ -7,10 +7,13 @@ use crate::{
     realtime::{
         MaestroRealtimeStatistics, RealtimeEngineOptions,
         config::RealtimeConfig,
-        event_sender::{coalescer::EventCoalescer, nps::NpsTracker},
+        event_sender::{
+            coalescer::EventCoalescer,
+            nps::{NpsBatch, NpsTracker},
+        },
         load::LoadLimiter,
     },
-    renderer::sender::PortEventSender,
+    renderer::sender::{PortEventSender, PortQueue},
 };
 
 mod coalescer;
@@ -93,7 +96,7 @@ impl RealtimeEventSender {
     }
 
     #[inline]
-    fn push(&self, port: u8, event: MaestroEvent, at: Option<Instant>) {
+    fn push(&self, port: u8, event: MaestroEvent, at: u64) {
         let Some(sender) = self.ports.get(port as usize) else {
             return;
         };
@@ -111,22 +114,24 @@ impl RealtimeEventSender {
         });
     }
 
-    pub fn process_short(&self, port: u8, short: u32, at: Option<Instant>) {
+    pub fn process_short(&self, port: u8, short: u32, at: u64) {
         self.translator.short(port, short, |event| {
             self.push(port, event, at);
         });
     }
 
-    pub fn process_long(&self, port: u8, long: &[u8], at: Option<Instant>) {
-        self.translator.long(port, long, |event| {
-            self.push(port, event, at);
-        });
+    pub fn process_long(&self, port: u8, long: &[u8], at: u64) {
+        let mut batch = Batch::new(self, at);
+        self.translator
+            .long(port, long, |event| batch.push(port, event));
+        batch.send();
     }
 
-    pub fn process_ump(&self, words: &[u32], at: Option<Instant>) {
-        self.translator.ump(words, |group, event| {
-            self.push(group, event, at);
-        });
+    pub fn process_ump(&self, words: &[u32], at: u64) {
+        let mut batch = Batch::new(self, at);
+        self.translator
+            .ump(words, |group, event| batch.push(group, event));
+        batch.send();
     }
 
     pub fn reset(&self) {
@@ -137,5 +142,63 @@ impl RealtimeEventSender {
 
         self.translator.reset();
         self.nps.reset();
+    }
+}
+
+struct Batch<'a> {
+    sender: &'a RealtimeEventSender,
+    at: u64,
+    pos: Option<u32>,
+    nps: NpsBatch,
+    queue: Option<(u8, MutexGuard<'a, PortQueue>)>,
+}
+
+impl<'a> Batch<'a> {
+    fn new(sender: &'a RealtimeEventSender, at: u64) -> Self {
+        Self {
+            sender,
+            at,
+            pos: None,
+            nps: sender.nps.batch(),
+            queue: None,
+        }
+    }
+
+    #[inline]
+    fn push(&mut self, port: u8, event: MaestroEvent) {
+        let sender = self.sender;
+        let Some(port_sender) = sender.ports.get(port as usize) else {
+            return;
+        };
+
+        let tracked = |channel: u8| port as usize * 16 + channel as usize;
+        let admitted = match event {
+            MaestroEvent::NoteOn { channel, key, vel } => {
+                sender
+                    .nps
+                    .batch_note_on(&mut self.nps, tracked(channel), key, vel)
+            }
+            MaestroEvent::NoteOff { channel, key } => sender.nps.note_off(tracked(channel), key),
+            _ => true,
+        };
+        if !admitted || sender.coalescer.record(port, event) {
+            return;
+        }
+
+        self.nps.events += 1;
+        let pos = *self.pos.get_or_insert_with(|| sender.clock.stamp(self.at));
+
+        let queue = match &mut self.queue {
+            Some((locked, queue)) if *locked == port => queue,
+            slot => {
+                *slot = None;
+                &mut slot.insert((port, port_sender.lock())).1
+            }
+        };
+        queue.push(MaestroTimedEvent { event, pos });
+    }
+
+    fn send(self) {
+        self.sender.nps.commit(&self.nps);
     }
 }

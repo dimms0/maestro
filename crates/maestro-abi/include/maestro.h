@@ -176,8 +176,10 @@ typedef struct MaestroExtMidi1 {
   /* [rt] A packed short message: status | data1 << 8 | data2 << 16. */
   MaestroResult(MAESTRO_CALL *send_short)(MaestroInstance *inst, uint8_t port,
                                           uint32_t msg, MaestroTime at);
-  /* [rt] SysEx or any long message. The data is copied before the call
-   * returns. */
+  /* [rt] A MIDI byte stream: SysEx, or any number of messages, running status
+   * included. All of them share `at`, and sending many at once is much cheaper
+   * per message than send_short. A message cut off at the end of `data` is
+   * finished by the next call. The data is copied before the call returns. */
   MaestroResult(MAESTRO_CALL *send_long)(MaestroInstance *inst, uint8_t port,
                                          const uint8_t *data, size_t len,
                                          MaestroTime at);

@@ -299,15 +299,18 @@ struct Shared {
 
 impl Shared {
     fn flush(&self, pending: &mut Vec<MaestroEvent>) {
-        let pos = self.clock.stamp(None);
+        let pos = self.clock.stamp(0);
 
         for (sender, state) in self.senders.iter().zip(self.ports.iter()) {
-            let mut state = state.lock().unwrap();
-            state.drain_into(pending);
+            state.lock().unwrap().drain_into(pending);
+            if pending.is_empty() {
+                continue;
+            }
             self.event_counter
                 .fetch_add(pending.len() as u64, Ordering::Relaxed);
+            let mut queue = sender.lock();
             for event in pending.drain(..) {
-                sender.send(MaestroTimedEvent { event, pos });
+                queue.push(MaestroTimedEvent { event, pos });
             }
         }
     }
@@ -380,7 +383,7 @@ impl EventCoalescer {
 
     pub fn record(&self, port: u8, event: MaestroEvent) -> bool {
         let off = || self.shared.window_ms.load(Ordering::Relaxed) == 0;
-        if off() {
+        if off() || !coalescable(event) {
             return false;
         }
 
@@ -395,6 +398,16 @@ impl EventCoalescer {
             *port.lock().unwrap() = PortState::new();
         }
     }
+}
+
+fn coalescable(event: MaestroEvent) -> bool {
+    !matches!(
+        event,
+        MaestroEvent::NoteOn { .. }
+            | MaestroEvent::NoteOff { .. }
+            | MaestroEvent::SystemReset
+            | MaestroEvent::SystemExclusive { .. }
+    )
 }
 
 fn window(window_ms: Option<u32>) -> u32 {

@@ -1,9 +1,4 @@
-use std::sync::{
-    Mutex,
-    atomic::{AtomicBool, Ordering},
-};
-
-use crossbeam_channel::{Receiver, Sender};
+use std::sync::{Mutex, MutexGuard};
 
 use crate::{
     audio_params::AudioParameters,
@@ -11,11 +6,38 @@ use crate::{
     renderer::{config::EventProcessorConfig, event_processor::PortEventProcessor},
 };
 
+pub(crate) struct PortQueue {
+    events: Vec<MaestroTimedEvent>,
+    evproc: Option<PortEventProcessor>,
+}
+
+impl PortQueue {
+    #[inline]
+    pub fn push(&mut self, event: MaestroTimedEvent) {
+        if self.evproc.is_some() {
+            self.push_processed(event);
+        } else {
+            self.events.push(event);
+        }
+    }
+
+    // Out of line, as inlining the processor slows down the unprocessed push
+    #[inline(never)]
+    fn push_processed(&mut self, event: MaestroTimedEvent) {
+        if let Some(event) = self.evproc.as_mut().and_then(|p| p.process(event)) {
+            self.events.push(event);
+        }
+    }
+
+    fn release(&mut self) {
+        for event in self.events.drain(..) {
+            sysex::release(&event.event);
+        }
+    }
+}
+
 pub(crate) struct PortEventSender {
-    tx: Sender<MaestroTimedEvent>,
-    rx: Receiver<MaestroTimedEvent>,
-    evproc: Mutex<Option<PortEventProcessor>>,
-    processing: AtomicBool,
+    queue: Mutex<PortQueue>,
 }
 
 impl PortEventSender {
@@ -24,64 +46,45 @@ impl PortEventSender {
         evproc: Option<EventProcessorConfig>,
         audio_params: &AudioParameters,
     ) -> Self {
-        let (tx, rx) = crossbeam_channel::unbounded();
-
-        let evproc = evproc.map(|c| PortEventProcessor::new(port, c, audio_params));
-
         Self {
-            tx,
-            rx,
-            processing: AtomicBool::new(evproc.is_some()),
-            evproc: Mutex::new(evproc),
+            queue: Mutex::new(PortQueue {
+                events: Vec::new(),
+                evproc: evproc.map(|c| PortEventProcessor::new(port, c, audio_params)),
+            }),
         }
     }
 
     pub(super) fn set_event_processor(&self, evproc: Option<PortEventProcessor>) {
-        let mut current = self.evproc.lock().unwrap();
-        self.processing.store(evproc.is_some(), Ordering::Relaxed);
-        *current = evproc;
+        self.lock().evproc = evproc;
+    }
+
+    #[inline]
+    pub fn lock(&self) -> MutexGuard<'_, PortQueue> {
+        self.queue.lock().unwrap()
     }
 
     #[inline]
     pub fn send(&self, event: MaestroTimedEvent) {
-        // self.processing is used to skip the lock if there's no processor
-        let event = if self.processing.load(Ordering::Relaxed)
-            && let Some(evproc) = self.evproc.lock().unwrap().as_mut()
-        {
-            let Some(event) = evproc.process(event) else {
-                return;
-            };
-            event
-        } else {
-            event
-        };
-
-        if let Err(err) = self.tx.try_send(event) {
-            sysex::release(&err.into_inner().event);
-        }
+        self.lock().push(event);
     }
 
-    pub(super) fn iter(&self) -> impl Iterator<Item = MaestroTimedEvent> + '_ {
-        self.rx.try_iter()
+    pub(super) fn swap(&self, events: &mut Vec<MaestroTimedEvent>) {
+        std::mem::swap(&mut self.lock().events, events);
     }
 
     pub fn reset(&self) {
-        if let Some(evproc) = self.evproc.lock().unwrap().as_mut() {
+        let mut queue = self.lock();
+        if let Some(evproc) = queue.evproc.as_mut() {
             evproc.reset();
         }
-
-        self.drain();
-    }
-
-    fn drain(&self) {
-        for event in self.rx.try_iter() {
-            sysex::release(&event.event);
-        }
+        queue.release();
     }
 }
 
 impl Drop for PortEventSender {
     fn drop(&mut self) {
-        self.drain();
+        if let Ok(queue) = self.queue.get_mut() {
+            queue.release();
+        }
     }
 }

@@ -1,9 +1,8 @@
 use std::ffi::{CStr, c_void};
 use std::path::PathBuf;
 use std::process::Command;
-use std::time::Instant;
 
-use maestro_core::{paths, realtime::host_time, system_cfg::MaestroConfigManager};
+use maestro_core::{paths, system_cfg::MaestroConfigManager};
 
 use crate::abi::*;
 use crate::error::{Failure, err_guard};
@@ -46,10 +45,6 @@ unsafe fn shared<'a>(inst: *mut MaestroInstance) -> Result<&'a Shared, Failure> 
         .ok_or_else(|| Failure::invalid("inst is NULL"))
 }
 
-fn timestamp(at: MaestroTime) -> Option<Instant> {
-    (at != MAESTRO_TIME_NOW).then(|| host_time::from_host_ticks(at))
-}
-
 /// Copies `value` into a caller's struct, as far as its `struct_size` allows.
 unsafe fn write_sized<T>(out: *mut T, value: impl FnOnce(u32) -> T) -> Result<(), Failure> {
     if out.is_null() {
@@ -74,9 +69,8 @@ unsafe extern "C" fn midi1_send_short(
     at: MaestroTime,
 ) -> MaestroResult {
     err_guard(|| {
-        unsafe { shared(inst) }?.with_sender(Some(port), |sender| {
-            sender.process_short(port, msg, timestamp(at))
-        })
+        unsafe { shared(inst) }?
+            .with_sender(Some(port), |sender| sender.process_short(port, msg, at))
     })
 }
 
@@ -92,9 +86,8 @@ unsafe extern "C" fn midi1_send_long(
             return Err(Failure::invalid("data is empty"));
         }
         let data = unsafe { std::slice::from_raw_parts(data, len) };
-        unsafe { shared(inst) }?.with_sender(Some(port), |sender| {
-            sender.process_long(port, data, timestamp(at))
-        })
+        unsafe { shared(inst) }?
+            .with_sender(Some(port), |sender| sender.process_long(port, data, at))
     })
 }
 
@@ -109,8 +102,7 @@ unsafe extern "C" fn ump_send(
             return Err(Failure::invalid("words is empty"));
         }
         let words = unsafe { std::slice::from_raw_parts(words, count) };
-        unsafe { shared(inst) }?
-            .with_sender(None, |sender| sender.process_ump(words, timestamp(at)))
+        unsafe { shared(inst) }?.with_sender(None, |sender| sender.process_ump(words, at))
     })
 }
 

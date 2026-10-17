@@ -46,9 +46,9 @@ impl Msg<'_> {
     #[inline]
     fn send_to(&self, snd: &RealtimeEventSender) {
         match *self {
-            Msg::Short { port, msg } => snd.process_short(port, msg, None),
-            Msg::Long { port, data } => snd.process_long(port, data, None),
-            Msg::Ump(words) => snd.process_ump(words, None),
+            Msg::Short { port, msg } => snd.process_short(port, msg, 0),
+            Msg::Long { port, data } => snd.process_long(port, data, 0),
+            Msg::Ump(words) => snd.process_ump(words, 0),
         }
     }
 }
@@ -119,13 +119,13 @@ impl GateEntry {
 
     fn replay(&self, snd: &RealtimeEventSender) {
         match self {
-            Self::Short { port, msg } => snd.process_short(*port, *msg, None),
+            Self::Short { port, msg } => snd.process_short(*port, *msg, 0),
             Self::LongInline { port, len, bytes } => {
-                snd.process_long(*port, &bytes[..*len as usize], None)
+                snd.process_long(*port, &bytes[..*len as usize], 0)
             }
-            Self::LongHeap { port, data } => snd.process_long(*port, data, None),
-            Self::UmpInline { len, words } => snd.process_ump(&words[..*len as usize], None),
-            Self::UmpHeap { words } => snd.process_ump(words, None),
+            Self::LongHeap { port, data } => snd.process_long(*port, data, 0),
+            Self::UmpInline { len, words } => snd.process_ump(&words[..*len as usize], 0),
+            Self::UmpHeap { words } => snd.process_ump(words, 0),
         }
     }
 
@@ -215,7 +215,7 @@ pub struct GateSession<'a> {
 
 impl GateSession<'_> {
     #[inline]
-    pub fn short(&self, port: u8, msg: u32, at: Option<Instant>) {
+    pub fn short(&self, port: u8, msg: u32, at: u64) {
         match self.live.as_ref() {
             Some(snd) => snd.process_short(port, msg, at),
             None => self.gate.slow_path(Msg::Short { port, msg }),
@@ -223,7 +223,7 @@ impl GateSession<'_> {
     }
 
     #[inline]
-    pub fn long(&self, port: u8, data: &[u8], at: Option<Instant>) {
+    pub fn long(&self, port: u8, data: &[u8], at: u64) {
         match self.live.as_ref() {
             Some(snd) => snd.process_long(port, data, at),
             None => self.gate.slow_path(Msg::Long { port, data }),
@@ -231,7 +231,7 @@ impl GateSession<'_> {
     }
 
     #[inline]
-    pub fn ump(&self, words: &[u32], at: Option<Instant>) {
+    pub fn ump(&self, words: &[u32], at: u64) {
         match self.live.as_ref() {
             Some(snd) => snd.process_ump(words, at),
             None => self.gate.slow_path(Msg::Ump(words)),
@@ -438,8 +438,8 @@ mod tests {
         let (gate, rx) = gate();
         assert_eq!(gate.mode(), GateMode::Off);
 
-        gate.session().short(0, 0x90_40_7F, None);
-        gate.session().long(1, &[0xF0, 0x7E, 0xF7], None);
+        gate.session().short(0, 0x90_40_7F, 0);
+        gate.session().long(1, &[0xF0, 0x7E, 0xF7], 0);
 
         assert!(gate.drain_buffer().is_empty());
         assert!(!gate.wants_start());
@@ -450,10 +450,10 @@ mod tests {
     fn an_idle_gate_buffers_in_order_across_message_kinds() {
         let (gate, _rx) = idle_gate();
 
-        gate.session().short(0, 0x90_40_7F, None);
-        gate.session().long(1, &[0xF0, 0x43, 0x10, 0xF7], None);
-        gate.session().ump(&[0x2091_407F], None);
-        gate.session().short(0, 0x80_40_00, None);
+        gate.session().short(0, 0x90_40_7F, 0);
+        gate.session().long(1, &[0xF0, 0x43, 0x10, 0xF7], 0);
+        gate.session().ump(&[0x2091_407F], 0);
+        gate.session().short(0, 0x80_40_00, 0);
 
         assert_eq!(
             gate.drain_buffer(),
@@ -474,8 +474,8 @@ mod tests {
 
         let sysex: Vec<u8> = (0..64u8).collect();
         let ump: Vec<u32> = (0..16u32).collect();
-        gate.session().long(3, &sysex, None);
-        gate.session().ump(&ump, None);
+        gate.session().long(3, &sysex, 0);
+        gate.session().ump(&ump, 0);
 
         assert_eq!(
             gate.drain_buffer(),
@@ -488,7 +488,7 @@ mod tests {
         let (gate, rx) = idle_gate();
 
         for note in 0..8u32 {
-            gate.session().short(0, 0x90_00_7F | (note << 8), None);
+            gate.session().short(0, 0x90_00_7F | (note << 8), 0);
         }
 
         assert_eq!(rx.try_recv(), Ok(ServiceEvent::WakeEngine));
@@ -503,7 +503,7 @@ mod tests {
         let (gate, rx) = gate();
         gate.demote(GateMode::Starting);
 
-        gate.session().short(0, 0x90_40_7F, None);
+        gate.session().short(0, 0x90_40_7F, 0);
 
         assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
         assert!(!gate.wants_start());
@@ -518,7 +518,7 @@ mod tests {
 
         let total = MAX_BUFFERED_EVENTS + 100;
         for n in 0..total as u32 {
-            gate.session().short(0, n, None);
+            gate.session().short(0, n, 0);
         }
 
         assert_eq!(gate.dropped(), 100);
@@ -540,7 +540,7 @@ mod tests {
 
         let chunk = vec![0u8; 8192];
         for _ in 0..(MAX_BUFFERED_BYTES / chunk.len()) + 10 {
-            gate.session().long(0, &chunk, None);
+            gate.session().long(0, &chunk, 0);
         }
 
         let drained = gate.drain_buffer();
@@ -561,9 +561,8 @@ mod tests {
     fn an_oversized_entry_is_refused_without_clearing_the_buffer() {
         let (gate, _rx) = idle_gate();
 
-        gate.session().short(0, 0x90_40_7F, None);
-        gate.session()
-            .long(0, &vec![0u8; MAX_ENTRY_BYTES + 1], None);
+        gate.session().short(0, 0x90_40_7F, 0);
+        gate.session().long(0, &vec![0u8; MAX_ENTRY_BYTES + 1], 0);
 
         assert_eq!(gate.dropped(), 1);
         assert_eq!(gate.drain_buffer(), vec![Decoded::Short(0, 0x90_40_7F)]);
@@ -574,12 +573,12 @@ mod tests {
     #[test]
     fn demoting_to_off_clears_the_buffer_but_idle_keeps_it() {
         let (gate, _rx) = idle_gate();
-        gate.session().short(0, 0x90_40_7F, None);
+        gate.session().short(0, 0x90_40_7F, 0);
 
         gate.demote(GateMode::Idle);
         assert_eq!(gate.drain_buffer().len(), 1);
 
-        gate.session().short(0, 0x90_40_7F, None);
+        gate.session().short(0, 0x90_40_7F, 0);
         gate.demote(GateMode::Off);
         assert!(gate.drain_buffer().is_empty());
         assert!(!gate.wants_start());
@@ -602,7 +601,7 @@ mod tests {
         let (gate, _rx) = gate();
 
         assert!(!gate.take_activity());
-        gate.session().short(0, 0x90_40_7F, None);
+        gate.session().short(0, 0x90_40_7F, 0);
         assert!(gate.take_activity());
         assert!(!gate.take_activity());
     }
@@ -647,7 +646,7 @@ mod tests {
                 let gate = gate.clone();
                 std::thread::spawn(move || {
                     for n in 0..PER_PRODUCER {
-                        gate.session().short(port, n, None);
+                        gate.session().short(port, n, 0);
                     }
                 })
             })

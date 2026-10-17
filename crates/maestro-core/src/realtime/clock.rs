@@ -1,9 +1,6 @@
-use std::{
-    sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, Ordering},
-    time::Instant,
-};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, Ordering};
 
-use crate::audio_params::AudioParameters;
+use crate::{audio_params::AudioParameters, realtime::host_time};
 
 const NANOS_PER_SEC: u64 = 1_000_000_000;
 
@@ -21,9 +18,9 @@ const SYNC_WINDOW_NS: u64 = 500_000_000;
 
 /// Clock used to timestamp events during realtime playback.
 ///
-/// Every event is stamped from a wall-clock instant: the one it was sent with,
-/// or its arrival when `auto_timestamp` is on. Events with neither are
-/// unstamped and play at the start of the next block.
+/// Every event is stamped from a host clock time: the one it was sent with, or
+/// its arrival when `auto_timestamp` is on. A time of 0 means neither, and the
+/// event is unstamped and plays at the start of the next block.
 ///
 /// Events have to keep the exact spacing the sender gave them, so the mapping
 /// from wall time to sample positions is a plain affine one:
@@ -90,7 +87,8 @@ pub(crate) struct RealtimeClock {
     window_max: AtomicI64,
     window_end: AtomicU64,
 
-    start: Instant,
+    /// Host clock time the timeline starts at
+    start: u64,
     sample_rate: u64,
     channels: u64,
     /// [`SYNC_WINDOW_NS`] in frames, so that measuring the window costs nothing
@@ -119,7 +117,7 @@ impl RealtimeClock {
             window_min: AtomicI64::new(i64::MAX),
             window_max: AtomicI64::new(i64::MIN),
             window_end: AtomicU64::new(sync_window),
-            start: Instant::now(),
+            start: host_time::host_now(),
             sample_rate,
             channels: u16::from(audio_params.channels) as u64,
             sync_window,
@@ -128,16 +126,16 @@ impl RealtimeClock {
         }
     }
 
-    fn frames(&self, at: Instant) -> u64 {
-        let elapsed = at.saturating_duration_since(self.start);
+    fn frames(&self, at: u64) -> u64 {
+        let elapsed = at.saturating_sub(self.start);
+        let per_sec = host_time::ticks_per_sec();
 
-        // Splitting the elapsed time at the second keeps this to 64-bit
-        // arithmetic: the whole seconds scale exactly, and the nanoseconds left
-        // over are far too few to overflow when scaled. The result is the same
-        // `elapsed_ns * sample_rate / 1e9` down to the frame.
+        // Splitting the elapsed ticks at the second keeps this to 64-bit
+        // arithmetic: the whole seconds scale exactly, and the ticks left over
+        // are far too few to overflow when scaled. The result is the same
+        // `elapsed * sample_rate / ticks_per_sec` down to the frame.
 
-        elapsed.as_secs() * self.sample_rate
-            + u64::from(elapsed.subsec_nanos()) * self.sample_rate / NANOS_PER_SEC
+        elapsed / per_sec * self.sample_rate + elapsed % per_sec * self.sample_rate / per_sec
     }
 
     fn timeline(&self, elapsed: u64) -> i64 {
@@ -151,7 +149,7 @@ impl RealtimeClock {
 
     pub fn begin_block(&self, samples: u64) {
         let frames = samples / self.channels;
-        let now = self.frames(Instant::now());
+        let now = self.frames(host_time::host_now());
 
         let lookahead = self.max_lookahead.load(Ordering::Relaxed);
         let committed = self.committed.load(Ordering::Relaxed) + frames;
@@ -214,13 +212,11 @@ impl RealtimeClock {
         self.auto_timestamp.store(auto_timestamp, Ordering::Relaxed);
     }
 
-    pub fn stamp(&self, at: Option<Instant>) -> u32 {
-        let Some(at) = at.or_else(|| {
-            self.auto_timestamp
-                .load(Ordering::Relaxed)
-                .then(Instant::now)
-        }) else {
-            return self.unstamped.load(Ordering::Relaxed);
+    pub fn stamp(&self, at: u64) -> u32 {
+        let at = match at {
+            0 if self.auto_timestamp.load(Ordering::Relaxed) => host_time::host_now(),
+            0 => return self.unstamped.load(Ordering::Relaxed),
+            at => at,
         };
 
         // A bogus timestamp cannot hold an event back indefinitely

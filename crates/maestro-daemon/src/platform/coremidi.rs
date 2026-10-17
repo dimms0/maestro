@@ -1,7 +1,4 @@
-use std::time::Instant;
-
 use coremidi::{Client, Properties, PropertySetter, Protocol, VirtualDestination};
-use maestro_core::realtime::host_time;
 
 use crate::{
     error::DaemonError,
@@ -11,10 +8,6 @@ use crate::{
 };
 
 const ADVANCE_SCHEDULE_US: i32 = 250_000;
-
-fn timestamp(ticks: u64) -> Option<Instant> {
-    (ticks != 0).then(|| host_time::from_host_ticks(ticks))
-}
 
 pub struct CoreMidiBackend {
     _destinations: Vec<VirtualDestination>,
@@ -43,7 +36,7 @@ impl CoreMidiBackend {
                     move |event_list| {
                         let session = gate.session();
                         for packet in event_list.iter() {
-                            session.ump(packet.data(), timestamp(packet.timestamp()));
+                            session.ump(packet.data(), packet.timestamp());
                         }
                     },
                 )
@@ -61,7 +54,7 @@ impl CoreMidiBackend {
                     .virtual_destination(&name, move |packet_list| {
                         let session = gate.session();
                         for packet in packet_list.iter() {
-                            session.long(i, packet.data(), timestamp(packet.timestamp()));
+                            session.long(i, packet.data(), packet.timestamp());
                         }
                     })
                     .map_err(|status| backend_err("destination creation", status))?;

@@ -227,7 +227,7 @@ fn time_shorts(sender: &RealtimeEventSender, shorts: &[u32], total: usize) -> f6
     while sent < total {
         let start = Instant::now();
         for i in sent..sent + DRAIN {
-            sender.process_short(0, black_box(shorts[i % shorts.len()]), None);
+            sender.process_short(0, black_box(shorts[i % shorts.len()]), 0);
         }
         elapsed += start.elapsed();
 
@@ -249,7 +249,7 @@ fn time_longs(sender: &RealtimeEventSender, longs: &Longs, size: usize, total: u
     while sent < total {
         let start = Instant::now();
         for i in call..call + calls_per_drain {
-            sender.process_long(0, black_box(longs.chunk(i)), None);
+            sender.process_long(0, black_box(longs.chunk(i)), 0);
         }
         elapsed += start.elapsed();
 

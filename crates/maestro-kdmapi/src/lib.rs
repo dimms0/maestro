@@ -135,7 +135,7 @@ pub(crate) fn send_long(data: &[u8]) -> bool {
     }
 
     unsafe {
-        (*sender).process_long(0, data, None);
+        (*sender).process_long(0, data, 0);
     }
 
     true
@@ -247,7 +247,7 @@ pub extern "C" fn SendDirectData(short: u32) {
     let ptr = state.sender.load(Ordering::Acquire);
     if !ptr.is_null() {
         unsafe {
-            (*ptr).process_short(0, short, None);
+            (*ptr).process_short(0, short, 0);
         }
     }
 }

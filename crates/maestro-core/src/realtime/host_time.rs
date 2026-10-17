@@ -1,32 +1,27 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Anchor {
-    instant: Instant,
+    host: u64,
     time: Duration,
 }
 
 impl Anchor {
     pub fn new(now: Duration) -> Self {
         Self {
-            instant: Instant::now(),
+            host: host_now(),
             time: now,
         }
     }
 
-    pub fn at(&self, time: Duration) -> Instant {
+    pub fn at(&self, time: Duration) -> u64 {
         match time.checked_sub(self.time) {
-            Some(ahead) => self.instant + ahead,
+            Some(ahead) => self.host + ns_to_ticks(ahead.as_nanos() as u64),
             None => self
-                .instant
-                .checked_sub(self.time - time)
-                .unwrap_or(self.instant),
+                .host
+                .saturating_sub(ns_to_ticks((self.time - time).as_nanos() as u64)),
         }
     }
-}
-
-pub fn from_host_ticks(ticks: u64) -> Instant {
-    Anchor::new(to_duration(host_now())).at(to_duration(ticks))
 }
 
 pub fn ns_to_ticks(ns: u64) -> u64 {
@@ -44,8 +39,8 @@ pub fn host_now() -> u64 {
 }
 
 #[cfg(target_os = "linux")]
-fn to_duration(ticks: u64) -> Duration {
-    Duration::from_nanos(ticks)
+pub(crate) fn ticks_per_sec() -> u64 {
+    1_000_000_000
 }
 
 #[cfg(target_os = "linux")]
@@ -73,9 +68,9 @@ fn timebase() -> (u128, u128) {
 }
 
 #[cfg(target_os = "macos")]
-fn to_duration(ticks: u64) -> Duration {
+pub(crate) fn ticks_per_sec() -> u64 {
     let (numer, denom) = timebase();
-    Duration::from_nanos((u128::from(ticks) * numer / denom) as u64)
+    (1_000_000_000 * denom / numer) as u64
 }
 
 #[cfg(target_os = "macos")]
@@ -105,8 +100,8 @@ fn frequency() -> u128 {
 }
 
 #[cfg(windows)]
-fn to_duration(ticks: u64) -> Duration {
-    Duration::from_nanos((u128::from(ticks) * 1_000_000_000 / frequency()) as u64)
+pub(crate) fn ticks_per_sec() -> u64 {
+    frequency() as u64
 }
 
 #[cfg(windows)]

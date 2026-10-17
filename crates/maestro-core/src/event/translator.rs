@@ -1,6 +1,6 @@
 use std::sync::{
     Mutex,
-    atomic::{AtomicU8, Ordering},
+    atomic::{AtomicBool, AtomicU8, Ordering},
 };
 
 use crate::event::{
@@ -10,25 +10,32 @@ use crate::event::{
 
 const MAX_SYSEX: usize = 64 * 1024;
 
+/// Stored in `pending` when no data byte is waiting; real data bytes are below 0x80.
+const NO_PENDING: u8 = 0xFF;
+
 pub(crate) struct MidiTranslator {
     ports: Box<[PortState]>,
 }
 
 // Padded to a cache line so two busy ports don't share one.
-#[derive(Default)]
 #[repr(align(64))]
 struct PortState {
     running_status: AtomicU8,
-    stream: Mutex<StreamState>,
+    /// First data byte of a two-byte channel message still waiting on its second.
+    pending: AtomicU8,
+    in_sysex: AtomicBool,
+    sysex: Mutex<Vec<u8>>,
 }
 
-#[derive(Default)]
-struct StreamState {
-    data: [u8; 2],
-    len: u8,
-
-    sysex: Vec<u8>,
-    in_sysex: bool,
+impl Default for PortState {
+    fn default() -> Self {
+        Self {
+            running_status: AtomicU8::new(0),
+            pending: AtomicU8::new(NO_PENDING),
+            in_sysex: AtomicBool::new(false),
+            sysex: Mutex::default(),
+        }
+    }
 }
 
 impl MidiTranslator {
@@ -41,11 +48,8 @@ impl MidiTranslator {
     pub fn reset(&self) {
         for port in &self.ports {
             port.running_status.store(0, Ordering::Relaxed);
-
-            let mut stream = port.stream.lock().unwrap();
-            stream.len = 0;
-            stream.in_sysex = false;
-            stream.sysex.clear();
+            port.pending.store(NO_PENDING, Ordering::Relaxed);
+            port.in_sysex.store(false, Ordering::Relaxed);
         }
     }
 
@@ -93,78 +97,70 @@ impl MidiTranslator {
             return;
         };
 
-        let mut stream = state.stream.lock().unwrap();
         let mut status = state.running_status.load(Ordering::Relaxed);
+        let mut pending = Some(state.pending.load(Ordering::Relaxed)).filter(|&b| b < 0x80);
+        let mut in_sysex = state.in_sysex.load(Ordering::Relaxed);
+        let lock = || state.sysex.lock().unwrap();
+        let mut sysex = None;
 
-        for &byte in bytes {
-            if byte >= 0x80 {
-                // System Real Time is allowed anywhere, even between the bytes
-                // of another message, and never disturbs the one in progress.
-                if byte >= 0xF8 {
-                    if byte == 0xFF {
-                        status = 0;
-                        stream.len = 0;
-                        stream.in_sysex = false;
-                        emit(MaestroEvent::SystemReset);
+        let mut i = 0;
+        loop {
+            // Whole channel messages decode in one step
+            if pending.is_none() && !in_sysex {
+                i = channel_run(bytes, i, &mut status, &mut emit);
+            }
+
+            let Some(&byte) = bytes.get(i) else {
+                break;
+            };
+            i += 1;
+
+            match byte {
+                0x00..0x80 if in_sysex => push_sysex(sysex.get_or_insert_with(lock), &[byte]),
+                // A data byte with no status to attach it to is dropped.
+                0x00..0x80 if status == 0 => {}
+                0x00..0x80 => match pending.take() {
+                    None if expected_data_len(status) == 2 => pending = Some(byte),
+                    d1 => {
+                        if let Some(event) = channel_event(status, d1.unwrap_or(byte), byte) {
+                            emit(event);
+                        }
                     }
-
-                    continue;
+                },
+                0xFF => {
+                    (status, pending, in_sysex) = (0, None, false);
+                    emit(MaestroEvent::SystemReset);
                 }
-
-                // Any other status byte ends a SysEx: 0xF7 delivers it, and
-                // anything else aborts it, dropping what was gathered.
-                if stream.in_sysex {
-                    stream.in_sysex = false;
-                    if byte == 0xF7
-                        && let Some(id) = sysex::store(&stream.sysex)
+                // The rest of System Real Time is allowed anywhere
+                0xF8.. => {}
+                _ => {
+                    // Any other status byte ends a SysEx: 0xF7 delivers it, and
+                    // anything else aborts it, dropping what was gathered.
+                    if in_sysex
+                        && byte == 0xF7
+                        && let Some(id) = sysex::store(sysex.get_or_insert_with(lock))
                     {
                         emit(MaestroEvent::SystemExclusive { id });
                     }
-                }
 
-                stream.len = 0;
-                status = if byte < 0xF0 {
-                    // Channel voice messages arm running status.
-                    byte
-                } else {
-                    if byte == 0xF0 {
-                        stream.sysex.clear();
-                        stream.in_sysex = true;
+                    in_sysex = byte == 0xF0;
+                    if in_sysex {
+                        sysex.get_or_insert_with(lock).clear();
                     }
 
-                    // System Common clears running status. The data bytes of
-                    // the ones we don't handle are dropped below.
-                    0
-                };
-
-                continue;
-            }
-
-            if stream.in_sysex {
-                if stream.sysex.len() < MAX_SYSEX {
-                    stream.sysex.push(byte);
-                }
-
-                continue;
-            }
-
-            if status == 0 {
-                // A data byte with no status to attach it to.
-                continue;
-            }
-
-            let len = stream.len as usize;
-            stream.data[len] = byte;
-            stream.len += 1;
-
-            if stream.len == expected_data_len(status) {
-                stream.len = 0;
-                if let Some(event) = channel_event(status, stream.data[0], stream.data[1]) {
-                    emit(event);
+                    // Channel voice messages arm running status. System Common
+                    // clears it, so the data bytes of the ones we don't handle
+                    // are dropped above.
+                    pending = None;
+                    status = if byte < 0xF0 { byte } else { 0 };
                 }
             }
         }
 
+        state
+            .pending
+            .store(pending.unwrap_or(NO_PENDING), Ordering::Relaxed);
+        state.in_sysex.store(in_sysex, Ordering::Relaxed);
         state.running_status.store(status, Ordering::Relaxed);
     }
 
@@ -213,7 +209,7 @@ impl MidiTranslator {
                 let count = (m.channel_other as usize).min(6);
                 let bytes = &m.data[..count];
 
-                let mut stream = state.stream.lock().unwrap();
+                let mut sysex = state.sysex.lock().unwrap();
 
                 // SysEx7 status: 0x0 complete, 0x1 start, 0x2 continue, 0x3 end.
                 match m.status {
@@ -223,16 +219,16 @@ impl MidiTranslator {
                         }
                     }
                     0x1 => {
-                        stream.sysex.clear();
-                        stream.in_sysex = true;
-                        stream.push_sysex(bytes);
+                        sysex.clear();
+                        state.in_sysex.store(true, Ordering::Relaxed);
+                        push_sysex(&mut sysex, bytes);
                     }
-                    0x2 if stream.in_sysex => stream.push_sysex(bytes),
-                    0x3 if stream.in_sysex => {
-                        stream.push_sysex(bytes);
-                        stream.in_sysex = false;
-                        let id = sysex::store(&stream.sysex);
-                        drop(stream);
+                    0x2 if state.in_sysex.load(Ordering::Relaxed) => push_sysex(&mut sysex, bytes),
+                    0x3 if state.in_sysex.load(Ordering::Relaxed) => {
+                        push_sysex(&mut sysex, bytes);
+                        state.in_sysex.store(false, Ordering::Relaxed);
+                        let id = sysex::store(&sysex);
+                        drop(sysex);
 
                         if let Some(id) = id {
                             emit(m.group, MaestroEvent::SystemExclusive { id });
@@ -247,13 +243,46 @@ impl MidiTranslator {
     }
 }
 
-impl StreamState {
-    #[inline]
-    fn push_sysex(&mut self, bytes: &[u8]) {
-        let room = MAX_SYSEX.saturating_sub(self.sysex.len());
-        self.sysex
-            .extend_from_slice(&bytes[..bytes.len().min(room)]);
+#[inline]
+fn push_sysex(sysex: &mut Vec<u8>, bytes: &[u8]) {
+    let room = MAX_SYSEX.saturating_sub(sysex.len());
+    sysex.extend_from_slice(&bytes[..bytes.len().min(room)]);
+}
+
+#[inline(always)]
+fn channel_run(
+    bytes: &[u8],
+    mut i: usize,
+    status: &mut u8,
+    emit: &mut impl FnMut(MaestroEvent),
+) -> usize {
+    while let Some(&byte) = bytes.get(i) {
+        let (head, start) = if byte >= 0x80 {
+            (byte, i + 1)
+        } else {
+            (*status, i)
+        };
+        if !(0x80..0xF0).contains(&head) {
+            break;
+        }
+
+        let end = start + expected_data_len(head) as usize;
+        let Some(data) = bytes.get(start..end) else {
+            break;
+        };
+        let (d1, d2) = (data[0], data.get(1).copied().unwrap_or(0));
+        if (d1 | d2) >= 0x80 {
+            break;
+        }
+
+        *status = head;
+        i = end;
+        if let Some(event) = channel_event(head, d1, d2) {
+            emit(event);
+        }
     }
+
+    i
 }
 
 #[inline]
@@ -460,6 +489,19 @@ mod tests {
                 channel: 3,
                 program: 42
             }]
+        );
+    }
+
+    #[test]
+    fn long_message_cut_off_by_the_end_of_a_buffer_finishes_in_the_next() {
+        let t = translator();
+        assert_eq!(
+            long(&t, &[0x90, 60, 100, 0x91, 61]),
+            vec![note_on(0, 60, 100)]
+        );
+        assert_eq!(
+            long(&t, &[90, 62, 80]),
+            vec![note_on(1, 61, 90), note_on(1, 62, 80)]
         );
     }
 

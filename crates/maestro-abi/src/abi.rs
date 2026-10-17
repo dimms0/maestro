@@ -7,7 +7,6 @@ pub const MAESTRO_VERSION_MINOR: u32 = 0;
 pub const MAESTRO_API_VERSION: u32 = (MAESTRO_VERSION_MAJOR << 16) | MAESTRO_VERSION_MINOR;
 
 pub type MaestroTime = u64;
-pub const MAESTRO_TIME_NOW: MaestroTime = 0;
 
 #[repr(C)]
 pub struct MaestroInstance {
