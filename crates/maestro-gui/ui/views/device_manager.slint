@@ -28,6 +28,7 @@ import {
     SlintSystemCustom,
 } from "../structs.slint";
 import { MaestroSwitch } from "../widgets/inputs.slint";
+import { ConfirmModal } from "soundfont_editor/modals.slint";
 
 // One row of the live statistics card: whatever every component reports while
 // it is loaded, refreshed continuously from that process's statistics pipe.
@@ -248,6 +249,8 @@ export component DeviceManagerView inherits Rectangle {
     // reloads the config from disk) can never be undone by a later keystroke
     // re-sending stale values.
     property <SlintSystemCustom> form;
+    property <string> remove_app_config;
+    property <string> remove_app_name;
 
     ScrollView {
         VerticalLayout {
@@ -416,9 +419,20 @@ export component DeviceManagerView inherits Rectangle {
                             }
 
                             MaestroButton {
+                                horizontal-stretch: 0;
                                 icon: Icons.settings;
                                 text: "Settings";
                                 clicked => { SettingsEditorState.open_settings(app.config); }
+                            }
+
+                            MaestroButton {
+                                horizontal-stretch: 0;
+                                icon: Icons.trash;
+                                danger: true;
+                                clicked => {
+                                    root.remove_app_config = app.config;
+                                    root.remove_app_name = app.name;
+                                }
                             }
                         }
                     }
@@ -446,5 +460,13 @@ export component DeviceManagerView inherits Rectangle {
                 }
             }
         }
+    }
+
+    if (root.remove_app_config != ""): ConfirmModal {
+        title: "Remove Application Settings";
+        message: "Remove the settings of '" + root.remove_app_name + "'? It will start again from the default settings the next time it connects.";
+        confirm_text: "Remove";
+        dismissed => { root.remove_app_config = ""; }
+        confirmed => { DeviceManagerState.remove_app_config(root.remove_app_config); }
     }
 }
