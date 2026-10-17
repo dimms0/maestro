@@ -134,6 +134,23 @@ impl RealtimeEventSender {
         batch.send();
     }
 
+    pub fn notes_off(&self) {
+        let pos = self.clock.stamp(0);
+        for port in &self.ports {
+            let mut queue = port.lock();
+            for channel in 0..16 {
+                for param in [120, 123] {
+                    let event = MaestroEvent::ControlChange {
+                        channel,
+                        param,
+                        val: 0,
+                    };
+                    queue.push(MaestroTimedEvent { event, pos });
+                }
+            }
+        }
+    }
+
     pub fn reset(&self) {
         for port in &self.ports {
             port.reset();

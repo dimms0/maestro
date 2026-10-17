@@ -96,9 +96,9 @@ int main(void) {
         if (i % 8 == 7) {
             MaestroStats st = { sizeof st };
             if (stats->get(inst, &st) == MAESTRO_OK)
-                printf("%6llu notes/s  %6llu events/s  (limit %llu)\n",
+                printf("%6llu notes/s  %6llu events/s  (limit %llu)  latency %u us\n",
                        (unsigned long long)st.nps, (unsigned long long)st.eps,
-                       (unsigned long long)st.nps_limit);
+                       (unsigned long long)st.nps_limit, st.latency_us);
         }
         if (settings_changed) {
             settings_changed = 0;

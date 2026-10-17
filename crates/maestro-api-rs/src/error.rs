@@ -18,8 +18,6 @@ pub enum ErrorKind {
     Unavailable,
     /// The engine is stopped or restarting.
     NotRunning,
-    /// The event queue is full and the event was dropped.
-    Full,
     /// Includes a panic caught inside the library.
     Internal,
     /// A code this version of the crate doesn't know.
@@ -34,7 +32,6 @@ impl ErrorKind {
             MAESTRO_ERR_DISABLED => Self::Disabled,
             MAESTRO_ERR_UNAVAILABLE => Self::Unavailable,
             MAESTRO_ERR_NOT_RUNNING => Self::NotRunning,
-            MAESTRO_ERR_FULL => Self::Full,
             MAESTRO_ERR_INTERNAL => Self::Internal,
             other => Self::Other(other),
         }

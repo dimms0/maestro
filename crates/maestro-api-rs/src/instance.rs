@@ -1,6 +1,7 @@
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::panic::{self, AssertUnwindSafe};
 use std::ptr::{self, NonNull};
+use std::time::Duration;
 
 use crate::ffi::*;
 use crate::{Error, ErrorKind, Maestro, Time};
@@ -11,8 +12,6 @@ use crate::{Error, ErrorKind, Maestro, Time};
 pub enum LogLevel {
     Error,
     Warn,
-    Info,
-    Debug,
     Other(u32),
 }
 
@@ -21,8 +20,6 @@ impl LogLevel {
         match level {
             MAESTRO_LOG_ERROR => Self::Error,
             MAESTRO_LOG_WARN => Self::Warn,
-            MAESTRO_LOG_INFO => Self::Info,
-            MAESTRO_LOG_DEBUG => Self::Debug,
             other => Self::Other(other),
         }
     }
@@ -34,9 +31,11 @@ impl LogLevel {
 pub enum Notification {
     /// The user edited this application's settings; re-read [`Instance::info`].
     SettingsChanged,
-    /// The settings were disabled, or the engine failed to restart.
+    /// The engine failed to restart.
     EngineStopped,
     EngineStarted,
+    /// The user disabled the API, or this application's settings.
+    EngineDisabled,
     Other(u32),
 }
 
@@ -46,6 +45,7 @@ impl Notification {
             MAESTRO_NOTIFY_SETTINGS_CHANGED => Self::SettingsChanged,
             MAESTRO_NOTIFY_ENGINE_STOPPED => Self::EngineStopped,
             MAESTRO_NOTIFY_ENGINE_STARTED => Self::EngineStarted,
+            MAESTRO_NOTIFY_ENGINE_DISABLED => Self::EngineDisabled,
             other => Self::Other(other),
         }
     }
@@ -144,6 +144,9 @@ pub struct Info {
     pub num_ports: u32,
     pub midi2: bool,
     pub render_block_us: u32,
+    /// How far ahead of now an event may be scheduled; later ones play at
+    /// that limit instead.
+    pub max_schedule: Duration,
 }
 
 /// Live statistics of the synth.
@@ -152,7 +155,8 @@ pub struct Info {
 pub struct Stats {
     /// Current number of active voices.
     pub voice_count: u64,
-    /// Render load percentage,
+    /// Render load: 100 is the whole time budget of a block, and above it
+    /// the audio falls behind.
     pub render_time: f32,
     /// Notes per second processed.
     pub nps: u64,
@@ -160,12 +164,14 @@ pub struct Stats {
     pub eps: u64,
     /// The current notes-per-second limit, after the load limiter.
     pub nps_limit: u64,
+    /// From an event's timestamp until it is heard; zero until audio starts.
+    pub latency: Duration,
 }
 
 /// An open instance: its own engine and audio output. Closed when dropped.
 ///
 /// Every method takes `&self` and may be called from any thread; the ones
-/// marked realtime-safe neither allocate nor block.
+/// marked realtime-safe do no I/O and hold locks only briefly.
 pub struct Instance {
     maestro: Maestro,
     raw: NonNull<MaestroInstance>,
@@ -272,6 +278,13 @@ impl Instance {
         self.check(unsafe { (control.reset)(self.raw.as_ptr()) })
     }
 
+    /// Silences every port now, keeping controllers, programs and queued
+    /// events: a seek or stop that should not reset the song. Realtime-safe.
+    pub fn notes_off(&self) -> Result<(), Error> {
+        let control = self.extension(self.control, MAESTRO_EXT_CONTROL)?;
+        self.check(unsafe { (control.notes_off)(self.raw.as_ptr()) })
+    }
+
     /// Opens Maestro's settings for this application so the user can tune it.
     pub fn show_settings(&self) -> Result<(), Error> {
         let control = self.extension(self.control, MAESTRO_EXT_CONTROL)?;
@@ -291,6 +304,7 @@ impl Instance {
             num_ports: out.num_ports,
             midi2: out.midi2 != 0,
             render_block_us: out.render_block_us,
+            max_schedule: Duration::from_micros(out.max_schedule_us.into()),
         })
     }
 
@@ -308,6 +322,7 @@ impl Instance {
             nps: out.nps,
             eps: out.eps,
             nps_limit: out.nps_limit,
+            latency: Duration::from_micros(out.latency_us.into()),
         })
     }
 

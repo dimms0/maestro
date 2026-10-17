@@ -1,4 +1,5 @@
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, Ordering};
+use std::time::Duration;
 
 use crate::{audio_params::AudioParameters, realtime::host_time};
 
@@ -11,7 +12,7 @@ const NANOS_PER_SEC: u64 = 1_000_000_000;
 const TARGET_LEAD_BLOCKS: u64 = 2;
 
 /// How far past the committed block a timestamped event may be scheduled.
-const MAX_SCHEDULE_SECS: u64 = 2;
+pub const MAX_SCHEDULE_SECS: u64 = 2;
 
 /// How often the timeline is measured against the renderer's progress.
 const SYNC_WINDOW_NS: u64 = 500_000_000;
@@ -77,6 +78,11 @@ pub(crate) struct RealtimeClock {
     unstamped: AtomicU32,
     auto_timestamp: AtomicBool,
 
+    /// Frames between the device being handed audio and playing it.
+    output_delay: AtomicU64,
+    /// Frames from an event stamped now until it is heard.
+    latency: AtomicU64,
+
     /// The furthest position any event has been stamped at. No stamp may ever
     /// land before it, whatever the corrections do to the timeline.
     handed_out: AtomicU64,
@@ -113,6 +119,8 @@ impl RealtimeClock {
             max_lookahead: AtomicU64::new(min_lookahead),
             unstamped: AtomicU32::new(0),
             auto_timestamp: AtomicBool::new(auto_timestamp),
+            output_delay: AtomicU64::new(0),
+            latency: AtomicU64::new(0),
             handed_out: AtomicU64::new(0),
             window_min: AtomicI64::new(i64::MAX),
             window_max: AtomicI64::new(i64::MIN),
@@ -147,7 +155,8 @@ impl RealtimeClock {
         self.window_max.store(i64::MIN, Ordering::Relaxed);
     }
 
-    pub fn begin_block(&self, samples: u64) {
+    /// `queued` is how many samples are rendered but not yet handed to the device.
+    pub fn begin_block(&self, samples: u64, queued: u64) {
         let frames = samples / self.channels;
         let now = self.frames(host_time::host_now());
 
@@ -165,7 +174,16 @@ impl RealtimeClock {
         let target = (TARGET_LEAD_BLOCKS * frames) as i64;
         let lead = offset + now as i64 - committed as i64;
 
-        if lead < 0 || lead > lookahead as i64 {
+        let desynced = lead < 0 || lead > lookahead as i64;
+
+        // An event stamped now lands `lead` past this block, which plays once
+        // everything queued ahead of it has gone through the device.
+        let lead_after = if desynced { target } else { lead };
+        let ahead = queued / self.channels + frames + self.output_delay.load(Ordering::Relaxed);
+        self.latency
+            .store(ahead + lead_after as u64, Ordering::Relaxed);
+
+        if desynced {
             // Either the renderer caught up with the timeline, so events would
             // land in audio that is already rendered, or it ran away from the
             // renderer while nothing was being produced (a stall, a paused
@@ -206,6 +224,16 @@ impl RealtimeClock {
         self.clear_measurements();
         self.window_end
             .store(now + self.sync_window, Ordering::Relaxed);
+    }
+
+    pub fn set_output_delay(&self, delay: Duration) {
+        let frames = delay.as_nanos() * self.sample_rate as u128 / NANOS_PER_SEC as u128;
+        self.output_delay.store(frames as u64, Ordering::Relaxed);
+    }
+
+    pub fn latency(&self) -> Duration {
+        let frames = self.latency.load(Ordering::Relaxed);
+        Duration::from_nanos(frames * NANOS_PER_SEC / self.sample_rate)
     }
 
     pub fn set_auto_timestamp(&self, auto_timestamp: bool) {

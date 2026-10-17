@@ -28,18 +28,18 @@ typedef HMODULE Library;
 typedef void *Library;
 #endif
 
+#define MAESTRO_NO_PROTOTYPES
 #include "maestro.h"
 
 /* The core functions, as pointers. */
 static struct {
-  uint32_t(MAESTRO_CALL *get_version)(void);
-  const char *(MAESTRO_CALL *last_error)(void);
-  MaestroTime(MAESTRO_CALL *now)(void);
-  MaestroTime(MAESTRO_CALL *ns_to_ticks)(uint64_t);
-  MaestroResult(MAESTRO_CALL *open)(uint32_t, const MaestroOpenParams *,
-                                    MaestroInstance **);
-  void(MAESTRO_CALL *close)(MaestroInstance *);
-  const void *(MAESTRO_CALL *get_extension)(MaestroInstance *, const char *);
+  MaestroGetVersionFn get_version;
+  MaestroLastErrorFn last_error;
+  MaestroNowFn now;
+  MaestroNsToTicksFn ns_to_ticks;
+  MaestroOpenFn open;
+  MaestroCloseFn close;
+  MaestroGetExtensionFn get_extension;
 } maestro;
 
 static int load_maestro(void) {
@@ -68,9 +68,9 @@ static int load_maestro(void) {
 /* May run on any thread; keep it short and don't call into Maestro. */
 static void MAESTRO_CALL on_log(void *user, uint32_t level,
                                 const char *message) {
-  static const char *const names[] = {"error", "warn", "info", "debug"};
+  static const char *const names[] = {"error", "warn"};
   (void)user;
-  fprintf(stderr, "[maestro %s] %s\n", level < 4 ? names[level] : "?", message);
+  fprintf(stderr, "[maestro %s] %s\n", level < 2 ? names[level] : "?", message);
 }
 
 int main(void) {

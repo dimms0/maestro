@@ -2,7 +2,7 @@ use std::ffi::{CStr, c_void};
 use std::path::PathBuf;
 use std::process::Command;
 
-use maestro_core::{paths, system_cfg::MaestroConfigManager};
+use maestro_core::{paths, realtime::MAX_SCHEDULE_SECS, system_cfg::MaestroConfigManager};
 
 use crate::abi::*;
 use crate::error::{Failure, err_guard};
@@ -18,6 +18,7 @@ static UMP: MaestroExtUmp = MaestroExtUmp { send: ump_send };
 static CONTROL: MaestroExtControl = MaestroExtControl {
     reset: control_reset,
     show_settings: control_show_settings,
+    notes_off: control_notes_off,
 };
 
 static INFO: MaestroExtInfo = MaestroExtInfo { get: info_get };
@@ -119,6 +120,10 @@ unsafe extern "C" fn control_reset(inst: *mut MaestroInstance) -> MaestroResult 
     })
 }
 
+unsafe extern "C" fn control_notes_off(inst: *mut MaestroInstance) -> MaestroResult {
+    err_guard(|| unsafe { shared(inst) }?.with_sender(None, |sender| sender.notes_off()))
+}
+
 fn gui_exe() -> PathBuf {
     let name = if cfg!(windows) {
         "maestro.exe"
@@ -172,6 +177,7 @@ unsafe extern "C" fn info_get(inst: *mut MaestroInstance, out: *mut MaestroInfo)
                 num_ports: u32::from(shared.ports),
                 midi2: u32::from(shared.midi2),
                 render_block_us: render_us,
+                max_schedule_us: (MAX_SCHEDULE_SECS * 1_000_000) as u32,
             })
         }
     })
@@ -188,11 +194,12 @@ unsafe extern "C" fn stats_get(
         unsafe {
             write_sized(out, |struct_size| MaestroStats {
                 struct_size,
-                voice_count: live.stats.get_renderer().read_voice_count(),
                 render_time: live.stats.get_renderer().get_average_render_time(),
+                voice_count: live.stats.get_renderer().read_voice_count(),
                 nps: live.stats.read_nps(),
                 eps: live.stats.read_eps(),
                 nps_limit: live.stats.read_nps_limit(),
+                latency_us: live.engine.latency().as_micros() as u32,
             })
         }
     })

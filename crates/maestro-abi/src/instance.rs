@@ -1,7 +1,7 @@
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::mem::offset_of;
-use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -62,9 +62,8 @@ pub struct Shared {
     pub midi2: bool,
     pub engine: RwLock<Option<Live>>,
     sender: AtomicPtr<RealtimeEventSender>,
-    // Kept until close, so a send racing a restart never reaches a freed sender
-    #[allow(clippy::vec_box)]
-    senders: Mutex<Vec<Box<RealtimeEventSender>>>,
+    // The previous one is kept, so a send racing a restart never reaches a freed sender
+    senders: Mutex<[Option<Box<RealtimeEventSender>>; 2]>,
     pub config: Mutex<ApiConfig>,
     callbacks: Callbacks,
 }
@@ -304,7 +303,8 @@ impl Shared {
         *self.engine.write().unwrap() = Some(live);
         self.sender
             .store(std::ptr::from_ref(&*sender).cast_mut(), Ordering::Release);
-        self.senders.lock().unwrap().push(sender);
+        let mut senders = self.senders.lock().unwrap();
+        senders[0] = senders[1].replace(sender);
         Ok(())
     }
 
@@ -362,7 +362,7 @@ impl Shared {
         if !global_enabled || !new.enabled {
             if running {
                 self.stop();
-                self.callbacks.notify(MAESTRO_NOTIFY_ENGINE_STOPPED);
+                self.callbacks.notify(MAESTRO_NOTIFY_ENGINE_DISABLED);
             }
             return;
         }

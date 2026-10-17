@@ -12,10 +12,12 @@
  *    QueryPerformanceCounter ticks on Windows, CLOCK_MONOTONIC nanoseconds on
  *    Linux, mach_absolute_time ticks on macOS. A timestamp of 0 (or one in the
  *    past) plays as soon as possible. Timestamps within an instance should not
- *    decrease.
+ *    decrease; an earlier one plays no sooner than the events already due.
  *  - Threading is noted on each function:
- *      [rt]   realtime-safe: no allocation or I/O, and no locks except while
- *      the engine is being rebuilt after a settings change. Any thread.
+ *      [rt]   realtime-safe: no I/O, and locks are only held briefly, shared
+ *      with other senders and the render thread; stats calls also wait out an
+ *      engine rebuild after a settings change. Memory is allocated only while
+ *      event queues grow to their working size, and for SysEx. Any thread.
  *      [any]  may block. Any thread.
  *      [ctrl] may block. Must not run concurrently with other calls on the
  *      same instance.
@@ -23,18 +25,24 @@
  *    Maestro from inside them.
  *  - A failing function returns a MaestroResult below 0 and
  *    maestro_last_error() describes it.
+ *  - An extension's function table never changes once released.
  *
  * The library is installed as maestro.dll, libmaestro.so.1 or
  * libmaestro.1.dylib. Link against it, or load it at runtime and resolve the
  * seven core functions; either way, check maestro_get_version() first:
- *
+ */
+/* clang-format off */
+/*
  *     MaestroOpenParams params = { sizeof params };
  *     params.app_id = "org.example.app";
  *     MaestroInstance *inst;
  *     if (maestro_open(MAESTRO_API_VERSION, &params, &inst) != MAESTRO_OK) {
- * ... } const MaestroExtMidi1 *midi = maestro_get_extension(inst,
- * MAESTRO_EXT_MIDI1); midi->send_short(inst, 0, 0x7F3C90, MAESTRO_TIME_NOW);
+ *         ...
+ *     }
+ *     const MaestroExtMidi1 *midi = maestro_get_extension(inst, MAESTRO_EXT_MIDI1);
+ *     midi->send_short(inst, 0, 0x7F3C90, MAESTRO_TIME_NOW);
  */
+/* clang-format on */
 #ifndef MAESTRO_H
 #define MAESTRO_H
 
@@ -76,26 +84,22 @@ enum {
   MAESTRO_ERR_DISABLED =
       -3, /* the user disabled the API, or this application's profile */
   MAESTRO_ERR_UNAVAILABLE = -4, /* the audio device could not be opened */
-  MAESTRO_ERR_NOT_RUNNING = -5, /* the engine is stopped or restarting */
-  MAESTRO_ERR_FULL = -6,        /* event queue full; the event was dropped */
-  MAESTRO_ERR_INTERNAL = -7 /* includes a panic caught at the FFI boundary */
+  MAESTRO_ERR_NOT_RUNNING = -5, /* the engine is stopped, or restarting for a
+                                 * settings change: drop the event or retry */
+  MAESTRO_ERR_INTERNAL = -6 /* includes a panic caught at the FFI boundary */
 };
 
 /* Severity passed to the log callback. */
-enum {
-  MAESTRO_LOG_ERROR = 0,
-  MAESTRO_LOG_WARN = 1,
-  MAESTRO_LOG_INFO = 2,
-  MAESTRO_LOG_DEBUG = 3
-};
+enum { MAESTRO_LOG_ERROR = 0, MAESTRO_LOG_WARN = 1 };
 
 /* What the notify callback reports. */
 enum {
   MAESTRO_NOTIFY_SETTINGS_CHANGED =
       0, /* the user edited this app's profile; re-query maestro.info */
-  MAESTRO_NOTIFY_ENGINE_STOPPED =
-      1, /* the profile was disabled, or the engine failed to restart */
-  MAESTRO_NOTIFY_ENGINE_STARTED = 2
+  MAESTRO_NOTIFY_ENGINE_STOPPED = 1, /* the engine failed to restart */
+  MAESTRO_NOTIFY_ENGINE_STARTED = 2,
+  MAESTRO_NOTIFY_ENGINE_DISABLED =
+      3 /* the user disabled the API, or this application's profile */
 };
 
 typedef void(MAESTRO_CALL *MaestroLogFn)(void *user, uint32_t level,
@@ -127,19 +131,26 @@ typedef struct MaestroInfo {
   uint32_t num_ports;
   uint32_t midi2;
   uint32_t render_block_us;
+  uint32_t max_schedule_us; /* how far ahead of now an event may be scheduled;
+                             * later ones play at that limit instead */
 } MaestroInfo;
 
 typedef struct MaestroStats {
   uint32_t struct_size;
+  float render_time;    /* render load: 100 is the whole time budget of a
+                         * block, and above it the audio falls behind */
   uint64_t voice_count; /* number of current active voices */
-  float render_time;    /* render load percentage */
   uint64_t nps;         /* notes per second processed by the synth */
   uint64_t eps;         /* events per second processed by the synth */
   uint64_t nps_limit;   /* the current limit, after the load limiter */
+  uint32_t latency_us;  /* timestamp to audible; 0 until audio starts */
 } MaestroStats;
 
 /* ---- Core ---- */
 
+/* Define MAESTRO_NO_PROTOTYPES when loading the library at runtime, and use the
+ * Maestro*Fn pointer types below. */
+#ifndef MAESTRO_NO_PROTOTYPES
 /* [rt] Version of the installed library, as MAESTRO_MAKE_VERSION. Use the
  * library only if its major matches and its minor is at least yours. */
 MAESTRO_API uint32_t MAESTRO_CALL maestro_get_version(void);
@@ -169,6 +180,18 @@ MAESTRO_API void MAESTRO_CALL maestro_close(MaestroInstance *inst);
  * instance. */
 MAESTRO_API const void *MAESTRO_CALL
 maestro_get_extension(MaestroInstance *inst, const char *id);
+#endif
+
+typedef uint32_t(MAESTRO_CALL *MaestroGetVersionFn)(void);
+typedef const char *(MAESTRO_CALL *MaestroLastErrorFn)(void);
+typedef MaestroTime(MAESTRO_CALL *MaestroNowFn)(void);
+typedef MaestroTime(MAESTRO_CALL *MaestroNsToTicksFn)(uint64_t ns);
+typedef MaestroResult(MAESTRO_CALL *MaestroOpenFn)(
+    uint32_t api_version, const MaestroOpenParams *params,
+    MaestroInstance **out);
+typedef void(MAESTRO_CALL *MaestroCloseFn)(MaestroInstance *inst);
+typedef const void *(MAESTRO_CALL *MaestroGetExtensionFn)(MaestroInstance *inst,
+                                                          const char *id);
 
 /* ---- Extension: MIDI 1.0 byte stream ---- */
 #define MAESTRO_EXT_MIDI1 "maestro.midi1/1"
@@ -188,7 +211,8 @@ typedef struct MaestroExtMidi1 {
 /* ---- Extension: Universal MIDI Packets ---- */
 #define MAESTRO_EXT_UMP "maestro.ump/1"
 typedef struct MaestroExtUmp {
-  /* [rt] One or more complete UMPs, in host byte order. */
+  /* [rt] One or more complete UMPs, in host byte order. Packets for groups at
+   * or above MaestroInfo.num_ports are dropped. */
   MaestroResult(MAESTRO_CALL *send)(MaestroInstance *inst,
                                     const uint32_t *words, size_t count,
                                     MaestroTime at);
@@ -202,6 +226,9 @@ typedef struct MaestroExtControl {
   /* [any] Opens Maestro's settings for this app's profile so the user can
    * tune it. */
   MaestroResult(MAESTRO_CALL *show_settings)(MaestroInstance *inst);
+  /* [rt] Silences every port now. Controllers, programs and queued events
+   * are kept, so it suits a seek or stop that should not reset the song. */
+  MaestroResult(MAESTRO_CALL *notes_off)(MaestroInstance *inst);
 } MaestroExtControl;
 
 /* ---- Extension: effective settings (read-only) ---- */

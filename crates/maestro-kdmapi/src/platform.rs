@@ -240,7 +240,7 @@ mod imp {
         }
 
         let long = unsafe { std::slice::from_raw_parts(ptr, size as usize) };
-        if crate::send_long(long) { size } else { 0 }
+        if crate::send_long(long) { 0 } else { 1 }
     }
 
     /// # Safety

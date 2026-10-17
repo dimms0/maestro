@@ -36,7 +36,7 @@ impl BufferedRenderer {
         limiter: Arc<LoadLimiter>,
     ) -> Result<Self, RealtimeEngineError>
     where
-        F: 'static + FnMut(&mut [f32]) + Send,
+        F: 'static + FnMut(&mut [f32], u64) + Send,
     {
         let (tx, rx) = unbounded();
         let (return_tx, return_rx) = unbounded();
@@ -91,7 +91,8 @@ impl BufferedRenderer {
                         let mut vec = return_rx.try_recv().unwrap_or_else(|_| Vec::new());
                         vec.resize(target_len, 0.0);
 
-                        render_func(&mut vec);
+                        let queued = samples.load(Ordering::SeqCst).max(0) as u64;
+                        render_func(&mut vec, queued);
 
                         limiter.update(start.elapsed().as_secs_f32() / audio_div, audio_div);
 

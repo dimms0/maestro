@@ -1,5 +1,6 @@
 use std::str::FromStr;
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
 
 use cpal::traits::{DeviceTrait, HostTrait};
 use cpal::{
@@ -237,7 +238,7 @@ pub(super) fn build_stream<F>(
     func: F,
 ) -> Result<Stream, RealtimeEngineError>
 where
-    F: 'static + FnMut(&mut [f32]) + Send,
+    F: 'static + FnMut(&mut [f32], Duration) + Send,
 {
     let mut config: StreamConfig = out.supported.into();
     config.buffer_size = resolve_buffer_size(cfg.buffer_size, out.supported.buffer_size());
@@ -248,7 +249,7 @@ where
     let func = Arc::new(Mutex::new(func));
     let trampoline = || {
         let func = func.clone();
-        move |buffer: &mut [f32]| (func.lock().unwrap())(buffer)
+        move |buffer: &mut [f32], output_delay| (func.lock().unwrap())(buffer, output_delay)
     };
 
     let err = match build_with_config(
@@ -295,7 +296,7 @@ fn build_with_config<F>(
     func: F,
 ) -> Result<Stream, RealtimeEngineError>
 where
-    F: 'static + FnMut(&mut [f32]) + Send,
+    F: 'static + FnMut(&mut [f32], Duration) + Send,
 {
     macro_rules! build {
         ($t:ty) => {
@@ -362,16 +363,20 @@ fn build_output_stream_for<T, F>(
 ) -> Result<Stream, RealtimeEngineError>
 where
     T: cpal::SizedSample + cpal::FromSample<f32>,
-    F: 'static + FnMut(&mut [f32]) + Send,
+    F: 'static + FnMut(&mut [f32], Duration) + Send,
 {
     let mut render_buffer = Vec::new();
 
     Ok(device.build_output_stream(
         config,
-        move |data: &mut [T], _| {
+        move |data: &mut [T], info: &cpal::OutputCallbackInfo| {
             let frames = data.len() / device_channels.max(1);
             render_buffer.resize(frames * render_channels, 0.0);
-            func(&mut render_buffer);
+            let timestamp = info.timestamp();
+            func(
+                &mut render_buffer,
+                timestamp.playback.duration_since(timestamp.callback),
+            );
 
             write_frames(data, &render_buffer, device_channels, render_channels);
         },
