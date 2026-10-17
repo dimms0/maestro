@@ -170,7 +170,7 @@ impl NpsTracker {
     fn admit(&self, vel: u8, max: u64) -> bool {
         let admitted = self
             .total_window_sum
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |total| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |total| {
                 let current = self.current_window_sum.load(Ordering::Relaxed);
                 (!over_limit(total, current, vel, max)).then_some(total + 1)
             })
@@ -253,7 +253,7 @@ impl NpsTracker {
         self.active_notes
             .get(channel * 128 + key as usize)
             .is_some_and(|n| {
-                n.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+                n.try_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
                     (n > 0).then(|| n - 1)
                 })
                 .is_ok()

@@ -50,7 +50,7 @@ fn from_nanos(ns: u64) -> u64 {
 
 #[cfg(target_os = "macos")]
 pub fn host_now() -> u64 {
-    unsafe { libc::mach_absolute_time() }
+    unsafe { mach2::mach_time::mach_absolute_time() }
 }
 
 #[cfg(target_os = "macos")]
@@ -58,11 +58,8 @@ fn timebase() -> (u128, u128) {
     static TIMEBASE: std::sync::OnceLock<(u128, u128)> = std::sync::OnceLock::new();
 
     *TIMEBASE.get_or_init(|| {
-        let mut info = libc::mach_timebase_info { numer: 1, denom: 1 };
-        #[allow(deprecated)]
-        unsafe {
-            libc::mach_timebase_info(&mut info)
-        };
+        let mut info = mach2::mach_time::mach_timebase_info { numer: 1, denom: 1 };
+        unsafe { mach2::mach_time::mach_timebase_info(&mut info) };
         (u128::from(info.numer.max(1)), u128::from(info.denom.max(1)))
     })
 }
@@ -101,7 +98,7 @@ fn frequency() -> u64 {
 
 #[cfg(windows)]
 pub(crate) fn ticks_per_sec() -> u64 {
-    frequency() as u64
+    frequency()
 }
 
 #[cfg(windows)]

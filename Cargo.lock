@@ -3535,6 +3535,7 @@ dependencies = [
  "interprocess",
  "libc",
  "libloading 0.9.0",
+ "mach2",
  "midi-parser",
  "mp3lame-encoder",
  "notify",
