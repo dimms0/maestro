@@ -1,5 +1,6 @@
 [package]
 name = "maestro-kdmapi"
+publish = false
 description = ""
 
 license.workspace = true

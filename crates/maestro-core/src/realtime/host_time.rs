@@ -87,15 +87,15 @@ pub fn host_now() -> u64 {
 }
 
 #[cfg(windows)]
-fn frequency() -> u128 {
-    static FREQUENCY: std::sync::OnceLock<u128> = std::sync::OnceLock::new();
+fn frequency() -> u64 {
+    static FREQUENCY: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
 
     *FREQUENCY.get_or_init(|| {
         let mut frequency = 0;
         unsafe {
             windows_sys::Win32::System::Performance::QueryPerformanceFrequency(&mut frequency)
         };
-        (frequency as u128).max(1)
+        (frequency as u64).max(1)
     })
 }
 
@@ -106,5 +106,5 @@ pub(crate) fn ticks_per_sec() -> u64 {
 
 #[cfg(windows)]
 fn from_nanos(ns: u64) -> u64 {
-    (u128::from(ns) * frequency() / 1_000_000_000) as u64
+    (u128::from(ns) * u128::from(frequency()) / 1_000_000_000) as u64
 }

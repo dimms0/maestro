@@ -12,6 +12,8 @@ documentation.
 
 [`examples/`](examples/) has small programs in C and Python that use it.
 
+Bindings: Rust, [`maestro-api-rs`](../maestro-api-rs/) on crates.io.
+
 ## Versioning
 
 - The core functions never change. A replacement gets a new symbol.

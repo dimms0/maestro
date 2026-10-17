@@ -1,5 +1,6 @@
 [package]
 name = "maestro-core"
+publish = false
 description = ""
 
 license.workspace = true

@@ -1,5 +1,6 @@
 [package]
 name = "maestro-gui"
+publish = false
 description = "A MIDI synthesizer host"
 
 license.workspace = true

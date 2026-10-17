@@ -1,0 +1,20 @@
+[package]
+name = "maestro-api-rs"
+description = "Rust bindings to the Maestro API"
+# Versioned on its own, not with Maestro: it follows the C ABI, not the app.
+version = "1.0.0"
+license = "MIT OR Apache-2.0"
+rust-version = "1.85"
+readme = "README.md"
+documentation = "https://docs.rs/maestro-api-rs"
+keywords = ["midi", "ump", "synthesizer", "audio", "realtime"]
+categories = ["multimedia::audio", "api-bindings"]
+include = ["src/**", "examples/**", "tests/**", "README.md", "LICENSE-*"]
+
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+libloading = "0.8"
