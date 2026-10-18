@@ -1,8 +1,7 @@
 [package]
 name = "maestro-api-rs"
 description = "Rust bindings to the Maestro API"
-# Versioned on its own, not with Maestro: it follows the C ABI, not the app.
-version = "1.0.0"
+version = "0.1.0"
 license = "MIT OR Apache-2.0"
 rust-version = "1.85"
 readme = "README.md"

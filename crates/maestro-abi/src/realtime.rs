@@ -1,5 +1,3 @@
-use std::ffi::{CStr, CString, c_char, c_void};
-use std::mem::offset_of;
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::sync::{Arc, Mutex, RwLock};
@@ -9,15 +7,16 @@ use std::time::{Duration, Instant};
 use maestro_core::{
     realtime::{MaestroRealtimeEngine, MaestroRealtimeStatistics, RealtimeEventSender, UMP_GROUPS},
     system_cfg::{
-        MaestroConfigManager, is_valid_app_id,
+        MaestroConfigManager,
         watcher::{ConfigWatchEvent, ConfigWatcher},
     },
 };
 
 use crate::abi::*;
+use crate::app::{App, Callbacks};
 use crate::error::Failure;
 use crate::profile::{self, ApiConfig};
-use crate::stats;
+use crate::{sized, stats};
 
 const DEBOUNCE: Duration = Duration::from_millis(300);
 
@@ -30,31 +29,6 @@ pub struct Live {
 // is only reached through the engine lock, and mutated only under its write side.
 unsafe impl Send for Live {}
 unsafe impl Sync for Live {}
-
-struct Callbacks {
-    log: MaestroLogFn,
-    notify: MaestroNotifyFn,
-    user: *mut c_void,
-}
-
-// Thread-safety of the callbacks is the host's promise, per the header.
-unsafe impl Send for Callbacks {}
-unsafe impl Sync for Callbacks {}
-
-impl Callbacks {
-    fn log(&self, level: u32, message: &str) {
-        if let Some(log) = self.log {
-            let message = CString::new(message.replace('\0', "")).unwrap_or_default();
-            unsafe { log(self.user, level, message.as_ptr()) };
-        }
-    }
-
-    fn notify(&self, what: u32) {
-        if let Some(notify) = self.notify {
-            unsafe { notify(self.user, what) };
-        }
-    }
-}
 
 pub struct Shared {
     pub app_id: String,
@@ -75,148 +49,45 @@ enum Event {
     Shutdown,
 }
 
-pub struct Instance {
+pub struct Realtime {
     pub shared: Arc<Shared>,
     watchers: Vec<ConfigWatcher>,
     control: Option<(Sender<Event>, JoinHandle<()>)>,
 }
 
-/// Reads a field of a caller's struct only if its `struct_size` covers it.
-unsafe fn field<T: Copy>(base: *const u8, size: u32, offset: usize) -> Option<T> {
-    (offset + size_of::<T>() <= size as usize)
-        .then(|| unsafe { base.add(offset).cast::<T>().read_unaligned() })
-}
-
-unsafe fn string(ptr: Option<*const c_char>) -> Option<String> {
-    let ptr = ptr.filter(|p| !p.is_null())?;
-    unsafe { CStr::from_ptr(ptr) }
-        .to_str()
-        .ok()
-        .map(str::to_string)
-}
-
-struct Hints {
-    num_ports: Option<u32>,
-    midi2: bool,
-}
-
-impl Hints {
-    unsafe fn read(ptr: *const MaestroHints) -> Self {
-        let size = if ptr.is_null() {
-            0
-        } else {
-            unsafe { (*ptr).struct_size }
-        };
-        let get = |offset| unsafe { field::<u32>(ptr.cast(), size, offset) }.filter(|v| *v != 0);
-        Self {
-            num_ports: get(offset_of!(MaestroHints, num_ports)),
-            midi2: get(offset_of!(MaestroHints, midi2)).is_some(),
-        }
-    }
-}
-
-impl Instance {
+impl Realtime {
     /// # Safety
-    /// `params` must be NULL or point at least `struct_size` readable bytes.
+    /// `app` and `params` must be NULL or point at least their `struct_size`
+    /// readable bytes.
     pub unsafe fn open(
-        api_version: u32,
-        params: *const MaestroOpenParams,
+        app: *const MaestroAppInfo,
+        params: *const MaestroRealtimeParams,
     ) -> Result<Self, Failure> {
-        if api_version >> 16 != MAESTRO_VERSION_MAJOR
-            || api_version & 0xFFFF > MAESTRO_VERSION_MINOR
-        {
-            return Err(Failure::new(
-                MAESTRO_ERR_UNSUPPORTED,
-                format!(
-                    "API {}.{} was requested, but this library provides {MAESTRO_VERSION_MAJOR}.{MAESTRO_VERSION_MINOR}",
-                    api_version >> 16,
-                    api_version & 0xFFFF
-                ),
-            ));
-        }
-        if params.is_null() {
-            return Err(Failure::invalid("params is NULL"));
-        }
+        let mut app = unsafe { App::read(app) }?;
+        let params = unsafe { sized::read(params) };
+        sized::reserved(params.reserved)?;
+        app.callbacks.notify = params.notify;
+        let midi2 = params.midi2 != 0;
 
-        let base = params.cast::<u8>();
-        let size = unsafe { (*params).struct_size };
-        let app_id = unsafe { string(field(base, size, offset_of!(MaestroOpenParams, app_id))) }
-            .filter(|id| is_valid_app_id(id))
-            .ok_or_else(|| {
-                Failure::invalid(
-                    "app_id is required: 1-128 characters of A-Z, a-z, 0-9, '.', '-' and '_'",
-                )
-            })?;
-        let app_name =
-            unsafe { string(field(base, size, offset_of!(MaestroOpenParams, app_name))) };
-        let hints = unsafe {
-            Hints::read(
-                field(base, size, offset_of!(MaestroOpenParams, hints)).unwrap_or(std::ptr::null()),
-            )
-        };
-        let callbacks = unsafe {
-            Callbacks {
-                log: field(base, size, offset_of!(MaestroOpenParams, log)).flatten(),
-                notify: field(base, size, offset_of!(MaestroOpenParams, notify)).flatten(),
-                user: field(base, size, offset_of!(MaestroOpenParams, user))
-                    .unwrap_or(std::ptr::null_mut()),
-            }
-        };
-
-        let ports = match hints.num_ports {
-            _ if hints.midi2 => UMP_GROUPS,
-            None => 1,
-            Some(n @ 1..=16) => n as u8,
-            Some(n) => return Err(Failure::invalid(format!("num_ports must be 1-16, not {n}"))),
+        let ports = match params.num_ports {
+            _ if midi2 => UMP_GROUPS,
+            0 => 1,
+            n @ 1..=16 => n as u8,
+            n => return Err(Failure::invalid(format!("num_ports must be 1-16, not {n}"))),
         };
 
         let manager = MaestroConfigManager::default();
-        let global = profile::load_global(&manager).unwrap_or_else(|e| {
-            callbacks.log(
-                MAESTRO_LOG_WARN,
-                &format!("The Maestro API settings could not be read ({e}); using the defaults"),
-            );
-            ApiConfig::default()
-        });
-        if !global.enabled {
-            return Err(Failure::new(
-                MAESTRO_ERR_DISABLED,
-                "The Maestro API is turned off in Maestro's settings",
-            ));
-        }
-
-        if let Err(e) = profile::ensure_app(&manager, &app_id, app_name.as_deref()) {
-            callbacks.log(
-                MAESTRO_LOG_WARN,
-                &format!("This application's settings could not be created ({e})"),
-            );
-        }
-        let config = profile::load_app(&manager, &app_id).unwrap_or_else(|e| {
-            callbacks.log(
-                MAESTRO_LOG_WARN,
-                &format!("This application's settings could not be read ({e}); using the defaults"),
-            );
-            ApiConfig {
-                enabled: true,
-                ..global
-            }
-        });
-        if !config.enabled {
-            return Err(Failure::new(
-                MAESTRO_ERR_DISABLED,
-                format!("Maestro is set not to serve this application ({app_id})"),
-            ));
-        }
+        let config = app.profile(&manager)?;
 
         let shared = Arc::new(Shared {
-            app_id,
+            app_id: app.id,
             ports,
-            midi2: hints.midi2,
+            midi2,
             engine: RwLock::new(None),
             sender: AtomicPtr::default(),
             senders: Mutex::default(),
             config: Mutex::new(config.clone()),
-            callbacks,
+            callbacks: app.callbacks,
         });
         shared.start(&manager, &config)?;
 
@@ -268,7 +139,7 @@ impl Instance {
     }
 }
 
-impl Drop for Instance {
+impl Drop for Realtime {
     fn drop(&mut self) {
         self.watchers.clear();
         if let Some((tx, thread)) = self.control.take() {

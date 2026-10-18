@@ -1,4 +1,4 @@
-use maestro_api_rs::{ErrorKind, Maestro, OpenOptions, Version};
+use maestro_api_rs::{App, ErrorKind, FileRenderOptions, Maestro, RealtimeOptions};
 
 fn maestro() -> Option<Maestro> {
     let path = std::env::var_os("MAESTRO_LIBRARY")?;
@@ -7,19 +7,16 @@ fn maestro() -> Option<Maestro> {
 }
 
 #[test]
-fn the_library_loads_and_is_compatible() {
+fn the_library_provides_every_interface() {
     let Some(maestro) = maestro() else { return };
-    assert!(maestro.version().is_compatible());
-    assert_eq!(maestro.version().major, Version::REQUIRED.major);
-}
-
-#[test]
-fn host_time_moves_forward() {
-    let Some(maestro) = maestro() else { return };
-    let before = maestro.now();
-    let later = maestro.after(std::time::Duration::from_millis(10));
-    assert!(later > before);
-    assert!(maestro.now() >= before);
+    for id in [
+        maestro_api_rs::ffi::MAESTRO_CORE_V1,
+        maestro_api_rs::ffi::MAESTRO_REALTIME_V1,
+        maestro_api_rs::ffi::MAESTRO_FILE_RENDER_V1,
+    ] {
+        assert!(!maestro.raw_interface(id).is_null(), "{id:?}");
+    }
+    assert!(maestro.raw_interface(c"maestro.none/1").is_null());
 }
 
 // An invalid app_id fails before anything touches the user's settings or the
@@ -27,10 +24,17 @@ fn host_time_moves_forward() {
 #[test]
 fn an_invalid_app_id_is_rejected_with_a_message() {
     let Some(maestro) = maestro() else { return };
+    let app = App::new("not a valid id!");
     let err = maestro
-        .open(OpenOptions::new("not a valid id!"))
+        .open_realtime(&app, RealtimeOptions::new())
         .err()
         .expect("should fail");
     assert_eq!(err.kind(), ErrorKind::InvalidArg);
     assert!(err.message().contains("app_id"), "{err}");
+
+    let err = maestro
+        .open_file_render(&app, FileRenderOptions::new("in.mid", "out.wav"))
+        .err()
+        .expect("should fail");
+    assert_eq!(err.kind(), ErrorKind::InvalidArg);
 }

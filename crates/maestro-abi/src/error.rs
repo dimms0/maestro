@@ -41,6 +41,10 @@ impl Failure {
         Self::new(MAESTRO_ERR_INVALID_ARG, message)
     }
 
+    pub fn unsupported(message: impl Display) -> Self {
+        Self::new(MAESTRO_ERR_UNSUPPORTED, message)
+    }
+
     pub fn not_running() -> Self {
         Self::new(MAESTRO_ERR_NOT_RUNNING, "The engine is not running")
     }

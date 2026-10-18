@@ -1,7 +1,7 @@
-//! Rust bindings to the Maestro API, which drives [Maestro]'s realtime MIDI
-//! synthesizer inside your process: timestamped MIDI 1.0 and UMP events,
-//! several ports, live statistics and per-application settings the user
-//! controls.
+//! Rust bindings to the Maestro API, which runs [Maestro]'s MIDI synthesizer
+//! inside your process: realtime playback of timestamped MIDI 1.0 and UMP
+//! events, and rendering MIDI files to audio files, both with the
+//! per-application settings the user controls.
 //!
 //! The library is loaded at runtime from where the Maestro installer puts it,
 //! so this crate builds anywhere and your program still starts on machines
@@ -9,13 +9,14 @@
 //!
 //! ```no_run
 //! use std::time::Duration;
-//! use maestro_api_rs::{Maestro, OpenOptions, TIME_NOW, short_message};
+//! use maestro_api_rs::{App, Maestro, RealtimeOptions, TIME_NOW, short_message};
 //!
 //! let maestro = Maestro::load()?;
-//! let inst = maestro.open(OpenOptions::new("org.example.app").app_name("Example"))?;
+//! let app = App::new("org.example.app").name("Example");
+//! let rt = maestro.open_realtime(&app, RealtimeOptions::new())?;
 //!
-//! inst.send_short(0, short_message(0x90, 60, 100), TIME_NOW)?;
-//! inst.send_short(0, short_message(0x80, 60, 0), maestro.after(Duration::from_millis(500)))?;
+//! rt.send_short(0, short_message(0x90, 60, 100), TIME_NOW)?;
+//! rt.send_short(0, short_message(0x80, 60, 0), rt.after(Duration::from_millis(500)))?;
 //!
 //! std::thread::sleep(Duration::from_secs(1));
 //! # Ok::<(), Box<dyn std::error::Error>>(())
@@ -23,21 +24,24 @@
 //!
 //! [Maestro]: https://dimms.gr/maestro
 
-use std::ffi::OsStr;
+use std::ffi::{CStr, OsStr};
 use std::fmt;
 use std::sync::OnceLock;
-use std::time::Duration;
 
 pub mod ffi;
 
+mod app;
 mod error;
-mod instance;
+mod file_render;
+mod realtime;
 
+pub use app::{App, LogLevel, Notification};
 pub use error::{Error, ErrorKind, LoadError};
-pub use instance::{Info, Instance, LogLevel, Notification, OpenOptions, Stats};
+pub use file_render::{FileRender, FileRenderOptions, Format, PortMode, Progress, WavBitDepth};
+pub use realtime::{Info, Realtime, RealtimeOptions, Stats};
 
 /// A timestamp on the platform's monotonic clock, in the units
-/// [`Maestro::now`] returns. See `maestro.h` for what they are on each system.
+/// [`Realtime::now`] returns. See `maestro.h` for what they are on each system.
 pub type Time = ffi::MaestroTime;
 
 /// Plays an event as soon as possible.
@@ -47,40 +51,22 @@ pub const TIME_NOW: Time = ffi::MAESTRO_TIME_NOW;
 pub const LIBRARY_NAME: &str = if cfg!(windows) {
     "maestro.dll"
 } else if cfg!(target_os = "macos") {
-    "libmaestro.1.dylib"
+    "libmaestro.dylib"
 } else {
-    "libmaestro.so.1"
+    "libmaestro.so"
 };
 
-/// Packs a MIDI 1.0 short message for [`Instance::send_short`].
+/// Packs a MIDI 1.0 short message for [`Realtime::send_short`].
 pub const fn short_message(status: u8, data1: u8, data2: u8) -> u32 {
     status as u32 | (data1 as u32) << 8 | (data2 as u32) << 16
 }
 
-/// An API version, as `maestro_get_version()` reports it.
+/// The version of the Maestro release the library comes from. For display
+/// only: what the library can do is told by the interfaces it provides.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Version {
     pub major: u16,
     pub minor: u16,
-}
-
-impl Version {
-    /// The version these bindings were written against.
-    pub const REQUIRED: Self = Self::from_raw(ffi::MAESTRO_API_VERSION);
-
-    pub const fn from_raw(raw: u32) -> Self {
-        Self {
-            major: (raw >> 16) as u16,
-            minor: raw as u16,
-        }
-    }
-
-    /// Whether a library of this version can serve these bindings.
-    // Always true on the minor while REQUIRED is x.0; not once it moves on.
-    #[allow(clippy::absurd_extreme_comparisons)]
-    pub const fn is_compatible(self) -> bool {
-        self.major == Self::REQUIRED.major && self.minor >= Self::REQUIRED.minor
-    }
 }
 
 impl fmt::Display for Version {
@@ -89,15 +75,12 @@ impl fmt::Display for Version {
     }
 }
 
-/// The core functions, resolved once.
+/// The interface tables, looked up once.
 pub(crate) struct Api {
-    pub get_version: ffi::GetVersionFn,
-    pub last_error: ffi::LastErrorFn,
-    pub now: ffi::NowFn,
-    pub ns_to_ticks: ffi::NsToTicksFn,
-    pub open: ffi::OpenFn,
-    pub close: ffi::CloseFn,
-    pub get_extension: ffi::GetExtensionFn,
+    pub get_interface: ffi::MaestroGetInterfaceFn,
+    pub core: &'static ffi::MaestroCoreV1,
+    pub realtime: Option<&'static ffi::MaestroRealtimeV1>,
+    pub file_render: Option<&'static ffi::MaestroFileRenderV1>,
 }
 
 /// The loaded Maestro library. Cheap to copy; it stays loaded for the rest of
@@ -138,67 +121,84 @@ impl Maestro {
     pub unsafe fn load_from(path: impl AsRef<OsStr>) -> Result<Self, LoadError> {
         let lib =
             unsafe { libloading::Library::new(path.as_ref()) }.map_err(LoadError::NotFound)?;
-        macro_rules! resolve {
-            ($name:literal) => {
-                *unsafe { lib.get(concat!($name, "\0").as_bytes()) }
-                    .map_err(|e| LoadError::MissingSymbol($name, e))?
-            };
-        }
-        let api = Api {
-            get_version: resolve!("maestro_get_version"),
-            last_error: resolve!("maestro_last_error"),
-            now: resolve!("maestro_now"),
-            ns_to_ticks: resolve!("maestro_ns_to_ticks"),
-            open: resolve!("maestro_open"),
-            close: resolve!("maestro_close"),
-            get_extension: resolve!("maestro_get_extension"),
-        };
+        let get_interface: ffi::MaestroGetInterfaceFn =
+            *unsafe { lib.get(b"maestro_get_interface\0") }.map_err(LoadError::NotMaestro)?;
         // Never unloaded: the library runs threads and keeps thread-locals,
         // which don't survive being unmapped under them.
         std::mem::forget(lib);
 
-        let maestro = Self {
-            api: Box::leak(Box::new(api)),
-        };
-        let found = maestro.version();
-        if !found.is_compatible() {
-            return Err(LoadError::Incompatible { found });
+        // SAFETY: a table is constant while the library is loaded, which is
+        // forever, and has the layout its ID names.
+        fn table<T>(get_interface: ffi::MaestroGetInterfaceFn, id: &CStr) -> Option<&'static T> {
+            unsafe { get_interface(id.as_ptr()).cast::<T>().as_ref() }
         }
-        Ok(maestro)
+        let api = Api {
+            get_interface,
+            core: table(get_interface, ffi::MAESTRO_CORE_V1)
+                .ok_or(LoadError::MissingInterface(ffi::MAESTRO_CORE_V1))?,
+            realtime: table(get_interface, ffi::MAESTRO_REALTIME_V1),
+            file_render: table(get_interface, ffi::MAESTRO_FILE_RENDER_V1),
+        };
+        Ok(Self {
+            api: Box::leak(Box::new(api)),
+        })
     }
 
-    /// The installed library's version.
+    /// The version of the Maestro release the library comes from.
     pub fn version(&self) -> Version {
-        Version::from_raw(unsafe { (self.api.get_version)() })
+        let raw = unsafe { (self.api.core.get_version)() };
+        Version {
+            major: (raw >> 16) as u16,
+            minor: raw as u16,
+        }
     }
 
-    /// The current host time. Realtime-safe.
-    pub fn now(&self) -> Time {
-        unsafe { (self.api.now)() }
-    }
-
-    /// Converts a duration to host-time ticks, for scheduling ahead.
-    /// Realtime-safe.
-    pub fn ticks(&self, duration: Duration) -> Time {
-        let ns = u64::try_from(duration.as_nanos()).unwrap_or(u64::MAX);
-        unsafe { (self.api.ns_to_ticks)(ns) }
-    }
-
-    /// The host time `duration` from now. Realtime-safe.
-    pub fn after(&self, duration: Duration) -> Time {
-        self.now().saturating_add(self.ticks(duration))
-    }
-
-    /// Opens an instance, with its own engine and audio output. A process can
-    /// have several open at once.
+    /// Opens a live engine, with its own audio output. A process can have
+    /// several open at once. Needs Maestro 0.2 or later.
     ///
     /// Fails with [`ErrorKind::Disabled`] when the user has turned the API off
     /// for this application; treat that as "carry on without Maestro".
-    pub fn open(&self, options: OpenOptions) -> Result<Instance, Error> {
-        Instance::open(*self, options)
+    pub fn open_realtime(&self, app: &App, options: RealtimeOptions) -> Result<Realtime, Error> {
+        Realtime::open(*self, app, options)
+    }
+
+    /// Prepares a job that renders a MIDI file to an audio file. Nothing is
+    /// rendered until [`FileRender::run`]. Needs Maestro 0.2 or later.
+    pub fn open_file_render(
+        &self,
+        app: &App,
+        options: FileRenderOptions,
+    ) -> Result<FileRender, Error> {
+        FileRender::open(*self, app, options)
+    }
+
+    /// The function table of interface `id`, or NULL if the library doesn't
+    /// provide it, for calling interfaces these bindings don't wrap yet.
+    pub fn raw_interface(&self, id: &CStr) -> *const std::ffi::c_void {
+        unsafe { (self.api.get_interface)(id.as_ptr()) }
+    }
+
+    pub(crate) fn interface<T>(table: Option<&'static T>, id: &CStr) -> Result<&'static T, Error> {
+        table.ok_or_else(|| {
+            Error::new(
+                ErrorKind::Unsupported,
+                format!(
+                    "this Maestro library does not provide {}; update Maestro",
+                    id.to_string_lossy()
+                ),
+            )
+        })
     }
 
     pub(crate) fn api(&self) -> &'static Api {
         self.api
+    }
+
+    pub(crate) fn check(&self, code: ffi::MaestroResult) -> Result<(), Error> {
+        if code < ffi::MAESTRO_OK {
+            Err(Error::last(code, self.api.core.last_error))
+        } else {
+            Ok(())
+        }
     }
 }

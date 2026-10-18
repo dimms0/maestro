@@ -10,6 +10,15 @@ permissions:
   contents: write
 
 jobs:
+  api-header:
+    name: maestro.h
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: crates/maestro-abi/include/maestro.h
+
   linux:
     name: linux (${{ matrix.arch }})
     strategy:

@@ -1,9 +1,10 @@
-name: Release Maestro API
+name: Release maestro-api-rs
 
-# The API releases on its own tags, e.g. maestro-api-v1.0.0, apart from Maestro's v* tags.
+# The Rust bindings release on their own tags, e.g. maestro-api-rs-v0.1.0,
+# apart from Maestro's v* tags (which ship the library and maestro.h).
 on:
   push:
-    tags: ["maestro-api-v*"]
+    tags: ["maestro-api-rs-v*"]
 
 permissions:
   contents: read
@@ -21,21 +22,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Check the tag matches the crate and header versions
+      - name: Check the tag matches the crate version
         id: version
         run: |
-          tag=${GITHUB_REF_NAME#maestro-api-v}
+          tag=${GITHUB_REF_NAME#maestro-api-rs-v}
           crate=$(cargo metadata --no-deps --format-version 1 |
             jq -r '.packages[] | select(.name == "maestro-api-rs") | .version')
-          header=crates/maestro-abi/include/maestro.h
-          major=$(awk '/#define MAESTRO_VERSION_MAJOR/ {print $3}' $header)
-          minor=$(awk '/#define MAESTRO_VERSION_MINOR/ {print $3}' $header)
           if [ "$tag" != "$crate" ]; then
             echo "::error::tag $GITHUB_REF_NAME, but crates/maestro-api-rs/Cargo.toml says $crate"
-            exit 1
-          fi
-          if [ "${tag%.*}" != "$major.$minor" ]; then
-            echo "::error::tag $GITHUB_REF_NAME, but $header says $major.$minor"
             exit 1
           fi
           echo "version=$tag" >> "$GITHUB_OUTPUT"
@@ -51,7 +45,6 @@ jobs:
       # Not marked latest, so the app's release keeps that spot.
       - uses: softprops/action-gh-release@v2
         with:
-          name: Maestro API v${{ steps.version.outputs.version }}
+          name: maestro-api-rs v${{ steps.version.outputs.version }}
           make_latest: false
           generate_release_notes: true
-          files: crates/maestro-abi/include/maestro.h

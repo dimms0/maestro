@@ -49,7 +49,7 @@ package() {
     install -Dm755 target/release/libOmniMIDI.so "$pkgdir/usr/share/maestro/lib/libOmniMIDI.so"
     install -Dm755 target/release/libmaestro.so "$pkgdir/usr/share/maestro/lib/libmaestro.so"
     install -dm755 "$pkgdir/usr/lib"
-    ln -s /usr/share/maestro/lib/libmaestro.so "$pkgdir/usr/lib/libmaestro.so.1"
+    ln -s /usr/share/maestro/lib/libmaestro.so "$pkgdir/usr/lib/libmaestro.so"
 
     local sf
     for sf in assets/soundfont/*; do

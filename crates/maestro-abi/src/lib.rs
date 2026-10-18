@@ -1,78 +1,58 @@
 use std::ffi::{CStr, c_char, c_void};
 
-use maestro_core::realtime::host_time;
-
 mod abi;
+mod app;
 mod error;
-mod ext;
-mod instance;
+mod file_render;
 mod profile;
+mod realtime;
+mod realtime_api;
+mod sized;
 mod stats;
 
 use abi::*;
-use error::{Failure, err_guard};
-use instance::Instance;
 
-#[unsafe(no_mangle)]
-pub extern "C" fn maestro_get_version() -> u32 {
-    MAESTRO_API_VERSION
+static CORE_V1: MaestroCoreV1 = MaestroCoreV1 {
+    get_version,
+    last_error,
+};
+
+const fn parse(digits: &str) -> u32 {
+    let digits = digits.as_bytes();
+    let mut value = 0;
+    let mut i = 0;
+    while i < digits.len() {
+        value = value * 10 + (digits[i] - b'0') as u32;
+        i += 1;
+    }
+    value
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn maestro_last_error() -> *const c_char {
+unsafe extern "C" fn get_version() -> u32 {
+    const VERSION: u32 =
+        parse(env!("CARGO_PKG_VERSION_MAJOR")) << 16 | parse(env!("CARGO_PKG_VERSION_MINOR"));
+    VERSION
+}
+
+unsafe extern "C" fn last_error() -> *const c_char {
     error::last()
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn maestro_now() -> MaestroTime {
-    host_time::host_now()
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn maestro_ns_to_ticks(ns: u64) -> MaestroTime {
-    host_time::ns_to_ticks(ns)
-}
-
 /// # Safety
-/// `params` must point at a `MaestroOpenParams` of at least its `struct_size`
-/// bytes, and `out` at writable storage for a pointer.
+/// `id` must be NULL or a NUL-terminated string.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn maestro_open(
-    api_version: u32,
-    params: *const MaestroOpenParams,
-    out: *mut *mut MaestroInstance,
-) -> MaestroResult {
-    err_guard(|| {
-        if out.is_null() {
-            return Err(Failure::invalid("out is NULL"));
-        }
-        let instance = unsafe { Instance::open(api_version, params) }?;
-        unsafe { *out = Box::into_raw(Box::new(instance)).cast() };
-        Ok(())
-    })
-}
-
-/// # Safety
-/// `inst` must be NULL or an instance from `maestro_open` that is not used again.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn maestro_close(inst: *mut MaestroInstance) {
-    if !inst.is_null() {
-        let _ = err_guard(|| {
-            drop(unsafe { Box::from_raw(inst.cast::<Instance>()) });
-            Ok(())
-        });
+pub unsafe extern "C" fn maestro_get_interface(id: *const c_char) -> *const c_void {
+    fn erase<T>(table: &'static T) -> *const c_void {
+        (table as *const T).cast()
     }
-}
 
-/// # Safety
-/// `inst` must be an open instance and `id` NULL or a NUL-terminated string.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn maestro_get_extension(
-    inst: *mut MaestroInstance,
-    id: *const c_char,
-) -> *const c_void {
-    if inst.is_null() || id.is_null() {
+    if id.is_null() {
         return std::ptr::null();
     }
-    ext::table(unsafe { CStr::from_ptr(id) })
+    match unsafe { CStr::from_ptr(id) } {
+        id if id == MAESTRO_CORE_V1 => erase(&CORE_V1),
+        id if id == MAESTRO_REALTIME_V1 => erase(&realtime_api::REALTIME_V1),
+        id if id == MAESTRO_FILE_RENDER_V1 => erase(&file_render::FILE_RENDER_V1),
+        _ => std::ptr::null(),
+    }
 }

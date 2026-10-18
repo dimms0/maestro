@@ -82,9 +82,10 @@ window: `maestro edit-list <file>` or `maestro edit-config <file>`.
 
 ## The Maestro API
 
-The Maestro API is a stable C library that applications load to run Maestro's
-realtime engine inside their own process, without going through the system MIDI
-stack.
+The Maestro API is a stable C library that applications load to run Maestro
+inside their own process: the realtime engine, without going through the system
+MIDI stack, and the file renderer, to turn MIDI files into WAV, FLAC, MP3 or
+OGG.
 
 ### Why not KDMAPI?
 
@@ -96,17 +97,19 @@ everything KDMAPI does and more:
 | ------------- | --------------------------------------- | ---------------------------------------------------------- |
 | Event timing  | Plays events when they arrive           | **Timestamped events**, scheduled ahead with exact spacing |
 | MIDI 2.0      | No                                      | **UMP**                                                    |
-| Ports         | One 16-channel stream                   | **Several MIDI 1.0 ports** per instance                    |
+| Ports         | One 16-channel stream                   | **Several MIDI 1.0 ports** per engine                      |
 | Settings      | One profile shared by every application | **A profile per application**, applied live                |
 | Statistics    | Voice count and render time             | Also NPS, events per second, the NPS limit and latency     |
-| Compatibility | Fixed interface                         | Versioned extensions that never break existing callers     |
+| Rendering     | No                                      | **MIDI files to audio files**, with the same settings      |
+| Compatibility | Fixed interface                         | Versioned interfaces that never break existing callers     |
 
 ### Settings
 
 The **Maestro API** settings turn the API on or off and provide the defaults
 for new applications. The first time an application connects, it gets its own
 profile, seeded from those defaults and afterwards the user is free to configure
-each app's profile to their liking.
+each app's profile to their liking. Realtime playback and file rendering use the
+same profile (under review, might change).
 
 ### Using it
 

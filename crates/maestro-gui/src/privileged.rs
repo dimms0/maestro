@@ -28,16 +28,8 @@ pub const API_FILENAME: &str = "libmaestro.dylib";
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 pub const API_FILENAME: &str = "libmaestro.so";
 
-// The versioned name applications load the Maestro API by
-#[cfg(target_os = "windows")]
-const API_LINK_NAME: &str = "maestro.dll";
-#[cfg(target_os = "macos")]
-const API_LINK_NAME: &str = "libmaestro.1.dylib";
-#[cfg(not(any(target_os = "windows", target_os = "macos")))]
-const API_LINK_NAME: &str = "libmaestro.so.1";
-
 const KDMAPI_MARKER: &[u8] = b"Maestro_KDMAPI_Version\0";
-const API_MARKER: &[u8] = b"maestro_get_version\0";
+const API_MARKER: &[u8] = b"maestro_get_interface\0";
 
 pub fn kdmapi_target() -> PathBuf {
     #[cfg(target_os = "windows")]
@@ -61,11 +53,11 @@ pub fn kdmapi_target() -> PathBuf {
 pub fn api_target() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
-        system_dir("System32").join(API_LINK_NAME)
+        system_dir("System32").join(API_FILENAME)
     }
     #[cfg(target_os = "macos")]
     {
-        PathBuf::from("/usr/local/lib").join(API_LINK_NAME)
+        PathBuf::from("/usr/local/lib").join(API_FILENAME)
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
@@ -75,7 +67,7 @@ pub fn api_target() -> PathBuf {
             .into_iter()
             .find(|d| Path::new(d).is_dir())
             .unwrap_or("/usr/lib");
-        PathBuf::from(dir).join(API_LINK_NAME)
+        PathBuf::from(dir).join(API_FILENAME)
     }
 }
 
@@ -128,7 +120,7 @@ pub fn kdmapi_links() -> Vec<(Option<PathBuf>, PathBuf)> {
 }
 
 pub fn api_links() -> Vec<(Option<PathBuf>, PathBuf)> {
-    links(API_FILENAME, api_target(), API_LINK_NAME)
+    links(API_FILENAME, api_target(), API_FILENAME)
 }
 
 // The native library, plus the 32-bit companion build for 32-bit hosts

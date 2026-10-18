@@ -58,6 +58,7 @@ pub struct MaestroFileRenderer {
     soundfonts: SoundFontList,
     midi_path: PathBuf,
     output_dir: PathBuf,
+    output_file: Option<PathBuf>,
     output: OutputSettings,
 
     batch_size: f64,
@@ -90,6 +91,7 @@ impl MaestroFileRenderer {
             soundfonts,
             midi_path,
             output_dir,
+            output_file: None,
             output: OutputSettings::default(),
             batch_size: 0.1,
             evproc: None,
@@ -107,6 +109,14 @@ impl MaestroFileRenderer {
 
     pub fn with_output_settings(self, output: OutputSettings) -> Self {
         Self { output, ..self }
+    }
+
+    /// Writes exactly this file instead of a unique name in the output directory.
+    pub fn with_output_file(self, path: impl Into<PathBuf>) -> Self {
+        Self {
+            output_file: Some(path.into()),
+            ..self
+        }
     }
 
     pub fn with_event_processor(self, config: EventProcessorConfig) -> Self {
@@ -139,13 +149,18 @@ impl MaestroFileRenderer {
     }
 
     pub fn render(self) -> Result<RenderOutcome, MaestroComponentError> {
-        let stem = self
-            .midi_path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("output");
-        std::fs::create_dir_all(&self.output_dir).map_err(FileRendererError::from)?;
-        let audio_path = unique_output_path(&self.output_dir, stem, self.output.extension());
+        let audio_path = match &self.output_file {
+            Some(path) => path.clone(),
+            None => {
+                let stem = self
+                    .midi_path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("output");
+                std::fs::create_dir_all(&self.output_dir).map_err(FileRendererError::from)?;
+                unique_output_path(&self.output_dir, stem, self.output.extension())
+            }
+        };
 
         let midi = MidiFile::open(&self.midi_path).map_err(|e| {
             FileRendererError::InvalidFile(format!("{}: {e}", self.midi_path.display()))

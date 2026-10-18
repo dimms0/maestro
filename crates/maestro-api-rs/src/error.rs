@@ -1,4 +1,4 @@
-use std::ffi::CStr;
+use std::ffi::{CStr, c_char};
 use std::fmt;
 
 use crate::ffi::*;
@@ -8,18 +8,28 @@ use crate::ffi::*;
 #[non_exhaustive]
 pub enum ErrorKind {
     InvalidArg,
-    /// The requested API version, or an extension, isn't provided by the
-    /// installed library.
+    /// The installed library doesn't provide an interface, or doesn't
+    /// recognize a value: it is older than these bindings.
     Unsupported,
     /// The user turned the API off, or turned it off for this application.
     /// That's their choice, not a fault: carry on without Maestro.
     Disabled,
-    /// The audio device could not be opened.
-    Unavailable,
-    /// The engine is stopped or restarting.
-    NotRunning,
     /// Includes a panic caught inside the library.
     Internal,
+    /// The synthesizer or the audio device could not be started.
+    Unavailable,
+    /// The realtime engine is stopped or restarting.
+    NotRunning,
+    /// Reading the MIDI file or writing the output failed.
+    Io,
+    /// The input is not a MIDI file Maestro reads.
+    BadMidi,
+    /// The output format could not be encoded.
+    Encoder,
+    /// The render was cancelled.
+    Cancelled,
+    /// The render job has already run.
+    Busy,
     /// A code this version of the crate doesn't know.
     Other(i32),
 }
@@ -30,9 +40,14 @@ impl ErrorKind {
             MAESTRO_ERR_INVALID_ARG => Self::InvalidArg,
             MAESTRO_ERR_UNSUPPORTED => Self::Unsupported,
             MAESTRO_ERR_DISABLED => Self::Disabled,
+            MAESTRO_ERR_INTERNAL => Self::Internal,
             MAESTRO_ERR_UNAVAILABLE => Self::Unavailable,
             MAESTRO_ERR_NOT_RUNNING => Self::NotRunning,
-            MAESTRO_ERR_INTERNAL => Self::Internal,
+            MAESTRO_ERR_IO => Self::Io,
+            MAESTRO_ERR_BAD_MIDI => Self::BadMidi,
+            MAESTRO_ERR_ENCODER => Self::Encoder,
+            MAESTRO_ERR_CANCELLED => Self::Cancelled,
+            MAESTRO_ERR_BUSY => Self::Busy,
             other => Self::Other(other),
         }
     }
@@ -53,9 +68,12 @@ impl Error {
         }
     }
 
-    /// Reads `maestro_last_error()`, which must be called right after the
-    /// failure and on the same thread.
-    pub(crate) fn last(code: MaestroResult, last_error: LastErrorFn) -> Self {
+    /// Reads `last_error()`, which must be called right after the failure and
+    /// on the same thread.
+    pub(crate) fn last(
+        code: MaestroResult,
+        last_error: unsafe extern "C" fn() -> *const c_char,
+    ) -> Self {
         let message = unsafe { CStr::from_ptr(last_error()) }
             .to_string_lossy()
             .into_owned();
@@ -85,21 +103,22 @@ impl std::error::Error for Error {}
 pub enum LoadError {
     /// The library isn't installed, or couldn't be loaded.
     NotFound(libloading::Error),
-    /// The library lacks one of the core functions.
-    MissingSymbol(&'static str, libloading::Error),
-    /// The installed library is a different major version, or an older minor.
-    Incompatible { found: crate::Version },
+    /// The library doesn't export `maestro_get_interface`: it isn't the
+    /// Maestro API.
+    NotMaestro(libloading::Error),
+    /// The library lacks an interface these bindings can't do without.
+    MissingInterface(&'static CStr),
 }
 
 impl fmt::Display for LoadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NotFound(e) => write!(f, "Maestro is not installed ({e})"),
-            Self::MissingSymbol(name, e) => write!(f, "the Maestro library lacks {name} ({e})"),
-            Self::Incompatible { found } => write!(
+            Self::NotMaestro(e) => write!(f, "the library is not the Maestro API ({e})"),
+            Self::MissingInterface(id) => write!(
                 f,
-                "Maestro API {found} is installed, but this program needs {}",
-                crate::Version::REQUIRED
+                "the Maestro library lacks {}; update Maestro",
+                id.to_string_lossy()
             ),
         }
     }
@@ -108,8 +127,8 @@ impl fmt::Display for LoadError {
 impl std::error::Error for LoadError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::NotFound(e) | Self::MissingSymbol(_, e) => Some(e),
-            Self::Incompatible { .. } => None,
+            Self::NotFound(e) | Self::NotMaestro(e) => Some(e),
+            Self::MissingInterface(_) => None,
         }
     }
 }
