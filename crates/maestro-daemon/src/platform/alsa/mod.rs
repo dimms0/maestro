@@ -268,7 +268,7 @@ fn input_loop(
 
             let at = anchor
                 .zip(ev.get_time())
-                .map(|(anchor, time)| anchor.at(time));
+                .map_or(0, |(anchor, time)| anchor.at(time));
             dispatch_event(&ev, &gate.session(), at);
         }
     }
@@ -298,7 +298,7 @@ fn handle_subscription_event(
     true
 }
 
-fn dispatch_event(ev: &Event, sender: &GateSession<'_>, at: Option<Instant>) {
+fn dispatch_event(ev: &Event, sender: &GateSession<'_>, at: u64) {
     let port = ev.get_dest().port as u8;
 
     let short = |status: u32, d1: u32, d2: u32| status | ((d1 & 0x7F) << 8) | ((d2 & 0x7F) << 16);

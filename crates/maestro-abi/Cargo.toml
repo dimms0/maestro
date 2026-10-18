@@ -1,0 +1,27 @@
+[package]
+name = "maestro-abi"
+publish = false
+description = "The Maestro API: a stable C ABI to Maestro's realtime engine"
+
+license.workspace = true
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lib]
+name = "maestro"
+crate-type = ["cdylib"]
+
+[dependencies]
+maestro-core = { path = "../maestro-core", features = ["config-watcher"] }
+serde = { version = "1.0", features = ["derive"] }
+
+[target.'cfg(all(target_os = "windows", target_arch = "x86_64"))'.dependencies]
+maestro-core = { path = "../maestro-core", features = ["asio"] }
+
+[dev-dependencies]
+serde_json = "1.0"

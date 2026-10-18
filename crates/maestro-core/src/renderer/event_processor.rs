@@ -126,7 +126,7 @@ impl PortEventProcessor {
         }
 
         let low = config.key_range_low.min(127);
-        let high = config.key_range_high.min(127).max(low);
+        let high = config.key_range_high.min(127);
 
         let ignored = config.ignore_ports.contains(&port);
         let bypassed = config.bypass_ports.contains(&port);

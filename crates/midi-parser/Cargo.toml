@@ -1,5 +1,6 @@
 [package]
 name = "midi-parser"
+publish = false
 description = "Standard MIDI File and MIDI Clip File reader/writer"
 
 license.workspace = true

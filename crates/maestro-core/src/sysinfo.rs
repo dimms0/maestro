@@ -50,7 +50,7 @@ mod imp {
         counters.cb = size;
 
         let ok = unsafe { GetProcessMemoryInfo(GetCurrentProcess(), &raw mut counters, size) };
-        (ok != 0).then(|| counters.WorkingSetSize as u64)
+        (ok != 0).then_some(counters.WorkingSetSize as u64)
     }
 }
 

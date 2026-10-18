@@ -1,0 +1,7 @@
+#!/bin/sh
+# Links the Maestro API into the system library path; see privileged.rs.
+set -e
+if [ "$1" = configure ]; then
+    /usr/bin/maestro install-api || true
+fi
+#DEBHELPER#

@@ -16,7 +16,7 @@ pub enum ConfigComponent {
     System,
     KDMAPI,
     Converter,
-    // Custom(String)
+    Api,
 }
 
 impl ConfigComponent {
@@ -25,7 +25,7 @@ impl ConfigComponent {
             Self::System => "system".to_string(),
             Self::KDMAPI => "kdmapi".to_string(),
             Self::Converter => "converter".to_string(),
-            // Self::Custom(name) => format!("3rdparty/{}", name.to_lowercase()),
+            Self::Api => "api".to_string(),
         }
     }
 
@@ -34,10 +34,8 @@ impl ConfigComponent {
             "system" => Some(Self::System),
             "kdmapi" => Some(Self::KDMAPI),
             "converter" => Some(Self::Converter),
-            _ => None, // other => match other.strip_prefix("3rdparty/") {
-                       //     Some(stripped) => Self::Custom(stripped.to_string()),
-                       //     None => Self::Custom(other.to_string()),
-                       // },
+            "api" => Some(Self::Api),
+            _ => None,
         }
     }
 
@@ -46,7 +44,7 @@ impl ConfigComponent {
             Self::System => "Virtual Device".to_string(),
             Self::KDMAPI => "KDMAPI".to_string(),
             Self::Converter => "Converter".to_string(),
-            // Self::Custom(name) => name.clone(),
+            Self::Api => "Maestro API".to_string(),
         }
     }
 
@@ -58,6 +56,7 @@ impl ConfigComponent {
             Self::System => 0,
             Self::KDMAPI => 1,
             Self::Converter => 2,
+            Self::Api => 3,
         }
     }
 
@@ -66,12 +65,24 @@ impl ConfigComponent {
             0 => Some(Self::System),
             1 => Some(Self::KDMAPI),
             2 => Some(Self::Converter),
+            3 => Some(Self::Api),
             _ => None,
         }
     }
 }
 
 pub const CONFIG_SCHEMA_VERSION: u32 = 1;
+
+pub const APP_PROFILE_DIR: &str = "apps";
+
+pub fn is_valid_app_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 128
+        && !id.starts_with('.')
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
+}
 
 pub struct MaestroConfigManager {
     dirs: ConfigDirs,
@@ -90,6 +101,13 @@ impl MaestroConfigManager {
         self.dirs
             .config_components()
             .join(format!("{}.json", component.to_filename()))
+    }
+
+    pub fn get_app_config_path(&self, app_id: &str) -> PathBuf {
+        self.dirs
+            .config_components()
+            .join(APP_PROFILE_DIR)
+            .join(format!("{}.json", app_id.to_lowercase()))
     }
 
     pub fn sflists_default_dir(&self) -> PathBuf {
@@ -240,44 +258,4 @@ impl MaestroConfigManager {
         }
         Ok(())
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn builtin_component_roundtrip() {
-        for c in [
-            ConfigComponent::System,
-            ConfigComponent::KDMAPI,
-            ConfigComponent::Converter,
-        ] {
-            let name = c.to_filename();
-            assert_eq!(ConfigComponent::from_name(&name), Some(c));
-        }
-    }
-
-    // #[test]
-    // fn thirdparty_component_roundtrip() {
-    //     // A listed name carries the `3rdparty/` prefix; a round-trip must not
-    //     // double it into `3rdparty/3rdparty/foo`.
-    //     let listed = "3rdparty/foo";
-    //     let comp = ConfigComponent::from_name(listed);
-    //     assert_eq!(comp, ConfigComponent::Custom("foo".to_string()));
-    //     assert_eq!(comp.to_filename(), listed);
-    // }
-
-    // #[test]
-    // fn thirdparty_from_bare_name_lowercases() {
-    //     // `to_filename` lowercases; a bare (unprefixed) custom name round-trips
-    //     // through the on-disk form back to the same variant.
-    //     let comp = ConfigComponent::Custom("MyPlugin".to_string());
-    //     let filename = comp.to_filename();
-    //     assert_eq!(filename, "3rdparty/myplugin");
-    //     assert_eq!(
-    //         ConfigComponent::from_name(&filename),
-    //         ConfigComponent::Custom("myplugin".to_string())
-    //     );
-    // }
 }

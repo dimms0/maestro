@@ -74,6 +74,7 @@ impl PortRenderer {
 pub(crate) struct PortSynthManager<T: SynthModule> {
     synth: T,
     event_snd: Arc<PortEventSender>,
+    events: Vec<MaestroTimedEvent>,
 }
 
 impl<T: SynthModule + 'static> PortSynthManager<T> {
@@ -86,6 +87,7 @@ impl<T: SynthModule + 'static> PortSynthManager<T> {
         Self {
             synth,
             event_snd: Arc::new(PortEventSender::new(port, evproc, audio_params)),
+            events: Vec::new(),
         }
     }
 
@@ -96,7 +98,8 @@ impl<T: SynthModule + 'static> PortSynthManager<T> {
     pub fn read_audio(&mut self, dest: &mut [f32]) -> usize {
         dest.fill(0.0);
 
-        for event in self.event_snd.iter() {
+        self.event_snd.swap(&mut self.events);
+        for event in self.events.drain(..) {
             self.synth.process_event(event);
         }
 

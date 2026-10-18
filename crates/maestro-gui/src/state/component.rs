@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use maestro_core::file_renderer::{
     DEFAULT_BITRATE_KBPS, OutputFormat, OutputSettings, WavBitDepth,
 };
+use maestro_core::system_cfg::APP_PROFILE_DIR;
 pub use maestro_core::system_cfg::ConfigComponent;
 use serde::{Deserialize, Serialize};
 
@@ -50,16 +51,18 @@ impl ComponentProfile {
                 has_port_threads: false,
                 ..base
             },
-            // ComponentKind::Generic => ComponentProfile {
-            //     has_audio_params: true,
-            //     has_realtime: true,
-            //     ..base
-            // },
+            ConfigComponent::Api => ComponentProfile {
+                has_audio_params: true,
+                has_realtime: true,
+                ..base
+            },
         }
     }
 
     pub fn for_name(name: &str) -> Option<Self> {
-        ConfigComponent::from_name(name).map(Self::for_kind)
+        ConfigComponent::from_name(name)
+            .or_else(|| app_id(name).map(|_| ConfigComponent::Api))
+            .map(Self::for_kind)
     }
 
     pub fn has_converter_options(&self) -> bool {
@@ -69,6 +72,10 @@ impl ComponentProfile {
     pub fn has_device_options(&self) -> bool {
         self.kind == ConfigComponent::System
     }
+}
+
+pub fn app_id(name: &str) -> Option<&str> {
+    name.strip_prefix(APP_PROFILE_DIR)?.strip_prefix('/')
 }
 
 #[derive(Serialize, Debug, Clone)]

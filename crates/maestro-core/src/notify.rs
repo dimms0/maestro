@@ -30,7 +30,7 @@ pub fn send(title: &str, body: &str) {
 
     #[cfg(target_os = "macos")]
     REGISTER.call_once(|| {
-        notify_rust::set_application(APP_ID).is_ok();
+        let _ = notify_rust::set_application(APP_ID);
     });
 
     #[cfg(target_os = "windows")]

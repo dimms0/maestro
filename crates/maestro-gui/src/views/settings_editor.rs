@@ -124,7 +124,7 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
             actions::edit_selected_config(ui, data, |f| {
                 f.realtime.device_audio_params = rt.device_audio_params;
                 f.realtime.render_buffer_ms = rt.render_buffer_ms;
-                f.realtime.precision_playback = rt.precision_playback;
+                f.realtime.auto_timestamp = rt.auto_timestamp;
 
                 f.remembered.nps_limit = NpsLimit {
                     max: rt.max_nps.max(0) as usize,

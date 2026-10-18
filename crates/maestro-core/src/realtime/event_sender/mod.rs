@@ -1,10 +1,4 @@
-use std::{
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::Instant,
-};
+use std::sync::{Arc, MutexGuard};
 
 use crate::{
     error::RealtimeEngineError,
@@ -13,10 +7,13 @@ use crate::{
     realtime::{
         MaestroRealtimeStatistics, RealtimeEngineOptions,
         config::RealtimeConfig,
-        event_sender::{coalescer::EventCoalescer, nps::NpsTracker},
+        event_sender::{
+            coalescer::EventCoalescer,
+            nps::{NpsBatch, NpsTracker},
+        },
         load::LoadLimiter,
     },
-    renderer::sender::PortEventSender,
+    renderer::sender::{PortEventSender, PortQueue},
 };
 
 mod coalescer;
@@ -30,10 +27,8 @@ impl Clone for RealtimeEventSender {
             ports: self.ports.clone(),
             nps: self.nps.clone(),
             coalescer: self.coalescer.clone(),
-            precision: self.precision.clone(),
             clock: self.clock.clone(),
             translator: MidiTranslator::new(),
-            last_timed: Mutex::new(None),
         }
     }
 }
@@ -43,11 +38,9 @@ pub struct RealtimeEventSender {
 
     nps: NpsTracker,
     coalescer: EventCoalescer,
-    precision: Arc<AtomicBool>,
 
     clock: Arc<RealtimeClock>,
     translator: MidiTranslator,
-    last_timed: Mutex<Option<(Instant, u64)>>,
 }
 
 impl RealtimeEventSender {
@@ -62,12 +55,9 @@ impl RealtimeEventSender {
         let nps = NpsTracker::new(ports as usize * 16, options.config.max_nps, stats)
             .map_err(RealtimeEngineError::Thread)?;
 
-        let precision = Arc::new(AtomicBool::new(options.config.precision_playback));
-
         let coalescer = EventCoalescer::new(
             port_senders.clone(),
             clock.clone(),
-            precision.clone(),
             options.config.coalesce_window_ms,
             nps.event_counter(),
         )
@@ -77,16 +67,13 @@ impl RealtimeEventSender {
             ports: port_senders,
             nps,
             coalescer,
-            precision,
             clock,
             translator: MidiTranslator::new(),
-            last_timed: Mutex::new(None),
         })
     }
 
     pub(super) fn reload_config(&self, config: &RealtimeConfig) {
-        self.precision
-            .store(config.precision_playback, Ordering::Relaxed);
+        self.clock.set_auto_timestamp(config.auto_timestamp);
         self.nps.set_limit(config.max_nps);
         self.coalescer.set_window(config.coalesce_window_ms);
     }
@@ -109,72 +96,59 @@ impl RealtimeEventSender {
     }
 
     #[inline]
-    fn push(&self, port: u8, event: MaestroEvent, at: Option<Instant>) {
+    fn push(&self, port: u8, event: MaestroEvent, at: u64) {
         let Some(sender) = self.ports.get(port as usize) else {
             return;
         };
 
-        // Timestamped events keep the timing they were given, so the coalescer
-        // has nothing to merge them into
-        if !self.admit(port, event) || (at.is_none() && self.coalescer.record(port, event)) {
+        if !self.admit(port, event) || self.coalescer.record(port, event) {
             return;
         }
 
         self.nps.count_event();
 
         // Timestamp only if it passes the filters to reduce cycles per send
-        let pos = match at {
-            Some(at) => self.timed_stamp(at),
-            None => self.stamp(),
-        };
-        sender.send(MaestroTimedEvent { event, pos });
+        sender.send(MaestroTimedEvent {
+            event,
+            pos: self.clock.stamp(at),
+        });
     }
 
-    #[inline]
-    fn stamp(&self) -> u32 {
-        if self.precision.load(Ordering::Relaxed) {
-            self.clock.get_position() as u32
-        } else {
-            self.clock.unstamped_position()
-        }
-    }
-
-    fn timed_stamp(&self, at: Instant) -> u32 {
-        let pos = self.clock.position_for(at);
-
-        // A correction of the clock between two stamps can rewind the timeline
-        // under them, and the ports order what they hold by position, so a note
-        // off sent right after its note on could end up before it and leave the
-        // note playing. Latching to the last position keeps a source that sends
-        // in time order in that order. An earlier timestamp is taken as it is: it
-        // comes from a source that does not send in time order, and dragging it
-        // forward would only add latency.
-        let mut last = self.last_timed.lock().unwrap();
-        let pos = match *last {
-            Some((last_at, last_pos)) if at >= last_at => pos.max(last_pos),
-            _ => pos,
-        };
-        *last = Some((at, pos));
-
-        pos as u32
-    }
-
-    pub fn process_short(&self, port: u8, short: u32, at: Option<Instant>) {
+    pub fn process_short(&self, port: u8, short: u32, at: u64) {
         self.translator.short(port, short, |event| {
             self.push(port, event, at);
         });
     }
 
-    pub fn process_long(&self, port: u8, long: &[u8], at: Option<Instant>) {
-        self.translator.long(port, long, |event| {
-            self.push(port, event, at);
-        });
+    pub fn process_long(&self, port: u8, long: &[u8], at: u64) {
+        let mut batch = Batch::new(self, at);
+        self.translator
+            .long(port, long, |event| batch.push(port, event));
+        batch.send();
     }
 
-    pub fn process_ump(&self, words: &[u32], at: Option<Instant>) {
-        self.translator.ump(words, |group, event| {
-            self.push(group, event, at);
-        });
+    pub fn process_ump(&self, words: &[u32], at: u64) {
+        let mut batch = Batch::new(self, at);
+        self.translator
+            .ump(words, |group, event| batch.push(group, event));
+        batch.send();
+    }
+
+    pub fn notes_off(&self) {
+        let pos = self.clock.stamp(0);
+        for port in &self.ports {
+            let mut queue = port.lock();
+            for channel in 0..16 {
+                for param in [120, 123] {
+                    let event = MaestroEvent::ControlChange {
+                        channel,
+                        param,
+                        val: 0,
+                    };
+                    queue.push(MaestroTimedEvent { event, pos });
+                }
+            }
+        }
     }
 
     pub fn reset(&self) {
@@ -185,5 +159,63 @@ impl RealtimeEventSender {
 
         self.translator.reset();
         self.nps.reset();
+    }
+}
+
+struct Batch<'a> {
+    sender: &'a RealtimeEventSender,
+    at: u64,
+    pos: Option<u32>,
+    nps: NpsBatch,
+    queue: Option<(u8, MutexGuard<'a, PortQueue>)>,
+}
+
+impl<'a> Batch<'a> {
+    fn new(sender: &'a RealtimeEventSender, at: u64) -> Self {
+        Self {
+            sender,
+            at,
+            pos: None,
+            nps: sender.nps.batch(),
+            queue: None,
+        }
+    }
+
+    #[inline]
+    fn push(&mut self, port: u8, event: MaestroEvent) {
+        let sender = self.sender;
+        let Some(port_sender) = sender.ports.get(port as usize) else {
+            return;
+        };
+
+        let tracked = |channel: u8| port as usize * 16 + channel as usize;
+        let admitted = match event {
+            MaestroEvent::NoteOn { channel, key, vel } => {
+                sender
+                    .nps
+                    .batch_note_on(&mut self.nps, tracked(channel), key, vel)
+            }
+            MaestroEvent::NoteOff { channel, key } => sender.nps.note_off(tracked(channel), key),
+            _ => true,
+        };
+        if !admitted || sender.coalescer.record(port, event) {
+            return;
+        }
+
+        self.nps.events += 1;
+        let pos = *self.pos.get_or_insert_with(|| sender.clock.stamp(self.at));
+
+        let queue = match &mut self.queue {
+            Some((locked, queue)) if *locked == port => queue,
+            slot => {
+                *slot = None;
+                &mut slot.insert((port, port_sender.lock())).1
+            }
+        };
+        queue.push(MaestroTimedEvent { event, pos });
+    }
+
+    fn send(self) {
+        self.sender.nps.commit(&self.nps);
     }
 }

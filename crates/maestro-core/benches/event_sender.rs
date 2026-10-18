@@ -12,6 +12,7 @@ use maestro_core::{
     realtime::{
         MaestroRealtimeEngine, RealtimeEngineOptions, RealtimeEventSender,
         config::{NpsLimit, RealtimeConfig},
+        host_time,
     },
     renderer::config::EventProcessorConfig,
     soundfont::SoundFontList,
@@ -68,11 +69,27 @@ fn events() -> Vec<u32> {
     events
 }
 
-fn drive(
+/// The same events as MIDI bytes, `per_call` messages to a buffer.
+fn long_buffers(events: &[u32], per_call: usize) -> Vec<Vec<u8>> {
+    // Repeated `per_call` times so every buffer comes out full
+    let events = events.repeat(per_call);
+    events
+        .chunks(per_call)
+        .map(|chunk| {
+            chunk
+                .iter()
+                .flat_map(|e| e.to_le_bytes().into_iter().take(3))
+                .collect()
+        })
+        .collect()
+}
+
+fn drive<T>(
     b: &mut Bencher<'_, WallTime>,
     sender: &RealtimeEventSender,
-    events: &[u32],
+    items: &[T],
     scheduled: bool,
+    send: impl Fn(&RealtimeEventSender, &T, u64),
 ) {
     b.iter_custom(|iters| {
         let mut elapsed = Duration::ZERO;
@@ -82,10 +99,10 @@ fn drive(
             let count = CHUNK.min(iters - sent);
 
             let start = Instant::now();
-            let at = scheduled.then_some(start);
+            let at = if scheduled { host_time::host_now() } else { 0 };
             for i in 0..count {
-                let event = events[((sent + i) % events.len() as u64) as usize];
-                sender.process_short(0, black_box(event), at);
+                let item = &items[((sent + i) % items.len() as u64) as usize];
+                send(sender, black_box(item), at);
             }
             elapsed += start.elapsed();
 
@@ -103,11 +120,15 @@ fn drive(
 /// `vel * max / 127` would overflow.
 const NPS_UNREACHABLE: usize = 1_000_000_000;
 
+fn short(sender: &RealtimeEventSender, event: &u32, at: u64) {
+    sender.process_short(0, *event, at);
+}
+
 fn send_path(c: &mut Criterion) {
     let events = events();
 
     let bare = RealtimeConfig {
-        precision_playback: false,
+        auto_timestamp: false,
         max_nps: None,
         ..RealtimeConfig::default()
     };
@@ -118,9 +139,9 @@ fn send_path(c: &mut Criterion) {
     let cases: Vec<(&str, RealtimeConfig, Option<EventProcessorConfig>)> = vec![
         ("bare", bare.clone(), None),
         (
-            "precision",
+            "auto_timestamp",
             RealtimeConfig {
-                precision_playback: true,
+                auto_timestamp: true,
                 ..bare.clone()
             },
             None,
@@ -157,19 +178,43 @@ fn send_path(c: &mut Criterion) {
             return;
         };
 
-        group.bench_function(name, |b| drive(b, &rig.sender, &events, false));
+        group.bench_function(name, |b| drive(b, &rig.sender, &events, false, short));
     }
 
     if let Some(rig) = rig(bare.clone(), None) {
-        group.bench_function("scheduled", |b| drive(b, &rig.sender, &events, true));
+        group.bench_function("scheduled", |b| drive(b, &rig.sender, &events, true, short));
     }
 
-    if let Some(mut rig) = rig(bare, None)
+    if let Some(mut rig) = rig(bare.clone(), None)
         && rig.engine.pause().is_ok()
     {
         group.bench_function("bare_stream_paused", |b| {
-            drive(b, &rig.sender, &events, false)
+            drive(b, &rig.sender, &events, false, short)
         });
+    }
+
+    group.finish();
+
+    const PER_CALL: usize = 64;
+    let buffers = long_buffers(&events, PER_CALL);
+
+    let long =
+        |sender: &RealtimeEventSender, bytes: &Vec<u8>, at| sender.process_long(0, bytes, at);
+
+    let mut group = c.benchmark_group("process_long");
+    group.throughput(Throughput::Elements(PER_CALL as u64));
+
+    for (name, config) in [
+        ("bare", bare.clone()),
+        ("default", RealtimeConfig::default()),
+    ] {
+        if let Some(rig) = rig(config, None) {
+            group.bench_function(name, |b| drive(b, &rig.sender, &buffers, false, long));
+        }
+    }
+
+    if let Some(rig) = rig(bare, None) {
+        group.bench_function("scheduled", |b| drive(b, &rig.sender, &buffers, true, long));
     }
 
     group.finish();

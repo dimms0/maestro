@@ -67,6 +67,20 @@ fn background_loop(
     }
 }
 
+pub(crate) struct NpsBatch {
+    max: Option<u64>,
+    total: u64,
+    current: u64,
+    notes: u64,
+    pub events: u64,
+}
+
+fn over_limit(total: u64, current: u64, vel: u8, max: u64) -> bool {
+    let threshold = (vel as u64) * max / 127;
+    let short_nps = current * (1000 / NPS_WINDOW_MILLISECONDS) * 4 / 3;
+    total.max(short_nps) >= threshold
+}
+
 pub(crate) struct NpsTracker {
     current_window_sum: Arc<AtomicU64>,
     total_window_sum: Arc<AtomicU64>,
@@ -154,15 +168,11 @@ impl NpsTracker {
     }
 
     fn admit(&self, vel: u8, max: u64) -> bool {
-        let threshold = (vel as u64) * max / 127;
-
         let admitted = self
             .total_window_sum
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |total| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |total| {
                 let current = self.current_window_sum.load(Ordering::Relaxed);
-                let short_nps = current * (1000 / NPS_WINDOW_MILLISECONDS) * 4 / 3;
-
-                (total.max(short_nps) < threshold).then_some(total + 1)
+                (!over_limit(total, current, vel, max)).then_some(total + 1)
             })
             .is_ok();
 
@@ -170,6 +180,59 @@ impl NpsTracker {
             self.current_window_sum.fetch_add(1, Ordering::Relaxed);
         }
         admitted
+    }
+
+    pub(crate) fn batch(&self) -> NpsBatch {
+        let max = self.max_nps();
+        let load = |sum: &AtomicU64| max.map_or(0, |_| sum.load(Ordering::Relaxed));
+        NpsBatch {
+            max,
+            total: load(&self.total_window_sum),
+            current: load(&self.current_window_sum),
+            notes: 0,
+            events: 0,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn batch_note_on(
+        &self,
+        batch: &mut NpsBatch,
+        channel: usize,
+        key: u8,
+        vel: u8,
+    ) -> bool {
+        let Some(active) = self.active_notes.get(channel * 128 + key as usize) else {
+            return false;
+        };
+
+        if let Some(max) = batch.max
+            && over_limit(
+                batch.total + batch.notes,
+                batch.current + batch.notes,
+                vel,
+                max,
+            )
+        {
+            return false;
+        }
+
+        batch.notes += 1;
+        active.fetch_add(1, Ordering::Relaxed);
+        true
+    }
+
+    pub(crate) fn commit(&self, batch: &NpsBatch) {
+        if batch.notes > 0 {
+            self.total_window_sum
+                .fetch_add(batch.notes, Ordering::Relaxed);
+            self.current_window_sum
+                .fetch_add(batch.notes, Ordering::Relaxed);
+        }
+        if batch.events > 0 {
+            self.current_events
+                .fetch_add(batch.events, Ordering::Relaxed);
+        }
     }
 
     fn count_note(&self) {
@@ -190,7 +253,7 @@ impl NpsTracker {
         self.active_notes
             .get(channel * 128 + key as usize)
             .is_some_and(|n| {
-                n.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+                n.try_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
                     (n > 0).then(|| n - 1)
                 })
                 .is_ok()

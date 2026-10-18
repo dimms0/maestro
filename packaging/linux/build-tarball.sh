@@ -37,7 +37,7 @@ done
 
 cp LICENSE.md THIRD-PARTY-NOTICES.md assets/fonts/OFL.txt "$stage/"
 # Placed next to the binaries: paths::exe_dir() is checked first.
-cp "$build/libOmniMIDI.so" "$stage/"
+cp "$build/libOmniMIDI.so" "$build/libmaestro.so" "$stage/"
 cp "$VENDOR/libbass.so" "$VENDOR/libbassmidi.so" "$VENDOR/libbassflac.so" "$stage/"
 cp "$VENDOR"/bass*.txt "$stage/"
 mkdir -p "$stage/soundfonts"
@@ -50,9 +50,9 @@ for a in $(companion_archs linux "$ARCH"); do
     v="$(vendor_dir linux "$a")"
     ensure_vendor_libs linux "$a"
     ensure_rust_target "$t"
-    cargo build --release --lib --target "$t" -p maestro-kdmapi
+    cargo build --release --lib --target "$t" -p maestro-kdmapi -p maestro-abi
     mkdir -p "$stage/$a"
-    cp "target/$t/release/libOmniMIDI.so" "$stage/$a/"
+    cp "target/$t/release/libOmniMIDI.so" "target/$t/release/libmaestro.so" "$stage/$a/"
     cp "$v/libbass.so" "$v/libbassmidi.so" "$v/libbassflac.so" "$stage/$a/"
 done
 

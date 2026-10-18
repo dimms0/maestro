@@ -28,11 +28,34 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libjack-jackd2-dev libpulse-dev libpipewire-0.3-dev libfontconfig1-dev pkg-config build-essential libasound2-dev
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace
+      # The Rust bindings' integration tests, against the library just built.
+      - run: cargo build -p maestro-abi
+      - name: test maestro-api-rs against the built library
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            Windows) lib=maestro.dll ;;
+            macOS) lib=libmaestro.dylib ;;
+            *) lib=libmaestro.so ;;
+          esac
+          MAESTRO_LIBRARY="$GITHUB_WORKSPACE/target/debug/$lib" cargo test -p maestro-api-rs
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - if: matrix.os == 'windows-latest'
         run: rustup target add i686-pc-windows-msvc
       - if: matrix.os == 'windows-latest'
-        run: cargo clippy --lib --target i686-pc-windows-msvc -p maestro-daemon -p maestro-kdmapi --all-features -- -D warnings
+        run: cargo clippy --lib --target i686-pc-windows-msvc -p maestro-daemon -p maestro-kdmapi -p maestro-abi --all-features -- -D warnings
+
+  # The published bindings: they must package, and build on their MSRV.
+  maestro-api-rs:
+    name: maestro-api-rs package
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.85
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo package -p maestro-api-rs --locked
+      - run: cargo +1.85 check -p maestro-api-rs --all-targets --locked
 
   # Catches upstream layout or URL changes in the synth libraries the
   # installers download, before a release build trips over them.

@@ -7,12 +7,14 @@ use crate::{
 };
 use cpal::{Stream, traits::StreamTrait};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 mod buffered_renderer;
 mod clock;
 pub mod config;
 mod event_sender;
 pub mod host_time;
+pub use clock::MAX_SCHEDULE_SECS;
 pub use event_sender::{RealtimeEventSender, UMP_GROUPS};
 mod load;
 mod options;
@@ -44,16 +46,23 @@ fn start_stream(
     limiter: Arc<LoadLimiter>,
 ) -> Result<Stream, RealtimeEngineError> {
     let renderer = renderer.clone();
-    let clock = clock.clone();
-    let func = move |buffer: &mut [f32]| {
-        clock.begin_block(buffer.len() as u64);
-        renderer.lock().unwrap().render(buffer);
+
+    let func = {
+        let clock = clock.clone();
+        move |buffer: &mut [f32], queued: u64| {
+            clock.begin_block(buffer.len() as u64, queued);
+            renderer.lock().unwrap().render(buffer);
+        }
     };
 
     let mut buffered = BufferedRenderer::new(func, output.params, config, limiter)?;
 
-    let func = move |buffer: &mut [f32]| {
-        buffered.read(buffer);
+    let func = {
+        let clock = clock.clone();
+        move |buffer: &mut [f32], output_delay: Duration| {
+            clock.set_output_delay(output_delay);
+            buffered.read(buffer);
+        }
     };
 
     let stream = stream::build_stream(output, config, func)?;
@@ -79,7 +88,10 @@ impl MaestroRealtimeEngine {
         let stats = MaestroRealtimeStatistics::new();
         renderer.set_statistics(stats.renderer_handle());
 
-        let clock = Arc::new(RealtimeClock::new(&stream_params));
+        let clock = Arc::new(RealtimeClock::new(
+            &stream_params,
+            options.config.auto_timestamp,
+        ));
         let sender = RealtimeEventSender::new(
             &options,
             clock.clone(),
@@ -129,7 +141,7 @@ impl MaestroRealtimeEngine {
 
         // Whatever the sender doesn't handle belongs to the output stream
         let stream_config = |c: &config::RealtimeConfig| config::RealtimeConfig {
-            precision_playback: false,
+            auto_timestamp: false,
             max_nps: None,
             coalesce_window_ms: None,
             ..c.clone()
@@ -176,6 +188,14 @@ impl MaestroRealtimeEngine {
 
     pub fn get_event_sender(&self) -> RealtimeEventSender {
         self.sender.clone()
+    }
+
+    pub fn stream_params(&self) -> AudioParameters {
+        self.stream_params
+    }
+
+    pub fn latency(&self) -> Duration {
+        self.clock.latency()
     }
 
     pub fn pause(&mut self) -> Result<(), cpal::Error> {

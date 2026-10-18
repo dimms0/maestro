@@ -30,6 +30,9 @@
 - **Audio post-processing.** Audio limiter and more effects in the future.
 - **KDMAPI support.** Applications that speak KDMAPI (OmniMIDI's interface) can
   talk to Maestro directly, bypassing the system MIDI stack.
+- **The Maestro API.** A stable library interface for applications that want
+  all of Maestro: timestamped events, UMP, multiple ports and per-application
+  settings, as a plain C ABI.
 
 ## Installing
 
@@ -88,6 +91,7 @@ window: `maestro edit-list <file>` or `maestro edit-config <file>`.
 | [`maestro-daemon`](crates/maestro-daemon) | The background service and the Windows MIDI driver |
 | [`maestro-core`](crates/maestro-core)     | The synthesis engine shared by all of the above    |
 | [`maestro-kdmapi`](crates/maestro-kdmapi) | The KDMAPI library                                 |
+| [`maestro-abi`](crates/maestro-abi)       | The Maestro API library                            |
 | [`midi-parser`](crates/midi-parser)       | MIDI file reader/writer                            |
 
 ## Building from source

@@ -28,7 +28,7 @@ export struct SlintPortAssignment {
 export struct SlintRealtimeConfig {
     device_audio_params: bool,
     render_buffer_ms: float,
-    precision_playback: bool,
+    auto_timestamp: bool,
     max_nps: int,
     has_max_nps: bool,
     load_limiter: bool,
@@ -194,6 +194,13 @@ export struct SlintComponentSummary {
     dirty: bool,
     // Index of the assigned list within `SflistState.available`.
     sflist_index: int,
+}
+
+// An application with a Maestro API profile. `config` is the profile's name
+// for SettingsEditorState.open_settings.
+export struct SlintApiApp {
+    name: string,
+    config: string,
 }
 
 // Live statistics of one process using a Maestro component, read from that

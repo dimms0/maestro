@@ -14,7 +14,7 @@ import { SystemIntegrationState } from "../globals.slint";
 import {
     IntegrationStatus,
     ServiceAction,
-    KdmapiAction,
+    InstallAction,
     LibraryAction,
 } from "../enums.slint";
 import { SlintIntegrationItem, SlintLibraryItem } from "../structs.slint";
@@ -231,14 +231,49 @@ export component SystemIntegrationView inherits Rectangle {
                                     text: "Uninstall";
                                     danger: true;
                                     disabled: SystemIntegrationState.busy;
-                                    clicked => { SystemIntegrationState.kdmapi_action(KdmapiAction.uninstall); }
+                                    clicked => { SystemIntegrationState.kdmapi_action(InstallAction.uninstall); }
                                 }
 
                                 if (SystemIntegrationState.kdmapi.status != IntegrationStatus.ok): MaestroButton {
                                     text: "Install";
                                     primary: true;
                                     disabled: SystemIntegrationState.busy;
-                                    clicked => { SystemIntegrationState.kdmapi_action(KdmapiAction.install); }
+                                    clicked => { SystemIntegrationState.kdmapi_action(InstallAction.install); }
+                                }
+                            }
+                        }
+                    }
+
+                    MaestroCard {
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 20px;
+
+                            ItemHeader {
+                                item: SystemIntegrationState.api;
+                            }
+
+                            Rectangle {
+                                vertical-stretch: 1;
+                            }
+
+                            HorizontalLayout {
+                                alignment: end;
+                                spacing: 12px;
+                                cross-axis-alignment: end;
+
+                                if (SystemIntegrationState.api.status == IntegrationStatus.ok): MaestroButton {
+                                    text: "Uninstall";
+                                    danger: true;
+                                    disabled: SystemIntegrationState.busy;
+                                    clicked => { SystemIntegrationState.api_action(InstallAction.uninstall); }
+                                }
+
+                                if (SystemIntegrationState.api.status == IntegrationStatus.missing): MaestroButton {
+                                    text: "Install";
+                                    primary: true;
+                                    disabled: SystemIntegrationState.busy;
+                                    clicked => { SystemIntegrationState.api_action(InstallAction.install); }
                                 }
                             }
                         }

@@ -48,6 +48,7 @@ pub const MODM_CACHEDRUMPATCHES: u32 = 13;
 // pub const MODM_PREFERRED: u32 = 22;
 
 #[repr(C)]
+#[allow(clippy::upper_case_acronyms)]
 pub struct MIDIOPENDESC {
     pub hMidi: usize,
     pub dwCallback: usize,

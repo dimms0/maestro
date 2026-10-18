@@ -41,29 +41,30 @@ command -v dylibbundler >/dev/null || {
 VERSION="$(workspace_version)"
 APP="target/packaging/Maestro.app"
 
-cargo build --release --target "$TARGET" -p maestro-gui -p maestro-daemon -p maestro-kdmapi
+cargo build --release --target "$TARGET" -p maestro-gui -p maestro-daemon -p maestro-kdmapi -p maestro-abi
 BUILD="target/$TARGET/release"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Library/LaunchAgents"
 cp "$BUILD/maestro" "$BUILD/maestrod" "$APP/Contents/MacOS/"
-cp "$BUILD/libOmniMIDI.dylib" "$APP/Contents/MacOS/"
-# KDMAPI runs inside the host application's process, and macOS has no
-# per-architecture system directory to link a second build into, so a Rosetta
-# x86_64 host is only served by a universal library. The BASS dylibs next to it
-# are universal already.
+cp "$BUILD/libOmniMIDI.dylib" "$BUILD/libmaestro.dylib" "$APP/Contents/MacOS/"
+# KDMAPI and the Maestro API run inside the host application's process, and
+# macOS has no per-architecture system directory to link a second build into,
+# so a Rosetta x86_64 host is only served by a universal library. The BASS
+# dylibs next to them are universal already.
 case "$ARCH" in
     aarch64) OTHER_ARCH=x86_64 ;;
     *) OTHER_ARCH=aarch64 ;;
 esac
 OTHER_TARGET="$(rust_target macos "$OTHER_ARCH")"
 if ensure_rust_target "$OTHER_TARGET" &&
-    cargo build --release --lib --target "$OTHER_TARGET" -p maestro-kdmapi; then
-    lipo -create "$BUILD/libOmniMIDI.dylib" \
-        "target/$OTHER_TARGET/release/libOmniMIDI.dylib" \
-        -output "$APP/Contents/MacOS/libOmniMIDI.dylib"
+    cargo build --release --lib --target "$OTHER_TARGET" -p maestro-kdmapi -p maestro-abi; then
+    for lib in libOmniMIDI.dylib libmaestro.dylib; do
+        lipo -create "$BUILD/$lib" "target/$OTHER_TARGET/release/$lib" \
+            -output "$APP/Contents/MacOS/$lib"
+    done
 else
-    echo "  note: no $OTHER_ARCH toolchain; KDMAPI will be $ARCH-only." >&2
+    echo "  note: no $OTHER_ARCH toolchain; KDMAPI and the Maestro API will be $ARCH-only." >&2
 fi
 cp "$VENDOR/libbass.dylib" "$VENDOR/libbassmidi.dylib" \
     "$VENDOR/libbassflac.dylib" "$APP/Contents/MacOS/"

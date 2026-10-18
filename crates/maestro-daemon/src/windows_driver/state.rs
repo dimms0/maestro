@@ -79,10 +79,10 @@ fn engine_options(config: &MaestroSystemConfig) -> RealtimeEngineOptions {
     RealtimeEngineOptions {
         ports: Some(config.custom.num_ports.max(1)),
         config: config.realtime.clone(),
-        renderer: config.renderer.clone(),
+        renderer: config.renderer,
         audio_params: config.audio_params,
         event_processor: config.event_processor.clone(),
-        post_processor: config.post_processor.clone(),
+        post_processor: config.post_processor,
     }
 }
 
@@ -138,9 +138,7 @@ impl DriverState {
             return Err(MMSYSERR_BADDEVICEID);
         }
 
-        if let Err(code) = self.retain_engine() {
-            return Err(code);
-        }
+        self.retain_engine()?;
         self.ensure_watcher();
 
         Ok(Box::new(OutClient {
@@ -162,9 +160,7 @@ impl DriverState {
         let mut users = self.engine_users.lock().unwrap();
         if *users == 0 {
             let config = self.refresh_config();
-            if let Err(code) = self.start_engine(&config) {
-                return Err(code);
-            }
+            self.start_engine(&config)?;
         }
         *users += 1;
         Ok(())

@@ -1,7 +1,7 @@
 use maestro_core::paths;
 
 use crate::{
-    IntegrationStatus, KdmapiAction, SlintIntegrationItem,
+    InstallAction, IntegrationStatus, SlintIntegrationItem,
     privileged::{self, INSTALL_KDMAPI, KDMAPI_FILENAME, UNINSTALL_KDMAPI},
 };
 
@@ -60,10 +60,10 @@ pub fn probe() -> KdmapiState {
     }
 }
 
-pub fn act(action: KdmapiAction) -> Result<(), String> {
+pub fn act(action: InstallAction) -> Result<(), String> {
     let command = match action {
-        KdmapiAction::Install => INSTALL_KDMAPI,
-        KdmapiAction::Uninstall => UNINSTALL_KDMAPI,
+        InstallAction::Install => INSTALL_KDMAPI,
+        InstallAction::Uninstall => UNINSTALL_KDMAPI,
     };
 
     match privileged::elevate_self(command) {

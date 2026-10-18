@@ -16,7 +16,11 @@ import {
     MaestroProgressBar,
     Icons,
 } from "../widgets.slint";
-import { DeviceManagerState, SystemIntegrationState } from "../globals.slint";
+import {
+    DeviceManagerState,
+    SettingsEditorState,
+    SystemIntegrationState,
+} from "../globals.slint";
 import { DeviceComponent, IntegrationStatus } from "../enums.slint";
 import {
     SlintComponentStats,
@@ -24,6 +28,7 @@ import {
     SlintSystemCustom,
 } from "../structs.slint";
 import { MaestroSwitch } from "../widgets/inputs.slint";
+import { ConfirmModal } from "soundfont_editor/modals.slint";
 
 // One row of the live statistics card: whatever every component reports while
 // it is loaded, refreshed continuously from that process's statistics pipe.
@@ -207,9 +212,14 @@ component DeviceComponentCard inherits MaestroCard {
             }
         }
 
+        Rectangle {
+            vertical-stretch: 1;
+        }
+
         HorizontalLayout {
             alignment: end;
             spacing: 12px;
+            vertical-stretch: 0;
 
             if (root.summary.dirty): DirtyBadge {
                 font-size: 13px;
@@ -239,6 +249,8 @@ export component DeviceManagerView inherits Rectangle {
     // reloads the config from disk) can never be undone by a later keystroke
     // re-sending stale values.
     property <SlintSystemCustom> form;
+    property <string> remove_app_config;
+    property <string> remove_app_name;
 
     ScrollView {
         VerticalLayout {
@@ -267,14 +279,15 @@ export component DeviceManagerView inherits Rectangle {
                 }
             }
 
-            HorizontalLayout {
+            VerticalLayout {
                 spacing: 16px;
 
-                VerticalLayout {
+                HorizontalLayout {
                     spacing: 16px;
-                    width: Math.min(root.width, 1000px) * 0.55;
 
                     DeviceComponentCard {
+                        width: Math.min(root.width, 1000px) * 0.6 - 32px;
+
                         component: DeviceComponent.system;
                         summary: DeviceManagerState.system;
                         title: "Virtual Device";
@@ -331,7 +344,102 @@ export component DeviceManagerView inherits Rectangle {
                         }
                     }
 
+                    MaestroCard {
+                        width: Math.min(root.width, 1000px) * 0.4 - 32px;
+
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 20px;
+
+                            TitleText {
+                                text: "Active Applications";
+                            }
+
+                            if (DeviceManagerState.stats.length == 0): LabelText {
+                                text: "No application is using Maestro right now.";
+                                font-size: 13px;
+                            }
+
+                            ScrollView {
+                                VerticalLayout {
+                                    spacing: 12px;
+
+                                    for entry in DeviceManagerState.stats: StatsRow {
+                                        stats: entry;
+                                    }
+
+                                    Rectangle {
+                                        vertical-stretch: 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 16px;
+
                     DeviceComponentCard {
+                        width: Math.min(root.width, 1000px) * 0.5 - 32px;
+
+                        enabled: SystemIntegrationState.api.status == IntegrationStatus.ok;
+                        disabled_text: "The Maestro API is not installed. Go to the System Integration tab to install it.";
+                        component: DeviceComponent.api;
+                        summary: DeviceManagerState.api;
+                        title: "Maestro API";
+                        settings_text: "Default Settings";
+                        enable_text: "Allow applications to use the Maestro API";
+                        switch_on: DeviceManagerState.api.enabled;
+                        switch_toggled(v) => {
+                            DeviceManagerState.set_enabled(DeviceComponent.api, v);
+                        }
+
+                        // SflistField {
+                        //     component: DeviceComponent.api;
+                        //     index: DeviceManagerState.api.sflist_index;
+                        // }
+
+                        LabelText {
+                            text: DeviceManagerState.api_apps.length == 0
+                                ? "Applications appear here once they connect. Each starts from these defaults and then keeps its own settings."
+                                : "Each application started from these defaults and keeps its own settings:";
+                            font-size: 12px;
+                            wrap: word-wrap;
+                        }
+
+                        for app in DeviceManagerState.api_apps: HorizontalLayout {
+                            spacing: 12px;
+                            cross-axis-alignment: center;
+
+                            BodyText {
+                                text: app.name;
+                                overflow: elide;
+                                horizontal-stretch: 1;
+                            }
+
+                            MaestroButton {
+                                horizontal-stretch: 0;
+                                icon: Icons.settings;
+                                text: "Settings";
+                                clicked => { SettingsEditorState.open_settings(app.config); }
+                            }
+
+                            MaestroButton {
+                                horizontal-stretch: 0;
+                                icon: Icons.trash;
+                                danger: true;
+                                clicked => {
+                                    root.remove_app_config = app.config;
+                                    root.remove_app_name = app.name;
+                                }
+                            }
+                        }
+                    }
+
+                    DeviceComponentCard {
+                        width: Math.min(root.width, 1000px) * 0.5 - 32px;
+
                         enabled: SystemIntegrationState.kdmapi.status == IntegrationStatus.ok;
                         disabled_text: "The KDMAPI bridge is not installed. Go to the System Integration tab to repair.";
                         component: DeviceComponent.kdmapi;
@@ -350,39 +458,15 @@ export component DeviceManagerView inherits Rectangle {
                         }
                     }
                 }
-
-                MaestroCard {
-                    width: Math.min(root.width, 1000px) * 0.35;
-
-                    VerticalLayout {
-                        padding: 24px;
-                        spacing: 20px;
-
-                        TitleText {
-                            text: "Active Applications";
-                        }
-
-                        if (DeviceManagerState.stats.length == 0): LabelText {
-                            text: "No application is using Maestro right now.";
-                            font-size: 13px;
-                        }
-
-                        ScrollView {
-                            VerticalLayout {
-                                spacing: 12px;
-
-                                for entry in DeviceManagerState.stats: StatsRow {
-                                    stats: entry;
-                                }
-
-                                Rectangle {
-                                    vertical-stretch: 1;
-                                }
-                            }
-                        }
-                    }
-                }
             }
         }
+    }
+
+    if (root.remove_app_config != ""): ConfirmModal {
+        title: "Remove Application Settings";
+        message: "Remove the settings of '" + root.remove_app_name + "'? It will start again from the default settings the next time it connects.";
+        confirm_text: "Remove";
+        dismissed => { root.remove_app_config = ""; }
+        confirmed => { DeviceManagerState.remove_app_config(root.remove_app_config); }
     }
 }

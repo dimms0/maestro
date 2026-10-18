@@ -3506,6 +3506,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dae608c151f68243f2b000364e1f7b186d9c29845f7d2d85bd31b9ad77ad552b"
 
 [[package]]
+name = "maestro-abi"
+version = "0.1.0"
+dependencies = [
+ "maestro-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "maestro-api-rs"
+version = "1.0.0"
+dependencies = [
+ "libloading 0.8.9",
+]
+
+[[package]]
 name = "maestro-core"
 version = "0.1.0"
 dependencies = [
@@ -3519,6 +3535,7 @@ dependencies = [
  "interprocess",
  "libc",
  "libloading 0.9.0",
+ "mach2",
  "midi-parser",
  "mp3lame-encoder",
  "notify",
