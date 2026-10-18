@@ -29,10 +29,7 @@
   filters, and program-change or SysEx blocking.
 - **Audio post-processing.** Audio limiter and more effects in the future.
 - **KDMAPI support.** Applications that speak KDMAPI (OmniMIDI's interface) can
-  talk to Maestro directly, bypassing the system MIDI stack.
-- **The Maestro API.** A stable library interface for applications that want
-  all of Maestro: timestamped events, UMP, multiple ports and per-application
-  settings, as a plain C ABI.
+  talk to Maestro directly.
 
 ## Installing
 
@@ -83,6 +80,44 @@ SoundFont lists and settings are kept in your user folder, as plain JSON:
 A saved list or settings file can also be opened on its own, in a single-editor
 window: `maestro edit-list <file>` or `maestro edit-config <file>`.
 
+## The Maestro API
+
+The Maestro API is a stable C library that applications load to run Maestro's
+realtime engine inside their own process, without going through the system MIDI
+stack.
+
+### Why not KDMAPI?
+
+KDMAPI is the right choice when an application already supports it: Maestro
+speaks it, and nothing needs to change. For new code, the Maestro API gives you
+everything KDMAPI does and more:
+
+|               | KDMAPI                                  | Maestro API                                                |
+| ------------- | --------------------------------------- | ---------------------------------------------------------- |
+| Event timing  | Plays events when they arrive           | **Timestamped events**, scheduled ahead with exact spacing |
+| MIDI 2.0      | No                                      | **UMP**                                                    |
+| Ports         | One 16-channel stream                   | **Several MIDI 1.0 ports** per instance                    |
+| Settings      | One profile shared by every application | **A profile per application**, applied live                |
+| Statistics    | Voice count and render time             | Also NPS, events per second, the NPS limit and latency     |
+| Compatibility | Fixed interface                         | Versioned extensions that never break existing callers     |
+
+### Settings
+
+The **Maestro API** settings turn the API on or off and provide the defaults
+for new applications. The first time an application connects, it gets its own
+profile, seeded from those defaults and afterwards the user is free to configure
+each app's profile to their liking.
+
+### Using it
+
+- C and other languages: [`maestro.h`](crates/maestro-abi/include/maestro.h)
+  defines and documents the API, and
+  [`examples/`](crates/maestro-abi/examples/) has small programs in C and
+  Python.
+- Rust: [`maestro-api-rs`](crates/maestro-api-rs/) on crates.io. It loads the
+  library at runtime, so your program builds anywhere and still runs where
+  Maestro isn't installed.
+
 ## Repository layout
 
 | Crate                                     | What it is                                         |
@@ -93,33 +128,6 @@ window: `maestro edit-list <file>` or `maestro edit-config <file>`.
 | [`maestro-kdmapi`](crates/maestro-kdmapi) | The KDMAPI library                                 |
 | [`maestro-abi`](crates/maestro-abi)       | The Maestro API library                            |
 | [`midi-parser`](crates/midi-parser)       | MIDI file reader/writer                            |
-
-## Building from source
-
-```sh
-cargo build --release
-```
-
-Requires a stable Rust toolchain. On Linux you also need the development
-packages for ALSA, PulseAudio, PipeWire and JACK.
-
-### Packaging
-
-Each installer is built for one architecture at a time — x86_64 or aarch64 —
-defaulting to the machine it runs on:
-
-```sh
-./packaging/linux/build-deb.sh                      # .deb  (this machine's arch)
-./packaging/linux/build-rpm.sh --arch aarch64       # .rpm
-./packaging/linux/build-tarball.sh                  # portable tarball
-./packaging/macos/build-app.sh                      # Maestro.app + .dmg
-./packaging/windows/build-installer.sh --arch arm64 # .exe  (needs Inno Setup 6.3+)
-```
-
-Per-platform details, including which architectures each vendor ships, are in
-`packaging/<platform>/vendor/README.md`. Releases build every platform and
-both architectures from `.github/workflows/release.yml`. Service registration
-is documented in [`crates/maestro-daemon/INSTALL.md`](crates/maestro-daemon/INSTALL.md).
 
 ## License
 
