@@ -39,6 +39,11 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
             data.selected_sflist_idx = idx;
             SoundfontEditorState::get(ui).set_selected_sublist_index(0);
             sync_sflist_to_slint(ui, data);
+            if let Some(file) = data.selected_sflist() {
+                let mut cfg = crate::config::load_global_config();
+                cfg.last_sflist = file.name.clone();
+                let _ = crate::config::save_global_config(&cfg);
+            }
         });
     });
 

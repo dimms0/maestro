@@ -135,6 +135,8 @@ fn combined() -> AppData {
     let mut data = empty(StandaloneMode::Combined);
 
     load_sflist_files(&mut data);
+    let last = crate::config::load_global_config().last_sflist;
+    data.selected_sflist_idx = data.sflist_position(&last).map_or(-1, |i| i as i32);
 
     data.config_files = get_component_files()
         .into_iter()

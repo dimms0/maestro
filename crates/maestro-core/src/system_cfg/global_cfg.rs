@@ -10,6 +10,7 @@ pub struct MaestroGlobalConfig {
     pub start_virtual_device_on_launch: bool,
     pub remember_last_tab: bool,
     pub last_tab: String,
+    pub last_sflist: String,
 }
 
 impl Default for MaestroGlobalConfig {
@@ -20,6 +21,7 @@ impl Default for MaestroGlobalConfig {
             start_virtual_device_on_launch: true,
             remember_last_tab: false,
             last_tab: String::new(),
+            last_sflist: String::new(),
         }
     }
 }
