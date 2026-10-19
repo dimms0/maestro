@@ -95,6 +95,9 @@ pub struct PortEventProcessor {
 
     missed_notes: [u64; SLOTS],
 
+    remove_overlaps: bool,
+    held_since: [Option<u32>; SLOTS],
+
     jitter: Option<NoteJitter>,
 }
 
@@ -144,6 +147,8 @@ impl PortEventProcessor {
             ignore_sysex: config.ignore_sysex,
             velocity_table,
             missed_notes: [0; SLOTS],
+            remove_overlaps: config.remove_overlaps,
+            held_since: [None; SLOTS],
             jitter: config
                 .note_jitter
                 .then(|| NoteJitter::new(port, audio_params)),
@@ -178,8 +183,18 @@ impl PortEventProcessor {
                 }
                 let newkey = newkey as u8;
                 let newvel = self.velocity_table[vel as usize];
+                let slot = channel as usize * 128 + key as usize;
 
                 if newvel >= self.velocity_threshold && newvel > 0 {
+                    if self.remove_overlaps {
+                        // A second strike is dropped along with the next note off
+                        if self.held_since[slot] == Some(event.pos) {
+                            self.missed_notes[slot] += 1;
+                            return None;
+                        }
+                        self.held_since[slot] = Some(event.pos);
+                    }
+
                     Some(MaestroTimedEvent {
                         event: MaestroEvent::NoteOn {
                             channel,
@@ -189,7 +204,7 @@ impl PortEventProcessor {
                         pos: self.jitter_note_on(channel, newkey, event.pos),
                     })
                 } else {
-                    self.missed_notes[channel as usize * 128 + key as usize] += 1;
+                    self.missed_notes[slot] += 1;
                     None
                 }
             }
@@ -216,11 +231,13 @@ impl PortEventProcessor {
                 }
                 let newkey = newkey as u8;
 
-                let missed = &mut self.missed_notes[channel as usize * 128 + key as usize];
+                let slot = channel as usize * 128 + key as usize;
+                let missed = &mut self.missed_notes[slot];
                 if *missed > 0 {
                     *missed -= 1;
                     None
                 } else {
+                    self.held_since[slot] = None;
                     Some(MaestroTimedEvent {
                         event: MaestroEvent::NoteOff {
                             channel,
@@ -286,6 +303,7 @@ impl PortEventProcessor {
 
     pub(super) fn reset(&mut self) {
         self.missed_notes.fill(0);
+        self.held_since.fill(None);
 
         if let Some(jitter) = &mut self.jitter {
             jitter.reset();
@@ -739,6 +757,35 @@ mod tests {
             assert_eq!(off - on, length, "a note came out {} long", off - on);
             last = off;
         }
+    }
+
+    fn overlap_cfg(remove_overlaps: bool) -> EventProcessorConfig {
+        EventProcessorConfig {
+            bypass_channels: Box::new([]),
+            remove_overlaps,
+            ..Default::default()
+        }
+    }
+
+    fn at(pos: u32, event: MaestroTimedEvent) -> MaestroTimedEvent {
+        MaestroTimedEvent { pos, ..event }
+    }
+
+    #[test]
+    fn overlaps_at_different_positions_or_keys_are_kept() {
+        let mut p = proc(overlap_cfg(true));
+        assert!(p.process(at(100, note_on(60))).is_some());
+        assert!(p.process(at(100, note_on(61))).is_some());
+        assert!(p.process(at(120, note_on(60))).is_some());
+        assert!(p.process(at(150, note_off(60))).is_some());
+    }
+
+    #[test]
+    fn a_released_note_struck_again_at_the_same_position_is_kept() {
+        let mut p = proc(overlap_cfg(true));
+        assert!(p.process(at(100, note_on(60))).is_some());
+        assert!(p.process(at(100, note_off(60))).is_some());
+        assert!(p.process(at(100, note_on(60))).is_some());
     }
 
     #[test]

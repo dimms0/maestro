@@ -572,6 +572,21 @@ export component EventProcessorSection inherits SectionCard {
             }
 
             Setting {
+                text: "Remove Overlapping Notes";
+                subtext: "Discards notes that start at the same time on the same channel and key as a note that is already playing.";
+
+                MaestroSwitch {
+                    enabled: root.on;
+                    checked: SettingsEditorState.current_config.event_processor.remove_overlaps;
+                    toggled(v) => {
+                        root.edit = SettingsEditorState.current_config.event_processor;
+                        root.edit.remove_overlaps = v;
+                        SettingsEditorState.update_event_processor(root.edit);
+                    }
+                }
+            }
+
+            Setting {
                 text: "Ignore Program Change messages";
                 subtext: "This will force all channel (excluding channel 10 which is always percussion) to use the default patch (acoustic piano).";
 

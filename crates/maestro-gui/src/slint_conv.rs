@@ -444,6 +444,7 @@ pub fn evproc_to_slint(
         ignore_program_change: e.ignore_program_change,
         ignore_sysex: e.ignore_sysex,
         note_jitter: e.note_jitter,
+        remove_overlaps: e.remove_overlaps,
     }
 }
 
@@ -471,6 +472,7 @@ pub fn slint_to_evproc(
         ignore_program_change: sl.ignore_program_change,
         ignore_sysex: sl.ignore_sysex,
         note_jitter: sl.note_jitter,
+        remove_overlaps: sl.remove_overlaps,
     }
 }
 

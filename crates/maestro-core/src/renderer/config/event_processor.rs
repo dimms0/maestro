@@ -21,6 +21,7 @@ pub struct EventProcessorConfig {
     pub ignore_sysex: bool,
 
     pub note_jitter: bool,
+    pub remove_overlaps: bool,
 }
 
 impl Default for EventProcessorConfig {
@@ -40,6 +41,7 @@ impl Default for EventProcessorConfig {
             ignore_program_change: false,
             ignore_sysex: false,
             note_jitter: false,
+            remove_overlaps: false,
         }
     }
 }
