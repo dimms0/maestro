@@ -71,7 +71,8 @@ pub fn run(args: &[String]) {
             crate::Tab::Welcome
         };
         AppState::get(&ui).set_active_tab(initial_tab);
-        AppState::get(&ui).set_version(
+        AppState::get(&ui).set_version(maestro_core::VERSION.into());
+        AppState::get(&ui).set_build_label(
             format!(
                 "Version {} | Build {}",
                 maestro_core::VERSION,

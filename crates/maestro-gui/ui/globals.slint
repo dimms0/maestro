@@ -46,7 +46,8 @@ export global AppState {
     // app was not launched to edit a single file.
     out property <bool> combined: root.standalone_mode == StandaloneMode.combined;
 
-    in property <string> version: "0.1.0";
+    in property <string> version;
+    in property <string> build_label;
 
     // Set from a background check against GitHub Releases (update-check
     // feature, release builds only).
