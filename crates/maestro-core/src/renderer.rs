@@ -28,7 +28,7 @@ mod post_processor;
 pub mod sender;
 mod synth;
 
-pub use synth::probe::{LibraryStatus, probe_libraries};
+pub use synth::probe::{LibraryStatus, SynthAvailability, probe_libraries};
 
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
 

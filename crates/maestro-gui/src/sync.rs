@@ -6,7 +6,7 @@ use crate::{
     SlintPortAssignment, SlintRealtimeConfig, SlintRendererConfig, SlintSoundFont,
     SoundfontEditorState,
     slint_conv::{
-        converter_custom_to_slint, evproc_to_slint, postproc_to_slint, synth_to_slint,
+        converter_custom_to_slint, evproc_to_slint, postproc_to_slint, synth_options, synth_to_slint,
         system_custom_to_slint,
     },
     state::{AppData, ConfigComponent, app_id},
@@ -315,6 +315,11 @@ pub fn build_slint_component_config(state: &AppData) -> Option<SlintComponentCon
 pub fn sync_config_to_slint(ui: &MainWindow, state: &AppData) {
     let editor = SettingsEditorState::get(ui);
     if let Some(cfg) = build_slint_component_config(state) {
+        let (options, kinds) = synth_options(cfg.synth.kind);
+        let index = kinds.iter().position(|&k| k == cfg.synth.kind).unwrap_or(0);
+        editor.set_synth_options(ModelRc::new(VecModel::from(options)));
+        editor.set_synth_kinds(ModelRc::new(VecModel::from(kinds)));
+        editor.set_synth_index(index as i32);
         editor.set_current_config(cfg);
     }
     if editor.get_bitrates().row_count() == 0 {

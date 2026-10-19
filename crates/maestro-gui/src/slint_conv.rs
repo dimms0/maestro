@@ -2,6 +2,7 @@ use slint::{Model, ModelRc, VecModel};
 
 use maestro_core::{
     file_renderer::{BITRATES_KBPS, DEFAULT_BITRATE_KBPS, OutputFormat, WavBitDepth},
+    renderer::SynthAvailability,
     renderer::config::{
         EventProcessorConfig, PostProcessorConfig, SynthConfig,
         bassmidi::{BASSMIDIConfig, BASSMIDIInterpolation, BASSMIDIThreading},
@@ -13,7 +14,8 @@ use maestro_core::{
 };
 
 use crate::{
-    SlintEventProcessorConfig, SlintPostProcessorConfig, SlintSynthConfig, SynthKind, Tab,
+    SlintComboItem, SlintEventProcessorConfig, SlintPostProcessorConfig, SlintSynthConfig,
+    SynthKind, Tab,
     state::{ConverterCustom, RememberedSettings},
 };
 
@@ -177,6 +179,56 @@ fn threading_to_slint(
         count => count,
     });
     out.bass_divide_channels = block.divide_channels;
+}
+
+struct SynthEntry {
+    kind: SynthKind,
+    name: &'static str,
+    badges: [&'static str; 3],
+    // Optional synths are hidden when their library is missing
+    optional: bool,
+}
+
+const SYNTHS: [SynthEntry; 2] = [
+    SynthEntry {
+        kind: SynthKind::Fluidsynth,
+        name: "FluidSynth",
+        badges: ["SF2", "SF3", ""],
+        optional: false,
+    },
+    SynthEntry {
+        kind: SynthKind::Bassmidi,
+        name: "BASSMIDI",
+        badges: ["SF2", "SF3", "SFZ"],
+        optional: false,
+    },
+];
+
+pub fn synth_options(current: SynthKind) -> (Vec<SlintComboItem>, Vec<SynthKind>) {
+    let available = SynthAvailability::cached();
+
+    SYNTHS
+        .iter()
+        .filter_map(|synth| {
+            let installed = match synth.kind {
+                SynthKind::Fluidsynth => available.fluidsynth,
+                SynthKind::Bassmidi => available.bassmidi,
+            };
+            let text = match installed {
+                true => synth.name.into(),
+                false => format!("{} (not installed)", synth.name).into(),
+            };
+            let [a, b, c] = synth.badges;
+            let item = SlintComboItem {
+                text,
+                badge_a: a.into(),
+                badge_b: b.into(),
+                badge_c: c.into(),
+            };
+            let listed = installed || !synth.optional || synth.kind == current;
+            listed.then_some((item, synth.kind))
+        })
+        .unzip()
 }
 
 pub fn synth_to_slint(synth: &SynthConfig, rem: &RememberedSettings) -> SlintSynthConfig {

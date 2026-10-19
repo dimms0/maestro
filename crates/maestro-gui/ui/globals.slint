@@ -13,6 +13,7 @@ import {
     LibraryAction,
     EventFlagKind,
     QuitStage,
+    SynthKind,
 } from "enums.slint";
 import {
     SlintSoundFont,
@@ -34,6 +35,7 @@ import {
     SlintErrorDialog,
     SlintIntegrationItem,
     SlintLibraryItem,
+    SlintComboItem,
 } from "structs.slint";
 
 export global AppState {
@@ -179,6 +181,12 @@ export global SettingsEditorState {
     // Labels for the converter's bitrate picker, filled from the rate list the
     // encoders accept. `converter_custom.bitrate_index` indexes into it.
     in-out property <[string]> bitrates;
+
+    // Synth picker rows. Missing core synths are listed as not installed, missing
+    // optional ones only when configured. `synth_kinds[i]` is the kind of row `i`.
+    in-out property <[SlintComboItem]> synth_options;
+    in-out property <[SynthKind]> synth_kinds;
+    in-out property <int> synth_index;
 
     callback open_settings(string);
     callback update_enabled(bool);

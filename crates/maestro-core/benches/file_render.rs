@@ -21,7 +21,7 @@ use maestro_core::{
             EventProcessorConfig, RendererConfig, SynthConfig, bassmidi::BASSMIDIConfig,
             fluidsynth::FluidSynthConfig,
         },
-        probe_libraries,
+        SynthAvailability,
     },
     soundfont::SoundFontList,
 };
@@ -257,15 +257,10 @@ fn generate_empty(seconds: u32, path: &Path) {
 }
 
 fn pick_synth() -> Option<SynthConfig> {
-    let libraries = probe_libraries();
-    let usable = |name: &str| {
-        libraries
-            .iter()
-            .any(|lib| lib.name == name && lib.error.is_none())
-    };
-
-    let bassmidi = usable("BASS") && usable("BASSMIDI");
-    let fluidsynth = usable("FluidSynth");
+    let SynthAvailability {
+        bassmidi,
+        fluidsynth,
+    } = SynthAvailability::probe();
 
     let bass_cfg = || {
         eprintln!("synth: BASSMIDI");

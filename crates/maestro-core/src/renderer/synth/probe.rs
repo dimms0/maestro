@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use crate::paths::{self, LibSource};
 
@@ -51,6 +52,34 @@ impl LibraryStatus {
             version,
             error: None,
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct SynthAvailability {
+    pub bassmidi: bool,
+    pub fluidsynth: bool,
+}
+
+impl SynthAvailability {
+    pub fn probe() -> Self {
+        let libraries = probe_libraries();
+        let usable = |name: &str| {
+            libraries
+                .iter()
+                .any(|lib| lib.name == name && lib.error.is_none())
+        };
+
+        Self {
+            bassmidi: usable("BASS") && usable("BASSMIDI"),
+            fluidsynth: usable("FluidSynth"),
+        }
+    }
+
+    // Probed once per process, so libraries installed afterwards need a restart
+    pub fn cached() -> Self {
+        static CACHED: OnceLock<SynthAvailability> = OnceLock::new();
+        *CACHED.get_or_init(Self::probe)
     }
 }
 

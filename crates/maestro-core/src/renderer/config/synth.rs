@@ -9,6 +9,10 @@ pub enum SynthConfig {
 
 impl Default for SynthConfig {
     fn default() -> Self {
-        Self::BASSMIDI(Default::default())
+        let available = crate::renderer::SynthAvailability::cached();
+        match !available.bassmidi && available.fluidsynth {
+            true => Self::FluidSynth(Default::default()),
+            false => Self::BASSMIDI(Default::default()),
+        }
     }
 }

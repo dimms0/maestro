@@ -17,7 +17,7 @@ import {
 } from "../../widgets.slint";
 import { SettingsEditorState } from "../../globals.slint";
 import { SynthKind } from "../../enums.slint";
-import { SlintSynthConfig, SlintComboItem } from "../../structs.slint";
+import { SlintSynthConfig } from "../../structs.slint";
 
 // Base for the per-synth panels: gives each one the scratch copy it edits and a
 // single `commit()` so no panel repeats the update plumbing.
@@ -767,22 +767,14 @@ component BassMidiPanel inherits SynthPanel {
 }
 
 // Synthesizer picker plus the parameter panel of whichever backend is active.
-// Adding a synth means adding a `SynthKind` variant, one entry in
-// `synth_options` and one panel below.
+// Adding a synth means adding a `SynthKind` variant, one entry in `SYNTHS`
+// (slint_conv.rs) and one panel below.
 export component SynthSection inherits MaestroCard {
     in property <bool> show_advanced: false;
 
     property <SlintSynthConfig> edit;
 
-    // The SoundFont formats each backend can load. Mirrors
-    // `SynthLibrary::supported_soundfont_types` — update both together.
-    property <[SlintComboItem]> synth_options: [
-        { text: "FluidSynth", badge_a: "SF2", badge_b: "SF3" },
-        { text: "BASSMIDI", badge_a: "SF2", badge_b: "SF3", badge_c: "SFZ" },
-    ];
-
     property <SynthKind> kind: SettingsEditorState.current_config.synth.kind;
-    property <int> kind_index: root.kind == SynthKind.fluidsynth ? 0 : 1;
 
     VerticalLayout {
         padding: 16px;
@@ -800,11 +792,11 @@ export component SynthSection inherits MaestroCard {
 
             MaestroSynthComboBox {
                 width: 260px;
-                items: root.synth_options;
-                current_index: root.kind_index;
+                items: SettingsEditorState.synth_options;
+                current_index: SettingsEditorState.synth_index;
                 selected(v, i) => {
                     root.edit = SettingsEditorState.current_config.synth;
-                    root.edit.kind = i == 0 ? SynthKind.fluidsynth : SynthKind.bassmidi;
+                    root.edit.kind = SettingsEditorState.synth_kinds[i];
                     SettingsEditorState.update_synth(root.edit);
                 }
             }
