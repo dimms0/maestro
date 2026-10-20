@@ -10,6 +10,7 @@ use crate::{
 pub(super) mod bassmidi;
 pub(super) mod fluidsynth;
 pub(super) mod probe;
+pub(super) mod svms;
 
 pub(super) type SoundFontHandle = usize;
 

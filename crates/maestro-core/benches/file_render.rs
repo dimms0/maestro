@@ -17,11 +17,11 @@ use maestro_core::{
     audio_params::AudioParameters,
     file_renderer::{MaestroFileRenderer, OutputSettings, PortMode},
     renderer::{
+        SynthAvailability,
         config::{
             EventProcessorConfig, RendererConfig, SynthConfig, bassmidi::BASSMIDIConfig,
             fluidsynth::FluidSynthConfig,
         },
-        SynthAvailability,
     },
     soundfont::SoundFontList,
 };
@@ -260,6 +260,7 @@ fn pick_synth() -> Option<SynthConfig> {
     let SynthAvailability {
         bassmidi,
         fluidsynth,
+        svms,
     } = SynthAvailability::probe();
 
     let bass_cfg = || {
@@ -281,6 +282,10 @@ fn pick_synth() -> Option<SynthConfig> {
     {
         Ok("bassmidi") | Ok("bass") if bassmidi => Some(bass_cfg()),
         Ok("fluidsynth") | Ok("fluid") if fluidsynth => Some(fluid_cfg()),
+        Ok("svms") if svms => {
+            eprintln!("synth: SuperVirtualMIDISynth");
+            Some(SynthConfig::SVMS(Default::default()))
+        }
         Ok(requested) => {
             eprintln!("skipped: MAESTRO_BENCH_SYNTH={requested} is not available");
             None

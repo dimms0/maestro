@@ -15,6 +15,7 @@ use crate::{
             SoundFontHandle, SynthLibrary,
             bassmidi::{BASSMIDILib, BASSMIDISynth},
             fluidsynth::{FluidSynthLib, FluidSynthSynth},
+            svms::{SVMSLib, SVMSSynth},
         },
     },
     soundfont::{SoundFont, SoundFontList},
@@ -89,6 +90,22 @@ impl MaestroRenderer {
                         audio_params,
                     );
                     ports.push(PortRenderer::FluidSynth(port));
+                }
+
+                library
+            }
+            SynthConfig::SVMS(cfg) => {
+                let library = SVMSLib::load()?;
+
+                for i in 0..port_count {
+                    let newsynth = SVMSSynth::new(library.clone(), &cfg, audio_params)?;
+                    let port = PortSynthManager::<SVMSSynth>::new(
+                        i,
+                        newsynth,
+                        evproc.clone(),
+                        audio_params,
+                    );
+                    ports.push(PortRenderer::SVMS(port));
                 }
 
                 library

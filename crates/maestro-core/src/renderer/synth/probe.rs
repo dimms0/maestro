@@ -8,6 +8,7 @@ use super::bassmidi::library::{
     BASSSharedLib,
 };
 use super::fluidsynth::library::{FLUIDSYNTH_LIB_CANDIDATES, FluidSynthSharedLib};
+use super::svms::library::{SVMS_LIB_FILENAME, SVMSSharedLib};
 
 pub struct LibraryStatus {
     pub name: &'static str,
@@ -62,6 +63,7 @@ impl LibraryStatus {
 pub struct SynthAvailability {
     pub bassmidi: bool,
     pub fluidsynth: bool,
+    pub svms: bool,
 }
 
 impl SynthAvailability {
@@ -76,6 +78,7 @@ impl SynthAvailability {
         Self {
             bassmidi: usable("BASS") && usable("BASSMIDI"),
             fluidsynth: usable("FluidSynth"),
+            svms: usable("SuperVirtualMIDISynth"),
         }
     }
 
@@ -114,6 +117,7 @@ pub fn probe_libraries() -> Vec<LibraryStatus> {
         probe_bassmidi(),
         probe_bassflac(),
         probe_fluidsynth(),
+        probe_svms(),
     ];
 
     drop(bass);
@@ -166,4 +170,29 @@ fn probe_fluidsynth() -> LibraryStatus {
         FLUIDSYNTH_LIB_CANDIDATES[0],
         last_err.map(|e| e.to_string()).unwrap_or_default(),
     )
+}
+
+fn probe_svms() -> LibraryStatus {
+    const NAME: &str = "SuperVirtualMIDISynth";
+
+    let status = match unsafe { SVMSSharedLib::new(SVMS_LIB_FILENAME) } {
+        Ok(lib) => match lib.interface() {
+            Ok(table) => LibraryStatus::found(
+                NAME,
+                SVMS_LIB_FILENAME,
+                lib.path.clone(),
+                Some(table.version()),
+            ),
+            Err(e) => LibraryStatus {
+                error: Some(e),
+                ..LibraryStatus::found(NAME, SVMS_LIB_FILENAME, lib.path.clone(), None)
+            },
+        },
+        Err(e) => LibraryStatus::missing(NAME, SVMS_LIB_FILENAME, e.to_string()),
+    };
+
+    LibraryStatus {
+        optional: true,
+        ..status
+    }
 }

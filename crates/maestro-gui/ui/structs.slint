@@ -102,6 +102,18 @@ export struct SlintSynthConfig {
     bass_sf_no_rampin: bool,
     bass_sf_sb_limits: bool,
     bass_sf_xg_drums: bool,
+
+    // --- SuperVirtualMIDISynth ---
+    svms_voice_limit: int,
+    svms_render_threads: int, // 0 = automatic
+    svms_render_backend: int, // 0 Auto, 1 Scalar, 2 SSE2, 3 AVX2
+    svms_master_volume: float,
+    svms_limiter: bool,
+    svms_limiter_algorithm: int, // 0 Classic, 1 Adaptive
+    svms_limiter_threshold: float,
+    svms_limiter_lookahead_ms: float,
+    svms_limiter_attack_ms: float,
+    svms_limiter_release_ms: float,
 }
 
 export struct SlintEventProcessorConfig {

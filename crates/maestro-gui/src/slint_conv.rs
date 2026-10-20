@@ -10,6 +10,7 @@ use maestro_core::{
             FluidSynthBankSelect, FluidSynthConfig, FluidSynthInterpolation,
             FluidSynthPortamentoTime, FluidSynthReverbEngine,
         },
+        svms::{SVMSConfig, SVMSLimiterAlgorithm, SVMSRenderBackend},
     },
 };
 
@@ -189,7 +190,7 @@ struct SynthEntry {
     optional: bool,
 }
 
-const SYNTHS: [SynthEntry; 2] = [
+const SYNTHS: [SynthEntry; 3] = [
     SynthEntry {
         kind: SynthKind::Fluidsynth,
         name: "FluidSynth",
@@ -202,6 +203,12 @@ const SYNTHS: [SynthEntry; 2] = [
         badges: ["SF2", "SF3", "SFZ"],
         optional: false,
     },
+    SynthEntry {
+        kind: SynthKind::Svms,
+        name: "SuperVirtualMIDISynth",
+        badges: ["SF2", "SFZ", ""],
+        optional: true,
+    },
 ];
 
 pub fn synth_options(current: SynthKind) -> (Vec<SlintComboItem>, Vec<SynthKind>) {
@@ -213,6 +220,7 @@ pub fn synth_options(current: SynthKind) -> (Vec<SlintComboItem>, Vec<SynthKind>
             let installed = match synth.kind {
                 SynthKind::Fluidsynth => available.fluidsynth,
                 SynthKind::Bassmidi => available.bassmidi,
+                SynthKind::Svms => available.svms,
             };
             let text = match installed {
                 true => synth.name.into(),
@@ -279,6 +287,10 @@ pub fn synth_to_slint(synth: &SynthConfig, rem: &RememberedSettings) -> SlintSyn
             out.bass_sf_sb_limits = c.sf_sb_limits;
             out.bass_sf_xg_drums = c.sf_xg_drums;
         }
+        SynthConfig::SVMS(c) => {
+            out.kind = SynthKind::Svms;
+            svms_to_slint(c, &mut out);
+        }
     }
 
     out
@@ -333,10 +345,26 @@ fn defaults_slint_synth(rem: &RememberedSettings) -> SlintSynthConfig {
         bass_sf_no_rampin: b.sf_no_rampin,
         bass_sf_sb_limits: b.sf_sb_limits,
         bass_sf_xg_drums: b.sf_xg_drums,
+
+        ..Default::default()
     };
 
     threading_to_slint(b.multithreading, rem, &mut out);
+    svms_to_slint(&SVMSConfig::default(), &mut out);
     out
+}
+
+fn svms_to_slint(c: &SVMSConfig, out: &mut SlintSynthConfig) {
+    out.svms_voice_limit = c.voice_limit as i32;
+    out.svms_render_threads = c.render_threads as i32;
+    out.svms_render_backend = i32::from(c.render_backend);
+    out.svms_master_volume = c.master_volume;
+    out.svms_limiter = c.limiter_enabled;
+    out.svms_limiter_algorithm = i32::from(c.limiter_algorithm);
+    out.svms_limiter_threshold = c.limiter_threshold;
+    out.svms_limiter_lookahead_ms = c.limiter_lookahead_ms;
+    out.svms_limiter_attack_ms = c.limiter_attack_ms;
+    out.svms_limiter_release_ms = c.limiter_release_ms;
 }
 
 pub fn slint_to_synth(sl: &SlintSynthConfig, rem: &mut RememberedSettings) -> SynthConfig {
@@ -395,6 +423,23 @@ pub fn slint_to_synth(sl: &SlintSynthConfig, rem: &mut RememberedSettings) -> Sy
             sf_sb_limits: sl.bass_sf_sb_limits,
             sf_xg_drums: sl.bass_sf_xg_drums,
         }),
+        SynthKind::Svms => SynthConfig::SVMS(
+            SVMSConfig {
+                voice_limit: sl.svms_voice_limit.max(1) as u32,
+                render_threads: sl.svms_render_threads.max(0) as u32,
+                render_backend: SVMSRenderBackend::try_from(sl.svms_render_backend)
+                    .unwrap_or_default(),
+                master_volume: sl.svms_master_volume,
+                limiter_enabled: sl.svms_limiter,
+                limiter_algorithm: SVMSLimiterAlgorithm::try_from(sl.svms_limiter_algorithm)
+                    .unwrap_or_default(),
+                limiter_threshold: sl.svms_limiter_threshold,
+                limiter_lookahead_ms: sl.svms_limiter_lookahead_ms,
+                limiter_attack_ms: sl.svms_limiter_attack_ms,
+                limiter_release_ms: sl.svms_limiter_release_ms,
+            }
+            .clamped(),
+        ),
     }
 }
 

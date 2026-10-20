@@ -6,8 +6,8 @@ use crate::{
     SlintPortAssignment, SlintRealtimeConfig, SlintRendererConfig, SlintSoundFont,
     SoundfontEditorState,
     slint_conv::{
-        converter_custom_to_slint, evproc_to_slint, postproc_to_slint, synth_options, synth_to_slint,
-        system_custom_to_slint,
+        converter_custom_to_slint, evproc_to_slint, postproc_to_slint, synth_options,
+        synth_to_slint, system_custom_to_slint,
     },
     state::{AppData, ConfigComponent, app_id},
 };
