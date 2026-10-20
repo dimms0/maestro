@@ -34,8 +34,15 @@ fn to_slint(status: &LibraryStatus) -> SlintLibraryItem {
     }
 }
 
+fn listed_libraries() -> Vec<LibraryStatus> {
+    probe_libraries()
+        .into_iter()
+        .filter(|l| !l.optional)
+        .collect()
+}
+
 pub fn probe() -> Vec<SlintLibraryItem> {
-    probe_libraries().iter().map(to_slint).collect()
+    listed_libraries().iter().map(to_slint).collect()
 }
 
 pub fn act(index: i32, action: LibraryAction) -> Result<(), String> {
@@ -46,7 +53,7 @@ pub fn act(index: i32, action: LibraryAction) -> Result<(), String> {
         return super::open_path(&dir.to_string_lossy());
     }
 
-    let libraries = probe_libraries();
+    let libraries = listed_libraries();
     let status = usize::try_from(index)
         .ok()
         .and_then(|i| libraries.get(i))

@@ -16,6 +16,7 @@ pub struct LibraryStatus {
     pub path: Option<PathBuf>,
     pub version: Option<String>,
     pub error: Option<String>,
+    pub optional: bool,
 }
 
 impl LibraryStatus {
@@ -35,6 +36,7 @@ impl LibraryStatus {
             path: None,
             version: None,
             error: Some(error),
+            optional: false,
         }
     }
 
@@ -51,6 +53,7 @@ impl LibraryStatus {
             path,
             version,
             error: None,
+            optional: false,
         }
     }
 }
