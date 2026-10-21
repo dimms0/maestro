@@ -3,8 +3,8 @@ use std::path::Path;
 use slint::{ComponentHandle, Global};
 
 use crate::{
-    AppState, MainWindow, RendererState, SettingsEditorState, SoundfontEditorState,
-    StandaloneMode, Tab,
+    AppState, MainWindow, RendererState, SettingsEditorState, SoundfontEditorState, StandaloneMode,
+    Tab,
     app::{AppContext, quit},
     errors,
     state::AppData,

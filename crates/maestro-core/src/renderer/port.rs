@@ -9,6 +9,7 @@ use crate::{
         sender::PortEventSender,
         synth::{
             SoundFontHandle, SynthModule, bassmidi::BASSMIDISynth, fluidsynth::FluidSynthSynth,
+            svms::SVMSSynth,
         },
     },
 };
@@ -17,6 +18,7 @@ use crate::{
 pub(super) enum PortRenderer {
     BASSMIDI(PortSynthManager<BASSMIDISynth>),
     FluidSynth(PortSynthManager<FluidSynthSynth>),
+    SVMS(PortSynthManager<SVMSSynth>),
 }
 
 impl PortRenderer {
@@ -24,6 +26,7 @@ impl PortRenderer {
         match self {
             Self::BASSMIDI(mgr) => mgr.process_event(event),
             Self::FluidSynth(mgr) => mgr.process_event(event),
+            Self::SVMS(mgr) => mgr.process_event(event),
         }
     }
 
@@ -31,6 +34,7 @@ impl PortRenderer {
         match self {
             Self::BASSMIDI(mgr) => mgr.read_audio(dest),
             Self::FluidSynth(mgr) => mgr.read_audio(dest),
+            Self::SVMS(mgr) => mgr.read_audio(dest),
         }
     }
 
@@ -38,6 +42,7 @@ impl PortRenderer {
         match self {
             Self::BASSMIDI(mgr) => mgr.set_soundfonts(handles),
             Self::FluidSynth(mgr) => mgr.set_soundfonts(handles),
+            Self::SVMS(mgr) => mgr.set_soundfonts(handles),
         }
     }
 
@@ -45,6 +50,7 @@ impl PortRenderer {
         match (self, config) {
             (Self::BASSMIDI(mgr), SynthConfig::BASSMIDI(cfg)) => mgr.synth.reload_config(cfg),
             (Self::FluidSynth(mgr), SynthConfig::FluidSynth(cfg)) => mgr.synth.reload_config(cfg),
+            (Self::SVMS(mgr), SynthConfig::SVMS(cfg)) => mgr.synth.reload_config(cfg),
             _ => false,
         }
     }
@@ -53,6 +59,7 @@ impl PortRenderer {
         match self {
             Self::BASSMIDI(mgr) => mgr.reset(),
             Self::FluidSynth(mgr) => mgr.reset(),
+            Self::SVMS(mgr) => mgr.reset(),
         }
     }
 
@@ -60,6 +67,7 @@ impl PortRenderer {
         match self {
             Self::BASSMIDI(mgr) => mgr.voice_count(),
             Self::FluidSynth(mgr) => mgr.voice_count(),
+            Self::SVMS(mgr) => mgr.voice_count(),
         }
     }
 
@@ -67,6 +75,7 @@ impl PortRenderer {
         match self {
             Self::BASSMIDI(mgr) => mgr.get_buffer(),
             Self::FluidSynth(mgr) => mgr.get_buffer(),
+            Self::SVMS(mgr) => mgr.get_buffer(),
         }
     }
 }

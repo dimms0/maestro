@@ -38,7 +38,11 @@ pub fn probe() -> SlintIntegrationItem {
             IntegrationStatus::Ok,
         )
     } else {
-        item("Name taken", FOREIGN_HINT.to_string(), IntegrationStatus::Warning)
+        item(
+            "Name taken",
+            FOREIGN_HINT.to_string(),
+            IntegrationStatus::Warning,
+        )
     }
 }
 
@@ -51,7 +55,9 @@ pub fn act(action: InstallAction) -> Result<(), String> {
     match privileged::elevate_self(command) {
         Ok(0) => Ok(()),
         Ok(2) => Err(FOREIGN_HINT.to_string()),
-        Ok(_) => Err("The Maestro API library could not be linked into the system path.".to_string()),
+        Ok(_) => {
+            Err("The Maestro API library could not be linked into the system path.".to_string())
+        }
         Err(e) => Err(format!(
             "Could not run the operation with elevated rights: {e}"
         )),

@@ -766,6 +766,73 @@ component BassMidiPanel inherits SynthPanel {
     }
 }
 
+// SuperVirtualMIDISynth renders through isolated offline sessions: each port
+// owns one session holding a single SoundFont, and every setting is fixed when
+// the session is created, so any change rebuilds the synthesizer.
+component SVMSPanel inherits SynthPanel {
+    in property <bool> show_advanced: false;
+
+    edit: SettingsEditorState.current_config.synth;
+
+    SectionCard {
+        title: "General";
+
+        Setting {
+            text: "Voice Limit";
+            subtext: "The maximum number of voices SuperVirtualMIDISynth plays at once. When the limit is reached, existing voices are stolen to make room for new notes. Every port loads its own copy of the SoundFont and voice pool.";
+
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 1;
+                maximum: 524288;
+                value: SettingsEditorState.current_config.synth.svms_voice_limit;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.svms_voice_limit = v;
+                    root.commit();
+                }
+            }
+        }
+    }
+
+    SectionCard {
+        title: "Performance";
+
+        Setting {
+            text: "Render Threads";
+            subtext: "The number of threads each port renders its voices with. 0 picks automatically (up to 16). Event ordering and voice allocation always stay on one thread; helpers only render voices.";
+
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 0;
+                maximum: 64;
+                value: SettingsEditorState.current_config.synth.svms_render_threads;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.svms_render_threads = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Render Backend";
+            subtext: "The instruction set used for voice rendering. \"Automatic\" picks the fastest one this CPU supports. Choosing one the CPU lacks makes the synthesizer fail to start.";
+
+            MaestroComboBox {
+                width: 150px;
+                model: ["Automatic", "Scalar", "SSE2", "AVX2"];
+                current_index: SettingsEditorState.current_config.synth.svms_render_backend;
+                selected(v, i) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.svms_render_backend = i;
+                    root.commit();
+                }
+            }
+        }
+    }
+}
+
 // Synthesizer picker plus the parameter panel of whichever backend is active.
 // Adding a synth means adding a `SynthKind` variant, one entry in `SYNTHS`
 // (slint_conv.rs) and one panel below.
@@ -806,6 +873,9 @@ export component SynthSection inherits MaestroCard {
             show_advanced: root.show_advanced;
         }
         if (root.kind == SynthKind.bassmidi): BassMidiPanel {
+            show_advanced: root.show_advanced;
+        }
+        if (root.kind == SynthKind.svms): SVMSPanel {
             show_advanced: root.show_advanced;
         }
     }
