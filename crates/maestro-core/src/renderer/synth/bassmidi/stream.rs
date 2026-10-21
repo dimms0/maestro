@@ -131,6 +131,9 @@ impl BASSMIDIStream {
                 0
             };
 
+        unsafe {
+            (lib.bass.BASS_SetDevice)(BASS_DEVICE_NOSOUND);
+        }
         let stream =
             unsafe { (lib.bassmidi.BASS_MIDI_StreamCreate)(16, flags, audio_params.sample_rate) };
 

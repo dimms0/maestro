@@ -49,10 +49,9 @@ pub fn module_dir() -> Option<PathBuf> {
 
 #[cfg(windows)]
 fn module_path() -> Option<PathBuf> {
-    use std::os::windows::ffi::OsStringExt;
     use windows_sys::Win32::System::LibraryLoader::{
         GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-        GetModuleFileNameW, GetModuleHandleExW,
+        GetModuleHandleExW,
     };
 
     let mut module = std::ptr::null_mut();
@@ -66,6 +65,14 @@ fn module_path() -> Option<PathBuf> {
     if ok == 0 {
         return None;
     }
+
+    module_file_name(module)
+}
+
+#[cfg(windows)]
+fn module_file_name(module: windows_sys::Win32::Foundation::HMODULE) -> Option<PathBuf> {
+    use std::os::windows::ffi::OsStringExt;
+    use windows_sys::Win32::System::LibraryLoader::GetModuleFileNameW;
 
     let mut buf = vec![0u16; 1024];
     loop {
@@ -262,6 +269,15 @@ pub fn resolve_lib_for_arch(arch: &str, filename: &str) -> Option<PathBuf> {
 pub fn load_library(
     filename: &str,
 ) -> Result<(libloading::Library, Option<PathBuf>), libloading::Error> {
+    // microslop core
+    #[cfg(windows)]
+    if let Ok(lib) = libloading::os::windows::Library::open_already_loaded(filename) {
+        let module = lib.into_raw();
+        let path = module_file_name(module as _);
+        let lib = unsafe { libloading::os::windows::Library::from_raw(module) };
+        return Ok((lib.into(), path));
+    }
+
     let mut found_err = None;
     for dir in lib_dirs() {
         let path = dir.join(filename);
