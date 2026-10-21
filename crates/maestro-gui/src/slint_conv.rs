@@ -10,7 +10,7 @@ use maestro_core::{
             FluidSynthBankSelect, FluidSynthConfig, FluidSynthInterpolation,
             FluidSynthPortamentoTime, FluidSynthReverbEngine,
         },
-        svms::{SVMSConfig, SVMSLimiterAlgorithm, SVMSRenderBackend},
+        svms::{SVMSConfig, SVMSRenderBackend},
     },
 };
 
@@ -358,13 +358,6 @@ fn svms_to_slint(c: &SVMSConfig, out: &mut SlintSynthConfig) {
     out.svms_voice_limit = c.voice_limit as i32;
     out.svms_render_threads = c.render_threads as i32;
     out.svms_render_backend = i32::from(c.render_backend);
-    out.svms_master_volume = c.master_volume;
-    out.svms_limiter = c.limiter_enabled;
-    out.svms_limiter_algorithm = i32::from(c.limiter_algorithm);
-    out.svms_limiter_threshold = c.limiter_threshold;
-    out.svms_limiter_lookahead_ms = c.limiter_lookahead_ms;
-    out.svms_limiter_attack_ms = c.limiter_attack_ms;
-    out.svms_limiter_release_ms = c.limiter_release_ms;
 }
 
 pub fn slint_to_synth(sl: &SlintSynthConfig, rem: &mut RememberedSettings) -> SynthConfig {
@@ -429,14 +422,6 @@ pub fn slint_to_synth(sl: &SlintSynthConfig, rem: &mut RememberedSettings) -> Sy
                 render_threads: sl.svms_render_threads.max(0) as u32,
                 render_backend: SVMSRenderBackend::try_from(sl.svms_render_backend)
                     .unwrap_or_default(),
-                master_volume: sl.svms_master_volume,
-                limiter_enabled: sl.svms_limiter,
-                limiter_algorithm: SVMSLimiterAlgorithm::try_from(sl.svms_limiter_algorithm)
-                    .unwrap_or_default(),
-                limiter_threshold: sl.svms_limiter_threshold,
-                limiter_lookahead_ms: sl.svms_limiter_lookahead_ms,
-                limiter_attack_ms: sl.svms_limiter_attack_ms,
-                limiter_release_ms: sl.svms_limiter_release_ms,
             }
             .clamped(),
         ),

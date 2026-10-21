@@ -793,25 +793,10 @@ component SVMSPanel inherits SynthPanel {
                 }
             }
         }
+    }
 
-        Setting {
-            text: "Master Volume";
-            subtext: "Output gain applied by the synthesizer, before the limiter.";
-
-            MaestroSpinBox {
-                width: 150px;
-                minimum: 0;
-                maximum: 4;
-                step: 0.05;
-                decimals: 2;
-                value: SettingsEditorState.current_config.synth.svms_master_volume;
-                edited(v) => {
-                    root.edit = SettingsEditorState.current_config.synth;
-                    root.edit.svms_master_volume = v;
-                    root.commit();
-                }
-            }
-        }
+    SectionCard {
+        title: "Performance";
 
         Setting {
             text: "Render Threads";
@@ -841,120 +826,6 @@ component SVMSPanel inherits SynthPanel {
                 selected(v, i) => {
                     root.edit = SettingsEditorState.current_config.synth;
                     root.edit.svms_render_backend = i;
-                    root.commit();
-                }
-            }
-        }
-    }
-
-    SectionCard {
-        title: "Limiter";
-
-        Setting {
-            text: "Enable Limiter";
-            subtext: "Keeps the output from clipping when many voices play at once.";
-
-            MaestroSwitch {
-                checked: SettingsEditorState.current_config.synth.svms_limiter;
-                toggled(v) => {
-                    root.edit = SettingsEditorState.current_config.synth;
-                    root.edit.svms_limiter = v;
-                    root.commit();
-                }
-            }
-        }
-
-        Setting {
-            text: "Algorithm";
-            subtext: "\"Classic\" is a plain peak limiter, \"Adaptive\" adjusts its release to the material.";
-
-            MaestroComboBox {
-                width: 150px;
-                model: ["Classic", "Adaptive"];
-                enabled: SettingsEditorState.current_config.synth.svms_limiter;
-                current_index: SettingsEditorState.current_config.synth.svms_limiter_algorithm;
-                selected(v, i) => {
-                    root.edit = SettingsEditorState.current_config.synth;
-                    root.edit.svms_limiter_algorithm = i;
-                    root.commit();
-                }
-            }
-        }
-
-        Setting {
-            text: "Threshold";
-            subtext: "The peak level the limiter holds the output under.";
-
-            MaestroSpinBox {
-                width: 150px;
-                minimum: 0.1;
-                maximum: 1;
-                step: 0.01;
-                decimals: 2;
-                enabled: SettingsEditorState.current_config.synth.svms_limiter;
-                value: SettingsEditorState.current_config.synth.svms_limiter_threshold;
-                edited(v) => {
-                    root.edit = SettingsEditorState.current_config.synth;
-                    root.edit.svms_limiter_threshold = v;
-                    root.commit();
-                }
-            }
-        }
-
-        Setting {
-            text: "Lookahead (ms)";
-            subtext: "How far ahead the limiter looks for peaks. Longer lookahead catches transients more smoothly.";
-
-            MaestroSpinBox {
-                width: 150px;
-                minimum: 0;
-                maximum: 20;
-                step: 0.5;
-                decimals: 1;
-                enabled: SettingsEditorState.current_config.synth.svms_limiter;
-                value: SettingsEditorState.current_config.synth.svms_limiter_lookahead_ms;
-                edited(v) => {
-                    root.edit = SettingsEditorState.current_config.synth;
-                    root.edit.svms_limiter_lookahead_ms = v;
-                    root.commit();
-                }
-            }
-        }
-
-        Setting {
-            text: "Attack (ms)";
-            subtext: "How quickly the limiter reduces gain once a peak is detected.";
-
-            MaestroSpinBox {
-                width: 150px;
-                minimum: 0.01;
-                maximum: 100;
-                step: 0.1;
-                decimals: 2;
-                enabled: SettingsEditorState.current_config.synth.svms_limiter;
-                value: SettingsEditorState.current_config.synth.svms_limiter_attack_ms;
-                edited(v) => {
-                    root.edit = SettingsEditorState.current_config.synth;
-                    root.edit.svms_limiter_attack_ms = v;
-                    root.commit();
-                }
-            }
-        }
-
-        Setting {
-            text: "Release (ms)";
-            subtext: "How quickly the gain recovers after a peak has passed.";
-
-            MaestroSpinBox {
-                width: 150px;
-                minimum: 1;
-                maximum: 5000;
-                step: 10;
-                enabled: SettingsEditorState.current_config.synth.svms_limiter;
-                value: SettingsEditorState.current_config.synth.svms_limiter_release_ms;
-                edited(v) => {
-                    root.edit = SettingsEditorState.current_config.synth;
-                    root.edit.svms_limiter_release_ms = v;
                     root.commit();
                 }
             }

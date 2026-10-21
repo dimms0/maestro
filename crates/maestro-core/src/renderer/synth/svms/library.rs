@@ -20,7 +20,6 @@ pub(crate) const SVMS_LIB_FILENAME: &str = "libsvmsapi.dylib";
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 pub(crate) const SVMS_LIB_FILENAME: &str = "libsvmsapi.so";
 
-// Mirrors include/svmsapi.h (SVMS native API, ABI 1)
 pub(crate) type SVMSSession = u64;
 pub(crate) type SVMSResult = i32;
 
@@ -28,6 +27,8 @@ pub(crate) const SVMS_RESULT_OK: SVMSResult = 0;
 const SVMS_ABI_VERSION_1: u32 = 1;
 pub(crate) const SVMS_STRUCT_VERSION_1: u32 = 1;
 const SVMS_CAP_ISOLATED_OFFLINE_SESSIONS: u64 = 1 << 10;
+const SVMS_CAP_OFFLINE_SOUNDFONT_STACK: u64 = 1 << 23;
+pub(crate) const SVMS_MAX_SOUNDFONT_STACK: usize = 16;
 pub(crate) const SVMS_SESSION_OFFLINE_RENDER: u32 = 1;
 
 #[repr(C)]
@@ -42,6 +43,7 @@ pub(crate) struct SVMSOfflineSessionConfig {
     pub render_threads: u32,
     pub max_block_frames: u32,
     pub render_backend: u32,
+    // Limiter fields are ABI layout only; left zero, which disables it
     pub limiter_enabled: u32,
     pub limiter_algorithm: u32,
     pub master_volume: f32,
@@ -60,7 +62,6 @@ pub(crate) struct SVMSOfflineEvent {
     pub reserved: [u32; 2],
 }
 
-// Only the leading v1 fields; the runtime copies at most struct_size bytes.
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub(crate) struct SVMSOfflineTelemetry {
@@ -78,15 +79,22 @@ pub(crate) struct SVMSOfflineTelemetry {
     pub reserved: [u32; 2],
 }
 
+#[repr(C)]
+pub(crate) struct SVMSOfflineSoundFontEntry {
+    pub struct_size: u32,
+    pub struct_version: u32,
+    pub path_utf8: *const c_char,
+    pub bank: i32,
+    pub program: i32,
+    pub reserved: [u32; 4],
+}
+
 const _: () = assert!(size_of::<SVMSOfflineSessionConfig>() == 80);
 const _: () = assert!(size_of::<SVMSOfflineEvent>() == 16);
 const _: () = assert!(size_of::<SVMSOfflineTelemetry>() == 64);
 
 type UnusedFn = Option<unsafe extern "C" fn()>;
 
-// The leading part of SVMS_Interface, up to the offline-session functions.
-// The table is append-only, so a runtime that reports at least this size
-// fills every field below.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(crate) struct SVMSInterface {
@@ -134,6 +142,32 @@ pub(crate) struct SVMSInterface {
     >,
     pub get_offline_telemetry:
         Option<unsafe extern "C" fn(SVMSSession, *mut SVMSOfflineTelemetry) -> SVMSResult>,
+    pub get_config_json: UnusedFn,
+    pub patch_config_json: UnusedFn,
+    pub get_config_path_utf8: UnusedFn,
+    pub cancel_session_submissions: UnusedFn,
+    pub create_realtime_session: UnusedFn,
+    pub start_session_audio: UnusedFn,
+    pub stop_session_audio: UnusedFn,
+    pub send_runtime_command: UnusedFn,
+    pub get_telemetry_v2: UnusedFn,
+    pub enable_callback_trace: UnusedFn,
+    pub read_callback_trace: UnusedFn,
+    pub send_midi_stream: UnusedFn,
+    pub send_short_batch_direct: UnusedFn,
+    pub get_telemetry_v3: UnusedFn,
+    pub set_live_params: UnusedFn,
+    pub get_live_params: UnusedFn,
+    pub get_schema_json: UnusedFn,
+    pub get_param_value: UnusedFn,
+    pub set_param_value: UnusedFn,
+    pub get_metric_value: UnusedFn,
+    pub run_command: UnusedFn,
+    pub set_offline_soundfonts: UnusedFn,
+    pub set_offline_channel_soundfont: UnusedFn,
+    pub set_offline_soundfont_entries: Option<
+        unsafe extern "C" fn(SVMSSession, *const SVMSOfflineSoundFontEntry, u32) -> SVMSResult,
+    >,
 }
 
 /// The function pointers a usable runtime is guaranteed to provide.
@@ -156,6 +190,9 @@ pub(crate) struct SVMSApi {
     ) -> SVMSResult,
     pub get_offline_telemetry:
         unsafe extern "C" fn(SVMSSession, *mut SVMSOfflineTelemetry) -> SVMSResult,
+    pub set_offline_soundfont_entries: Option<
+        unsafe extern "C" fn(SVMSSession, *const SVMSOfflineSoundFontEntry, u32) -> SVMSResult,
+    >,
 }
 
 define_lib_wrapper!(SVMSSharedLib, {
@@ -180,8 +217,7 @@ impl SVMSSharedLib {
                 table.abi_version
             ));
         }
-        if table.struct_size < size || table.capabilities & SVMS_CAP_ISOLATED_OFFLINE_SESSIONS == 0
-        {
+        if table.capabilities & SVMS_CAP_ISOLATED_OFFLINE_SESSIONS == 0 {
             return Err(
                 "This SuperVirtualMIDISynth runtime does not support offline \
                         sessions (V3 or newer required)"
@@ -203,6 +239,9 @@ impl SVMSSharedLib {
             create_offline_session: table.create_offline_session.ok_or_else(missing)?,
             render_offline: table.render_offline.ok_or_else(missing)?,
             get_offline_telemetry: table.get_offline_telemetry.ok_or_else(missing)?,
+            set_offline_soundfont_entries: table
+                .set_offline_soundfont_entries
+                .filter(|_| table.capabilities & SVMS_CAP_OFFLINE_SOUNDFONT_STACK != 0),
         })
     }
 }
@@ -219,7 +258,14 @@ impl SVMSInterface {
 pub(crate) struct SVMSLib {
     _fns: SVMSSharedLib,
     pub api: SVMSApi,
-    soundfonts: RwLock<Arena<CString>>,
+    soundfonts: RwLock<Arena<SVMSFont>>,
+}
+
+#[derive(Clone)]
+pub(crate) struct SVMSFont {
+    pub path: CString,
+    pub bank: i32,
+    pub program: i32,
 }
 
 impl SVMSLib {
@@ -253,7 +299,7 @@ impl SVMSLib {
         }))
     }
 
-    pub fn get_soundfont(&self, handle: &SoundFontHandle) -> Option<CString> {
+    pub fn get_soundfont(&self, handle: &SoundFontHandle) -> Option<SVMSFont> {
         self.soundfonts.read().unwrap().get(*handle).cloned()
     }
 }
@@ -283,9 +329,21 @@ impl SynthLibrary for SVMSLib {
                 RendererError::SoundFont(format!("Invalid SoundFont path: {:?}", soundfont.path))
             })?;
 
-        // SVMS loads the font itself when a session is created, it has no
-        // shared font pool and no bank/preset remapping.
-        Ok(self.soundfonts.write().unwrap().insert(path))
+        // SVMS loads the fonts itself when a session is created, it has no
+        // shared font pool. An entry only answers the bank/program it is
+        // pinned to; the default bank 0 with no preset pins nothing.
+        let pinned = soundfont.bank > 0 || soundfont.preset >= 0;
+        let font = SVMSFont {
+            path,
+            bank: if pinned {
+                soundfont.bank.max(0) as i32
+            } else {
+                -1
+            },
+            program: soundfont.preset.max(-1) as i32,
+        };
+
+        Ok(self.soundfonts.write().unwrap().insert(font))
     }
 
     fn free_soundfont_handle(&self, handle: SoundFontHandle) {

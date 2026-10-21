@@ -1,4 +1,4 @@
-use std::{ffi::CString, sync::Arc};
+use std::sync::Arc;
 
 use crate::{
     audio_params::{AudioParameters, ChannelCount},
@@ -12,15 +12,15 @@ use crate::{
             svms::{
                 SVMSLib,
                 library::{
-                    SVMS_RESULT_OK, SVMS_SESSION_OFFLINE_RENDER, SVMS_STRUCT_VERSION_1,
-                    SVMSOfflineEvent, SVMSOfflineSessionConfig, SVMSOfflineTelemetry, SVMSSession,
+                    SVMS_MAX_SOUNDFONT_STACK, SVMS_RESULT_OK, SVMS_SESSION_OFFLINE_RENDER,
+                    SVMS_STRUCT_VERSION_1, SVMSFont, SVMSOfflineEvent, SVMSOfflineSessionConfig,
+                    SVMSOfflineSoundFontEntry, SVMSOfflineTelemetry, SVMSSession,
                 },
             },
         },
     },
 };
 
-// Longest single render call; larger reads are split into several calls.
 const MAX_BLOCK_FRAMES: u32 = 8192;
 
 fn pack(event: MaestroEvent) -> Option<u32> {
@@ -48,7 +48,6 @@ fn pack(event: MaestroEvent) -> Option<u32> {
 
 pub(crate) struct SVMSSynth {
     lib: Arc<SVMSLib>,
-    // None until a SoundFont is set, SVMS cannot create a session without one
     session: Option<SVMSSession>,
 
     sample_rate: u32,
@@ -56,7 +55,6 @@ pub(crate) struct SVMSSynth {
     config: SVMSConfig,
 
     event_buf: EventBuffer,
-    // Events of the span being assembled, offsets relative to the read start
     pending: Vec<SVMSOfflineEvent>,
     left: Vec<f32>,
     right: Vec<f32>,
@@ -83,7 +81,7 @@ impl SVMSSynth {
         })
     }
 
-    fn create_session(&self, soundfont: &CString) -> Result<SVMSSession, RendererError> {
+    fn create_session(&self, fonts: &[SVMSFont]) -> Result<SVMSSession, RendererError> {
         let c = &self.config;
         let session_config = SVMSOfflineSessionConfig {
             struct_size: size_of::<SVMSOfflineSessionConfig>() as u32,
@@ -95,16 +93,12 @@ impl SVMSSynth {
             render_threads: c.render_threads,
             max_block_frames: MAX_BLOCK_FRAMES,
             render_backend: i32::from(c.render_backend) as u32,
-            limiter_enabled: c.limiter_enabled as u32,
-            limiter_algorithm: i32::from(c.limiter_algorithm) as u32,
-            master_volume: c.master_volume,
-            limiter_threshold: c.limiter_threshold,
-            limiter_lookahead_ms: c.limiter_lookahead_ms,
-            limiter_attack_ms: c.limiter_attack_ms,
-            limiter_release_ms: c.limiter_release_ms,
+            master_volume: 1.0,
             reserved: [0; 4],
+            ..Default::default()
         };
 
+        let soundfont = &fonts[0].path;
         let mut session = 0;
         let res = unsafe {
             (self.lib.api.create_offline_session)(&session_config, soundfont.as_ptr(), &mut session)
@@ -117,6 +111,30 @@ impl SVMSSynth {
             )));
         }
 
+        if let Some(set_entries) = self.lib.api.set_offline_soundfont_entries
+            && (fonts.len() > 1 || fonts[0].bank >= 0 || fonts[0].program >= 0)
+        {
+            let entries: Vec<_> = fonts
+                .iter()
+                .map(|f| SVMSOfflineSoundFontEntry {
+                    struct_size: size_of::<SVMSOfflineSoundFontEntry>() as u32,
+                    struct_version: SVMS_STRUCT_VERSION_1,
+                    path_utf8: f.path.as_ptr(),
+                    bank: f.bank,
+                    program: f.program,
+                    reserved: [0; 4],
+                })
+                .collect();
+
+            let res = unsafe { set_entries(session, entries.as_ptr(), entries.len() as u32) };
+            if res != SVMS_RESULT_OK {
+                unsafe { (self.lib.api.destroy_session)(session) };
+                return Err(RendererError::SoundFont(format!(
+                    "SuperVirtualMIDISynth could not load the SoundFont stack (code {res})"
+                )));
+            }
+        }
+
         Ok(session)
     }
 
@@ -126,8 +144,6 @@ impl SVMSSynth {
         }
     }
 
-    // Renders frames [from, to) of the current read into the planar scratch,
-    // applying every pending event. Events at `to` take effect at its boundary.
     fn render_span(&mut self, session: SVMSSession, from: usize, to: usize) {
         let mut start = from;
         let mut next = 0;
@@ -182,13 +198,19 @@ impl SynthModule for SVMSSynth {
     fn set_soundfonts(&mut self, handles: &[SoundFontHandle]) -> Result<(), RendererError> {
         self.destroy_session();
 
-        // A session holds exactly one font, so only the highest priority one
-        // is used.
-        let Some(path) = handles.iter().find_map(|h| self.lib.get_soundfont(h)) else {
+        let mut fonts: Vec<_> = handles
+            .iter()
+            .filter_map(|h| self.lib.get_soundfont(h))
+            .take(SVMS_MAX_SOUNDFONT_STACK)
+            .collect();
+        if self.lib.api.set_offline_soundfont_entries.is_none() {
+            fonts.truncate(1);
+        }
+        if fonts.is_empty() {
             return Ok(());
-        };
+        }
 
-        self.session = Some(self.create_session(&path)?);
+        self.session = Some(self.create_session(&fonts)?);
         Ok(())
     }
 
