@@ -24,6 +24,21 @@ fn item(detail: &str, hint: String, status: IntegrationStatus) -> SlintIntegrati
 
 pub fn probe() -> KdmapiState {
     let target = privileged::kdmapi_target();
+    let links = privileged::kdmapi_links();
+
+    if links
+        .iter()
+        .any(|(_, t)| privileged::is_present(t) && !privileged::is_maestro_lib(t))
+    {
+        return KdmapiState {
+            item: item(
+                "Owned by OmniMIDI",
+                FOREIGN_HINT.to_string(),
+                IntegrationStatus::Warning,
+            ),
+            blocked: true,
+        };
+    }
 
     if !target.exists() {
         let hint = match paths::resolve_lib(KDMAPI_FILENAME) {
@@ -39,7 +54,13 @@ pub fn probe() -> KdmapiState {
         };
     }
 
-    if privileged::is_maestro_lib(&target) {
+    let broken: Vec<String> = links
+        .iter()
+        .filter(|(src, t)| src.is_some() && !t.exists())
+        .map(|(_, t)| t.display().to_string())
+        .collect();
+
+    if broken.is_empty() {
         KdmapiState {
             item: item(
                 "Installed",
@@ -51,11 +72,14 @@ pub fn probe() -> KdmapiState {
     } else {
         KdmapiState {
             item: item(
-                "Owned by OmniMIDI",
-                FOREIGN_HINT.to_string(),
+                "Incomplete",
+                format!(
+                    "Missing from {}. Repair to link it again.",
+                    broken.join(", ")
+                ),
                 IntegrationStatus::Warning,
             ),
-            blocked: true,
+            blocked: false,
         }
     }
 }

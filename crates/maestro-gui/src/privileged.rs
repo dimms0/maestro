@@ -80,12 +80,11 @@ pub fn is_maestro_api(path: &Path) -> bool {
 }
 
 fn has_marker(path: &Path, marker: &[u8]) -> bool {
-    let exports_marker = unsafe {
-        libloading::Library::new(path)
-            .is_ok_and(|lib| lib.get::<unsafe extern "C" fn() -> u32>(marker).is_ok())
-    };
-    exports_marker
-        || fs::read_link(path).is_ok_and(|t| paths::lib_source(&t) != paths::LibSource::System)
+    let contains_marker =
+        fs::read(path).is_ok_and(|data| data.windows(marker.len()).any(|w| w == marker));
+    contains_marker
+        || fs::read_link(path)
+            .is_ok_and(|t| !t.exists() || paths::lib_source(&t) != paths::LibSource::System)
 }
 
 #[cfg(windows)]
@@ -115,8 +114,36 @@ fn symlink(src: &Path, dst: &Path) -> io::Result<()> {
     return std::os::unix::fs::symlink(src, dst);
 }
 
+// arduano why
+#[cfg(windows)]
+fn kdmapi_subdirs() -> [PathBuf; 2] {
+    [
+        system_dir("System32").join("OmniMIDI"),
+        system_dir("SysWOW64").join("OmniMIDI"),
+    ]
+}
+
 pub fn kdmapi_links() -> Vec<(Option<PathBuf>, PathBuf)> {
-    links(KDMAPI_FILENAME, kdmapi_target(), KDMAPI_FILENAME)
+    #[allow(unused_mut)]
+    let mut links = links(KDMAPI_FILENAME, kdmapi_target(), KDMAPI_FILENAME);
+    #[cfg(windows)]
+    {
+        let [native, x86] = kdmapi_subdirs();
+        links.push((
+            paths::resolve_lib(KDMAPI_FILENAME),
+            native.join(KDMAPI_FILENAME),
+        ));
+        links.push((
+            paths::resolve_lib_for_arch("x86", KDMAPI_FILENAME),
+            x86.join(KDMAPI_FILENAME),
+        ));
+    }
+    links
+}
+
+// Unlike Path::exists, this also sees a link whose source is gone
+pub fn is_present(path: &Path) -> bool {
+    fs::symlink_metadata(path).is_ok()
 }
 
 pub fn api_links() -> Vec<(Option<PathBuf>, PathBuf)> {
@@ -150,16 +177,25 @@ fn link(links: Vec<(Option<PathBuf>, PathBuf)>, is_ours: fn(&Path) -> bool) -> i
     let Some((Some(native), native_target)) = links.next() else {
         return 1;
     };
-    for (src, target) in std::iter::once((native, native_target))
+    let links: Vec<(PathBuf, PathBuf)> = std::iter::once((native, native_target))
         .chain(links.filter_map(|(src, target)| Some((src?, target))))
+        .collect();
+
+    if links
+        .iter()
+        .any(|(_, target)| is_present(target) && !is_ours(target))
     {
-        if target.exists() {
-            if !is_ours(&target) {
-                return 2;
-            }
-            if fs::remove_file(&target).is_err() {
-                return 1;
-            }
+        return 2;
+    }
+
+    for (src, target) in links {
+        if is_present(&target) && fs::remove_file(&target).is_err() {
+            return 1;
+        }
+        if let Some(dir) = target.parent()
+            && fs::create_dir_all(dir).is_err()
+        {
+            return 1;
         }
         if symlink(&src, &target).is_err() {
             return 1;
@@ -170,7 +206,7 @@ fn link(links: Vec<(Option<PathBuf>, PathBuf)>, is_ours: fn(&Path) -> bool) -> i
 
 fn unlink(links: Vec<(Option<PathBuf>, PathBuf)>, is_ours: fn(&Path) -> bool) -> i32 {
     for (_, target) in links {
-        if !target.exists() {
+        if !is_present(&target) {
             continue;
         }
         if !is_ours(&target) {
@@ -181,6 +217,15 @@ fn unlink(links: Vec<(Option<PathBuf>, PathBuf)>, is_ours: fn(&Path) -> bool) ->
         }
     }
     0
+}
+
+fn unlink_kdmapi() -> i32 {
+    let code = unlink(kdmapi_links(), is_maestro_lib);
+    #[cfg(windows)]
+    for dir in kdmapi_subdirs() {
+        let _ = fs::remove_dir(dir);
+    }
+    code
 }
 
 #[cfg(windows)]
@@ -210,7 +255,7 @@ fn unlink_driver() -> i32 {
 pub fn handle(args: &[String]) -> Option<i32> {
     match args.get(1).map(String::as_str)? {
         INSTALL_KDMAPI => Some(link(kdmapi_links(), is_maestro_lib)),
-        UNINSTALL_KDMAPI => Some(unlink(kdmapi_links(), is_maestro_lib)),
+        UNINSTALL_KDMAPI => Some(unlink_kdmapi()),
         INSTALL_API => Some(link(api_links(), is_maestro_api)),
         UNINSTALL_API => Some(unlink(api_links(), is_maestro_api)),
         #[cfg(windows)]

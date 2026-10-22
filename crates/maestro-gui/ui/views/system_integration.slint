@@ -227,15 +227,15 @@ export component SystemIntegrationView inherits Rectangle {
                                 spacing: 12px;
                                 cross-axis-alignment: end;
 
-                                if (SystemIntegrationState.kdmapi.status == IntegrationStatus.ok): MaestroButton {
+                                if (SystemIntegrationState.kdmapi.status != IntegrationStatus.missing): MaestroButton {
                                     text: "Uninstall";
                                     danger: true;
                                     disabled: SystemIntegrationState.busy;
                                     clicked => { SystemIntegrationState.kdmapi_action(InstallAction.uninstall); }
                                 }
 
-                                if (SystemIntegrationState.kdmapi.status != IntegrationStatus.ok): MaestroButton {
-                                    text: "Install";
+                                MaestroButton {
+                                    text: SystemIntegrationState.kdmapi.status == IntegrationStatus.missing ? "Install" : "Reinstall / Repair";
                                     primary: true;
                                     disabled: SystemIntegrationState.busy;
                                     clicked => { SystemIntegrationState.kdmapi_action(InstallAction.install); }
