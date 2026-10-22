@@ -148,7 +148,9 @@ mod imp {
     }
 
     #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn LoadCustomSoundFontsList(_Directory: *const u16) {}
+    pub unsafe extern "C" fn LoadCustomSoundFontsList(_Directory: *const u16) -> u32 {
+        1
+    }
 
     #[unsafe(no_mangle)]
     pub extern "C" fn timeGetTime64() -> u64 {
@@ -263,7 +265,9 @@ mod imp {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn LoadCustomSoundFontsList(_directory: *const c_char) {}
+    pub extern "C" fn LoadCustomSoundFontsList(_directory: *const c_char) -> u32 {
+        1
+    }
 
     #[unsafe(no_mangle)]
     pub extern "C" fn timeGetTime64() -> u64 {
