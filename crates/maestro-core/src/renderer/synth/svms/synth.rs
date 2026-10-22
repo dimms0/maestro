@@ -94,6 +94,12 @@ impl SVMSSynth {
             max_block_frames: MAX_BLOCK_FRAMES,
             render_backend: i32::from(c.render_backend) as u32,
             master_volume: 1.0,
+            // The limiter stays disabled, but SVMS still range-checks these
+            // (threshold 0.1..=1, attack >= 0.01, release >= 1), so zero is rejected
+            limiter_threshold: 0.95,
+            limiter_lookahead_ms: 3.0,
+            limiter_attack_ms: 0.5,
+            limiter_release_ms: 100.0,
             reserved: [0; 4],
             ..Default::default()
         };
