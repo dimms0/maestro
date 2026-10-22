@@ -43,7 +43,7 @@ pub(crate) struct SVMSOfflineSessionConfig {
     pub render_threads: u32,
     pub max_block_frames: u32,
     pub render_backend: u32,
-    // Limiter fields are ABI layout only; left zero, which disables it
+    // Limiter is disabled (limiter_enabled = 0) but the values are still validated
     pub limiter_enabled: u32,
     pub limiter_algorithm: u32,
     pub master_volume: f32,
