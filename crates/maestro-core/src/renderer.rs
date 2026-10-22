@@ -5,6 +5,7 @@ use crate::{
     error::RendererError,
     event::{MaestroTimedEvent, sysex},
     helpers::{prepapre_cache_vec, sum_buffer},
+    realtime::priority::Priority,
     renderer::{
         config::{EventProcessorConfig, PostProcessorConfig, RendererConfig, SynthConfig},
         event_processor::PortEventProcessor,
@@ -168,12 +169,16 @@ impl MaestroRenderer {
         if let Some(pool) = &self.threadpool {
             let ports = &mut self.ports;
             let buffers = &mut self.render_buffers;
+            let priority = Priority::current();
 
             pool.install(|| {
                 ports
                     .par_iter_mut()
                     .zip(buffers.par_iter_mut())
                     .for_each(|(port, buf)| {
+                        if let Some(priority) = priority {
+                            priority.promote();
+                        }
                         prepapre_cache_vec(buf, render_len, 0.0);
                         port.read_audio(buf);
                     });

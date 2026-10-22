@@ -662,6 +662,21 @@ component BassMidiPanel inherits SynthPanel {
                 }
             }
         }
+
+        Setting {
+            text: "Real-Time Thread Priority";
+            subtext: "Runs the rendering threads at real-time priority, which helps avoid stutters under heavy load. On lower end systems this can make the rest of the desktop unresponsive while playing.";
+
+            MaestroSwitch {
+                enabled: SettingsEditorState.current_config.synth.bass_multithreading;
+                checked: SettingsEditorState.current_config.synth.bass_realtime_priority;
+                toggled(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.bass_realtime_priority = v;
+                    root.commit();
+                }
+            }
+        }
     }
 
     if (root.show_advanced || root.sf_options_set): SectionCard {

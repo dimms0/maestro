@@ -132,7 +132,7 @@ fn to_slint(stats: &MaestroStats) -> SlintComponentStats {
         voices: fmt_count(stats.voices).into(),
         nps: fmt_count(stats.nps).into(),
         eps: fmt_count(stats.eps).into(),
-        render_load_txt: format!("{:.2}%", stats.render_last).into(),
+        render_load_txt: format!("{:.2}% / {:.2}%", stats.render_last, stats.render_peak).into(),
         render_load: stats.render_avg,
         limiting: limiting_text(stats),
     }

@@ -68,8 +68,15 @@ impl PortEventSender {
         self.lock().push(event);
     }
 
-    pub(super) fn swap(&self, events: &mut Vec<MaestroTimedEvent>) {
-        std::mem::swap(&mut self.lock().events, events);
+    pub(super) fn swap(&self, events: &mut Vec<MaestroTimedEvent>, wait: bool) -> bool {
+        let mut queue = match self.queue.try_lock() {
+            Ok(queue) => queue,
+            Err(_) if !wait => return false,
+            Err(_) => self.lock(),
+        };
+
+        std::mem::swap(&mut queue.events, events);
+        true
     }
 
     pub fn reset(&self) {

@@ -84,6 +84,7 @@ pub(crate) struct PortSynthManager<T: SynthModule> {
     synth: T,
     event_snd: Arc<PortEventSender>,
     events: Vec<MaestroTimedEvent>,
+    passed_over: bool,
 }
 
 impl<T: SynthModule + 'static> PortSynthManager<T> {
@@ -97,6 +98,7 @@ impl<T: SynthModule + 'static> PortSynthManager<T> {
             synth,
             event_snd: Arc::new(PortEventSender::new(port, evproc, audio_params)),
             events: Vec::new(),
+            passed_over: false,
         }
     }
 
@@ -107,7 +109,9 @@ impl<T: SynthModule + 'static> PortSynthManager<T> {
     pub fn read_audio(&mut self, dest: &mut [f32]) -> usize {
         dest.fill(0.0);
 
-        self.event_snd.swap(&mut self.events);
+        // events are stamped ahead of the block, so if we cant lock wait for the next one
+        // only once, or a sender could keep them back
+        self.passed_over = !self.event_snd.swap(&mut self.events, self.passed_over);
         for event in self.events.drain(..) {
             self.synth.process_event(event);
         }

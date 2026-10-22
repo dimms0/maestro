@@ -7,6 +7,7 @@ use crate::{
     error::RendererError,
     event::{MaestroEvent, MaestroTimedEvent, sysex},
     helpers::{prepapre_cache_vec, sum_buffer},
+    realtime::priority::Priority,
     renderer::{
         SoundFontHandle,
         config::bassmidi::BASSMIDIConfig,
@@ -179,12 +180,16 @@ impl SynthModule for BASSMIDISynth {
         if let Some(pool) = &self.threadpool {
             let streams = &mut self.streams;
             let buffers = &mut self.buffers;
+            let priority = Priority::current().filter(|_| self.config.realtime_priority);
 
             pool.install(|| {
                 streams
                     .par_iter_mut()
                     .zip(buffers.par_iter_mut())
                     .for_each(|(s, b)| {
+                        if let Some(priority) = priority {
+                            priority.promote();
+                        }
                         prepapre_cache_vec(b, render_len, 0.0);
                         s.read_audio(b);
                     });

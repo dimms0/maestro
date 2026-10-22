@@ -101,7 +101,7 @@ component StatsRow inherits MaestroCard {
             spacing: 12px;
 
             BodyText {
-                text: "Render Load: ";
+                text: "Load: ";
             }
 
             MaestroProgressBar {
@@ -111,7 +111,7 @@ component StatsRow inherits MaestroCard {
 
             LabelText {
                 horizontal-alignment: right;
-                width: 50px;
+                width: 100px;
                 text: root.stats.render_load_txt;
             }
         }

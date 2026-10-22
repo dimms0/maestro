@@ -71,9 +71,10 @@ fn main() {
     thread::spawn(move || {
         loop {
             println!(
-                "Voice Count: {:3}\tRender time: {:.2}",
+                "Voice Count: {:3}\tRender time: {:.2}\tPeak: {:.0}",
                 stats.get_renderer().read_voice_count(),
-                stats.get_renderer().get_average_render_time()
+                stats.get_renderer().get_average_render_time(),
+                stats.read_render_peak()
             );
             thread::sleep(Duration::from_millis(100));
         }

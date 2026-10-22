@@ -275,6 +275,7 @@ pub fn synth_to_slint(synth: &SynthConfig, rem: &RememberedSettings) -> SlintSyn
             out.bass_render_time_limit = c.render_time_limit;
             out.bass_interpolation = i32::from(c.interpolation) + 1;
             threading_to_slint(c.multithreading, rem, &mut out);
+            out.bass_realtime_priority = c.realtime_priority;
             out.bass_disable_effects = c.disable_effects;
             out.bass_fade_out_killing = c.fade_out_killing;
             out.bass_note_off1 = c.note_off1;
@@ -334,6 +335,7 @@ fn defaults_slint_synth(rem: &RememberedSettings) -> SlintSynthConfig {
         bass_custom_thread_count: false,
         bass_thread_count: 0,
         bass_divide_channels: false,
+        bass_realtime_priority: b.realtime_priority,
         bass_disable_effects: b.disable_effects,
         bass_fade_out_killing: b.fade_out_killing,
         bass_note_off1: b.note_off1,
@@ -404,6 +406,7 @@ pub fn slint_to_synth(sl: &SlintSynthConfig, rem: &mut RememberedSettings) -> Sy
             interpolation: BASSMIDIInterpolation::try_from(sl.bass_interpolation - 1)
                 .unwrap_or_default(),
             multithreading: sl.bass_multithreading.then_some(rem.bass_threading),
+            realtime_priority: sl.bass_realtime_priority,
             disable_effects: sl.bass_disable_effects,
             fade_out_killing: sl.bass_fade_out_killing,
             note_off1: sl.bass_note_off1,

@@ -6,6 +6,7 @@ pub struct BASSMIDIConfig {
     pub interpolation: BASSMIDIInterpolation,
 
     pub multithreading: Option<BASSMIDIThreading>,
+    pub realtime_priority: bool,
 
     pub disable_effects: bool,
     pub fade_out_killing: bool,
@@ -29,6 +30,7 @@ impl Default for BASSMIDIConfig {
             note_off1: false,
             interpolation: Default::default(),
             multithreading: Default::default(),
+            realtime_priority: false,
             exclusive_keys: 0,
             render_time_limit: 0.0,
             voice_limit: 1024,

@@ -18,6 +18,7 @@ pub use clock::MAX_SCHEDULE_SECS;
 pub use event_sender::{RealtimeEventSender, UMP_GROUPS};
 mod load;
 mod options;
+pub(crate) mod priority;
 mod statistics;
 pub use statistics::MaestroRealtimeStatistics;
 mod stream;
@@ -44,6 +45,7 @@ fn start_stream(
     output: &stream::ResolvedOutput,
     config: &config::RealtimeConfig,
     limiter: Arc<LoadLimiter>,
+    stats: &MaestroRealtimeStatistics,
 ) -> Result<Stream, RealtimeEngineError> {
     let renderer = renderer.clone();
 
@@ -55,7 +57,7 @@ fn start_stream(
         }
     };
 
-    let mut buffered = BufferedRenderer::new(func, output.params, config, limiter)?;
+    let mut buffered = BufferedRenderer::new(func, output.params, config, limiter, stats.clone())?;
 
     let func = {
         let clock = clock.clone();
@@ -106,6 +108,7 @@ impl MaestroRealtimeEngine {
             &output,
             &options.config,
             sender.load_limiter(),
+            &stats,
         )?;
 
         Ok(Self {
@@ -162,6 +165,7 @@ impl MaestroRealtimeEngine {
                 &output,
                 &new.config,
                 limiter,
+                &self.stats,
             )?);
         }
 
