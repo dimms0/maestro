@@ -51,7 +51,9 @@ pub(crate) struct SVMSOfflineSessionConfig {
     pub limiter_lookahead_ms: f32,
     pub limiter_attack_ms: f32,
     pub limiter_release_ms: f32,
-    pub reserved: [u32; 4],
+    // Key shards: 0 or 1 = one core; an older runtime rejects nonzero
+    pub shards: u32,
+    pub reserved: [u32; 3],
 }
 
 #[repr(C)]

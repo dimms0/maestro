@@ -100,7 +100,9 @@ impl SVMSSynth {
             limiter_lookahead_ms: 3.0,
             limiter_attack_ms: 0.5,
             limiter_release_ms: 100.0,
-            reserved: [0; 4],
+            // 1 is sent as 0 so runtimes without sharding still accept the config
+            shards: if c.shards > 1 { c.shards } else { 0 },
+            reserved: [0; 3],
             ..Default::default()
         };
 

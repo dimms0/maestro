@@ -831,6 +831,23 @@ component SVMSPanel inherits SynthPanel {
         }
 
         Setting {
+            text: "Shards";
+            subtext: "Splits note planning across this many engine cores (notes route by channel and key). The voice limit and render threads are divided evenly between the shards, e.g. 4 shards with 16 render threads gives each shard 4 threads. 1 is a single core. Only helps extreme note rates; needs a SVMS build with sharding.";
+
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 1;
+                maximum: 64;
+                value: SettingsEditorState.current_config.synth.svms_shards;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.svms_shards = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
             text: "Render Backend";
             subtext: "The instruction set used for voice rendering. \"Automatic\" picks the fastest one this CPU supports. Choosing one the CPU lacks makes the synthesizer fail to start.";
 
