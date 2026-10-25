@@ -22,11 +22,12 @@ pub fn spawn_check(weak: slint::Weak<MainWindow>) {
         if latest_version == maestro_core::VERSION {
             return;
         }
-        let url = body
-            .get("html_url")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_string();
+        // let url = body
+        //     .get("html_url")
+        //     .and_then(|v| v.as_str())
+        //     .unwrap_or_default()
+        //     .to_string();
+        let url = "https://dimms.gr/maestro/#download";
 
         let _ = slint::invoke_from_event_loop(move || {
             let Some(ui) = weak.upgrade() else {
