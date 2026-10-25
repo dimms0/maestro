@@ -4,10 +4,10 @@ The engine every other Maestro component is built on: MIDI in, audio out.
 
 ## What it does
 
-**Synthesis.** Two backends behind one interface — FluidSynth (SF2, SF3) and
-BASSMIDI (SF2, SF3, SFZ) — both loaded at runtime, so a missing library
-degrades to the other instead of failing to start. `renderer::synth::probe`
-reports which are actually available.
+**Synthesis.** Backends behind one interface — FluidSynth (SF2, SF3) and
+BASSMIDI (SF2, SF3, SFZ), both loaded at runtime, so a missing library
+degrades to the other instead of failing to start, Kestrel (SF2, SFZ), a GPU synthesizer compiled in and other optional synths as plugins.
+`renderer::synth::probe` reports which are actually available.
 
 **Realtime engine** (`realtime`) — an audio stream via
 [cpal](https://github.com/RustAudio/cpal) (ALSA, PulseAudio, PipeWire, JACK,

@@ -27,6 +27,8 @@ directories = "6.0"
 interprocess = "2.4"
 fundsp = { version = "0.23", default-features = false, features = ["std"] }
 notify-rust = "4.11"
+kestrel = { git = "https://github.com/mbms0/kestrel-midi", ref = "27fad2f", default-features = false }
+anyhow = "1"
 
 notify = { version = "8.0", optional = true }
 
@@ -36,7 +38,9 @@ vorbis_rs = { version = "0.5", optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 cpal = { version = "0.18", features = ["jack", "pipewire", "pulseaudio"] }
-audio_thread_priority = { version = "0.38", default-features = false, features = ["with_dbus"] }
+audio_thread_priority = { version = "0.38", default-features = false, features = [
+    "with_dbus",
+] }
 libc = "0.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]

@@ -36,6 +36,7 @@ import {
     SlintIntegrationItem,
     SlintLibraryItem,
     SlintComboItem,
+    SlintGpuItem,
 } from "structs.slint";
 
 export global AppState {
@@ -188,6 +189,8 @@ export global SettingsEditorState {
     in-out property <[SlintComboItem]> synth_options;
     in-out property <[SynthKind]> synth_kinds;
     in-out property <int> synth_index;
+
+    in-out property <[SlintGpuItem]> kestrel_gpus;
 
     callback open_settings(string);
     callback update_enabled(bool);

@@ -261,6 +261,7 @@ fn pick_synth() -> Option<SynthConfig> {
         bassmidi,
         fluidsynth,
         svms,
+        kestrel,
     } = SynthAvailability::probe();
 
     let bass_cfg = || {
@@ -285,6 +286,10 @@ fn pick_synth() -> Option<SynthConfig> {
         Ok("svms") if svms => {
             eprintln!("synth: SuperVirtualMIDISynth");
             Some(SynthConfig::SVMS(Default::default()))
+        }
+        Ok("kestrel") if kestrel => {
+            eprintln!("synth: Kestrel");
+            Some(SynthConfig::Kestrel(Default::default()))
         }
         Ok(requested) => {
             eprintln!("skipped: MAESTRO_BENCH_SYNTH={requested} is not available");

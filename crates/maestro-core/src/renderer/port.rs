@@ -9,7 +9,7 @@ use crate::{
         sender::PortEventSender,
         synth::{
             SoundFontHandle, SynthModule, bassmidi::BASSMIDISynth, fluidsynth::FluidSynthSynth,
-            svms::SVMSSynth,
+            kestrel::KestrelSynth, svms::SVMSSynth,
         },
     },
 };
@@ -19,31 +19,31 @@ pub(super) enum PortRenderer {
     BASSMIDI(PortSynthManager<BASSMIDISynth>),
     FluidSynth(PortSynthManager<FluidSynthSynth>),
     SVMS(PortSynthManager<SVMSSynth>),
+    Kestrel(PortSynthManager<KestrelSynth>),
+}
+
+macro_rules! dispatch {
+    ($self:expr, $mgr:ident => $body:expr) => {
+        match $self {
+            PortRenderer::BASSMIDI($mgr) => $body,
+            PortRenderer::FluidSynth($mgr) => $body,
+            PortRenderer::SVMS($mgr) => $body,
+            PortRenderer::Kestrel($mgr) => $body,
+        }
+    };
 }
 
 impl PortRenderer {
     pub fn process_event(&mut self, event: MaestroTimedEvent) {
-        match self {
-            Self::BASSMIDI(mgr) => mgr.process_event(event),
-            Self::FluidSynth(mgr) => mgr.process_event(event),
-            Self::SVMS(mgr) => mgr.process_event(event),
-        }
+        dispatch!(self, mgr => mgr.process_event(event))
     }
 
     pub fn read_audio(&mut self, dest: &mut [f32]) -> usize {
-        match self {
-            Self::BASSMIDI(mgr) => mgr.read_audio(dest),
-            Self::FluidSynth(mgr) => mgr.read_audio(dest),
-            Self::SVMS(mgr) => mgr.read_audio(dest),
-        }
+        dispatch!(self, mgr => mgr.read_audio(dest))
     }
 
     pub fn set_soundfonts(&mut self, handles: &[SoundFontHandle]) -> Result<(), RendererError> {
-        match self {
-            Self::BASSMIDI(mgr) => mgr.set_soundfonts(handles),
-            Self::FluidSynth(mgr) => mgr.set_soundfonts(handles),
-            Self::SVMS(mgr) => mgr.set_soundfonts(handles),
-        }
+        dispatch!(self, mgr => mgr.set_soundfonts(handles))
     }
 
     pub fn reload_config(&mut self, config: &SynthConfig) -> bool {
@@ -51,32 +51,21 @@ impl PortRenderer {
             (Self::BASSMIDI(mgr), SynthConfig::BASSMIDI(cfg)) => mgr.synth.reload_config(cfg),
             (Self::FluidSynth(mgr), SynthConfig::FluidSynth(cfg)) => mgr.synth.reload_config(cfg),
             (Self::SVMS(mgr), SynthConfig::SVMS(cfg)) => mgr.synth.reload_config(cfg),
+            (Self::Kestrel(mgr), SynthConfig::Kestrel(cfg)) => mgr.synth.reload_config(cfg),
             _ => false,
         }
     }
 
     pub fn reset(&mut self) {
-        match self {
-            Self::BASSMIDI(mgr) => mgr.reset(),
-            Self::FluidSynth(mgr) => mgr.reset(),
-            Self::SVMS(mgr) => mgr.reset(),
-        }
+        dispatch!(self, mgr => mgr.reset())
     }
 
     pub fn voice_count(&self) -> u64 {
-        match self {
-            Self::BASSMIDI(mgr) => mgr.voice_count(),
-            Self::FluidSynth(mgr) => mgr.voice_count(),
-            Self::SVMS(mgr) => mgr.voice_count(),
-        }
+        dispatch!(self, mgr => mgr.voice_count())
     }
 
     pub fn get_buffer(&self) -> Arc<PortEventSender> {
-        match self {
-            Self::BASSMIDI(mgr) => mgr.get_buffer(),
-            Self::FluidSynth(mgr) => mgr.get_buffer(),
-            Self::SVMS(mgr) => mgr.get_buffer(),
-        }
+        dispatch!(self, mgr => mgr.get_buffer())
     }
 }
 

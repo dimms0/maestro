@@ -64,6 +64,7 @@ pub struct SynthAvailability {
     pub bassmidi: bool,
     pub fluidsynth: bool,
     pub svms: bool,
+    pub kestrel: bool,
 }
 
 impl SynthAvailability {
@@ -79,6 +80,7 @@ impl SynthAvailability {
             bassmidi: usable("BASS") && usable("BASSMIDI"),
             fluidsynth: usable("FluidSynth"),
             svms: usable("SuperVirtualMIDISynth"),
+            kestrel: true,
         }
     }
 

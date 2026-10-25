@@ -13,6 +13,12 @@ export struct SlintSoundFont {
 // One row of a MaestroComboBox that needs more than a label: up to three small
 // badges are drawn after the text (empty strings are skipped). The synthesizer
 // picker uses them for the SoundFont formats each synth supports.
+// One row of Kestrel's GPU picker
+export struct SlintGpuItem {
+    name: string,
+    detail: string,
+}
+
 export struct SlintComboItem {
     text: string,
     badge_a: string,
@@ -110,6 +116,37 @@ export struct SlintSynthConfig {
     svms_voice_limit: int,
     svms_render_threads: int, // 0 = automatic
     svms_render_backend: int, // 0 Auto, 1 Scalar, 2 SSE2, 3 AVX2
+
+    // --- Kestrel ---
+    kestrel_gpu: int, // 0 Automatic, otherwise 1 + index into kestrel_gpus
+    kestrel_voice_limit: int,
+    kestrel_interpolation: int, // 0 Nearest, 1 Linear, 2 Cubic
+    kestrel_note_grid: bool,
+    kestrel_steal_percent: int,
+    kestrel_filter: bool,
+    kestrel_lfo: bool,
+    kestrel_mod_envelope: bool,
+    kestrel_decay_curve: int, // 0 Exponential, 1 Linear
+    kestrel_release_curve: int,
+    kestrel_release_floor_db: float,
+    kestrel_max_layers: int,
+    kestrel_param_variants: int,
+    kestrel_gain_ramp: bool,
+    kestrel_filter_ramp: bool,
+    kestrel_steal_rule: int, // 0 Quietest, 1 Oldest, 2 Drop New
+    kestrel_admit_rule: int, // 0 Loudest, 1 Even
+    kestrel_steal_fade_frames: int,
+    kestrel_resample_pool: bool,
+    kestrel_pool_budget_mib: int, // 0 = automatic
+    kestrel_block_frames: int,
+    kestrel_gate_frames: int, // index: 4, 8, 16, 32
+    kestrel_workgroup_size: int, // index: 32 .. 1024
+    kestrel_render_workgroups: int,
+    kestrel_submit_voices: int,
+    kestrel_build_threads: int,
+    kestrel_sort_voices: bool,
+    kestrel_kahan_reduce: bool,
+    kestrel_unchecked_shaders: bool,
 }
 
 export struct SlintEventProcessorConfig {
