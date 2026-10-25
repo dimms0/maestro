@@ -352,6 +352,19 @@ export component RealtimeSection inherits SectionCard {
         }
     }
 
+    if (root.show_advanced): Setting {
+        text: "Real-Time Thread Priority";
+        subtext: "Runs the render thread at real-time priority, which helps avoid stutters under heavy load. On Linux the system may kill Maestro if rendering lags too far behind.";
+
+        has-switch: true;
+        checked: SettingsEditorState.current_config.realtime.realtime_priority;
+        toggled(v) => {
+            root.edit = SettingsEditorState.current_config.realtime;
+            root.edit.realtime_priority = v;
+            SettingsEditorState.update_realtime(root.edit);
+        }
+    }
+
     Setting {
         text: "Automatically add timestamp to events";
         subtext: "Events sent without a timestamp are stamped with the time they arrive, so they keep their exact spacing instead of being grouped into render blocks. Events that come with their own timestamp always keep it.";

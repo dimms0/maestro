@@ -33,6 +33,9 @@ pub struct RealtimeConfig {
     /// Device buffer size in frames, which is what actually determines output
     /// latency. `None` leaves the host at its default period.
     pub buffer_size: Option<u32>,
+
+    /// Run the render threads at realtime priority.
+    pub realtime_priority: bool,
 }
 
 impl Default for RealtimeConfig {
@@ -46,6 +49,7 @@ impl Default for RealtimeConfig {
             audio_host: None,
             output_device: None,
             buffer_size: None,
+            realtime_priority: false,
         }
     }
 }

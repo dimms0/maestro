@@ -125,6 +125,7 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
                 f.realtime.device_audio_params = rt.device_audio_params;
                 f.realtime.render_buffer_ms = rt.render_buffer_ms;
                 f.realtime.auto_timestamp = rt.auto_timestamp;
+                f.realtime.realtime_priority = rt.realtime_priority;
 
                 f.remembered.nps_limit = NpsLimit {
                     max: rt.max_nps.max(0) as usize,

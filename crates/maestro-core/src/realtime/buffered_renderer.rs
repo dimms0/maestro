@@ -65,7 +65,9 @@ impl BufferedRenderer {
         let (return_tx, return_rx) = bounded::<Vec<f32>>(capacity + 2);
 
         let killed = Arc::new(AtomicBool::new(false));
-        let priority = Priority::new(render_size as u32, stream_params.sample_rate);
+        let priority = config
+            .realtime_priority
+            .then(|| Priority::new(render_size as u32, stream_params.sample_rate));
 
         let thread_handle = {
             let samples = samples.clone();
@@ -75,7 +77,9 @@ impl BufferedRenderer {
             thread::Builder::new()
                 .name("buffered_rendering".to_string())
                 .spawn(move || {
-                    priority.promote();
+                    if let Some(priority) = priority {
+                        priority.promote();
+                    }
                     let mut slept = Instant::now();
 
                     loop {

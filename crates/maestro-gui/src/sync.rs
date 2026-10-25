@@ -290,6 +290,7 @@ pub fn build_slint_component_config(state: &AppData) -> Option<SlintComponentCon
                 .device_index(file.realtime.output_device.as_deref()),
             buffer_size: file.realtime.buffer_size.unwrap_or(rem.buffer_size) as i32,
             has_buffer_size: file.realtime.buffer_size.is_some(),
+            realtime_priority: file.realtime.realtime_priority,
         },
 
         has_renderer: p.has_renderer,
