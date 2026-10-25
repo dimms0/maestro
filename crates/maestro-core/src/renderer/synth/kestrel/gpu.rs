@@ -21,7 +21,9 @@ fn surveyed() -> &'static (Vec<Surveyed>, Option<usize>) {
     // opening every backend is slow, so the gpus are only looked for once
     static LIST: OnceLock<(Vec<Surveyed>, Option<usize>)> = OnceLock::new();
     LIST.get_or_init(|| {
-        let Ok((found, pick)) = kestrel::gpu::survey(&kestrel::Config::default()) else {
+        // workaround for apps that use GL
+        let survey = std::thread::spawn(|| kestrel::gpu::survey(&kestrel::Config::default()));
+        let Ok(Ok((found, pick))) = survey.join() else {
             return Default::default();
         };
         let mut auto = None;

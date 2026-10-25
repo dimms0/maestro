@@ -27,7 +27,7 @@ directories = "6.0"
 interprocess = "2.4"
 fundsp = { version = "0.23", default-features = false, features = ["std"] }
 notify-rust = "4.11"
-kestrel = { git = "https://github.com/mbms0/kestrel-midi", ref = "27fad2f", default-features = false }
+kestrel = { git = "https://github.com/mbms0/kestrel-midi", rev = "844b002", default-features = false }
 anyhow = "1"
 
 notify = { version = "8.0", optional = true }
