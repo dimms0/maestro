@@ -730,5 +730,17 @@ export component PostProcessorSection inherits SectionCard {
                 }
             }
         }
+
+        Setting {
+            text: "DC Blocker";
+            has-switch: true;
+            enabled: root.on;
+            checked: SettingsEditorState.current_config.post_processor.dc_blocker;
+            toggled(v) => {
+                root.edit = SettingsEditorState.current_config.post_processor;
+                root.edit.dc_blocker = v;
+                SettingsEditorState.update_post_processor(root.edit);
+            }
+        }
     }
 }

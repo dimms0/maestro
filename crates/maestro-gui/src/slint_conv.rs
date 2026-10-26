@@ -521,6 +521,7 @@ pub fn postproc_to_slint(
         has_limiter: p.limiter.is_some(),
         limiter_attack_ms: lim.attack_ms,
         limiter_release_ms: lim.release_ms,
+        dc_blocker: p.dc_blocker,
     }
 }
 
@@ -534,6 +535,7 @@ pub fn slint_to_postproc(
     PostProcessorConfig {
         volume: sl.volume,
         limiter: sl.has_limiter.then_some(rem.limiter),
+        dc_blocker: sl.dc_blocker,
     }
 }
 

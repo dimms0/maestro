@@ -3,6 +3,7 @@
 pub struct PostProcessorConfig {
     pub volume: f32,
     pub limiter: Option<AudioLimiterConfig>,
+    pub dc_blocker: bool,
 }
 
 impl Default for PostProcessorConfig {
@@ -10,6 +11,7 @@ impl Default for PostProcessorConfig {
         Self {
             volume: 1.0,
             limiter: Some(Default::default()),
+            dc_blocker: true,
         }
     }
 }
