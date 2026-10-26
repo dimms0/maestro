@@ -101,14 +101,11 @@ fn translate(event: MaestroEvent, scratch: &mut Vec<Event>, mut emit: impl FnMut
     let ev = match event {
         MaestroEvent::NoteOn { channel, key, vel } if vel & 0x7F != 0 => Event::NoteOn {
             ch: channel,
-            key: key,
-            vel: vel,
+            key,
+            vel,
         },
         MaestroEvent::NoteOn { channel, key, .. } | MaestroEvent::NoteOff { channel, key } => {
-            Event::NoteOff {
-                ch: channel,
-                key: key,
-            }
+            Event::NoteOff { ch: channel, key }
         }
         MaestroEvent::ControlChange {
             channel,
@@ -117,7 +114,7 @@ fn translate(event: MaestroEvent, scratch: &mut Vec<Event>, mut emit: impl FnMut
         } => Event::Cc {
             ch: channel,
             num: param,
-            val: val,
+            val,
         },
         MaestroEvent::ProgramChange { channel, program } => Event::Program {
             ch: channel,
