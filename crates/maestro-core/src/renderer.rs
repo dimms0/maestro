@@ -31,7 +31,7 @@ mod post_processor;
 pub mod sender;
 mod synth;
 
-pub use synth::kestrel::{KestrelAdapter, kestrel_adapters};
+pub use synth::kestrel::{KESTREL_VERSION, KestrelAdapter, kestrel_adapters};
 pub use synth::probe::{LibraryStatus, SynthAvailability, probe_libraries};
 
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};

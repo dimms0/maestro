@@ -18,7 +18,18 @@ fn git_path(name: &str) -> Option<PathBuf> {
         .and_then(|path| path.canonicalize().ok())
 }
 
+fn kestrel_version() -> Option<String> {
+    let lock = std::fs::read_to_string("../../Cargo.lock").ok()?;
+    let entry = lock.split("[[package]]").find(|p| p.contains("name = \"kestrel\""))?;
+    let line = entry.lines().find(|l| l.starts_with("version = "))?;
+    Some(line.trim_start_matches("version = ").trim_matches('"').to_string())
+}
+
 fn main() {
+    let kestrel = kestrel_version().unwrap_or_else(|| "unknown".to_string());
+    println!("cargo:rustc-env=KESTREL_VERSION={kestrel}");
+    println!("cargo:rerun-if-changed=../../Cargo.lock");
+
     let build_id = git(&["rev-parse", "--short", "HEAD"]).unwrap_or_else(|| "unknown".to_string());
     println!("cargo:rustc-env=BUILD_ID={}", build_id);
 
