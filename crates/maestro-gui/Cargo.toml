@@ -204,6 +204,7 @@ assets = [
 [package.metadata.generate-rpm]
 name = "maestro"
 requires = { "fluidsynth-libs" = "*" }
+provides = { "libbass.so()(64bit)" = "*", "libbassmidi.so()(64bit)" = "*" }
 # Links the Maestro API into the system library path; see privileged.rs.
 post_install_script = "/usr/bin/maestro install-api || :"
 pre_uninstall_script = "if [ \"$1\" -eq 0 ]; then /usr/bin/maestro uninstall-api || :; fi"
