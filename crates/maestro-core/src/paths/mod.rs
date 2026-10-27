@@ -271,13 +271,26 @@ pub fn load_library(
 ) -> Result<(libloading::Library, Option<PathBuf>), libloading::Error> {
     // microslop core
     #[cfg(windows)]
-    if let Ok(lib) = libloading::os::windows::Library::open_already_loaded(filename) {
-        let module = lib.into_raw();
-        let path = module_file_name(module as _);
-        let lib = unsafe { libloading::os::windows::Library::from_raw(module) };
-        return Ok((lib.into(), path));
+    if let Some(loaded) = open_already_loaded(filename) {
+        return Ok(loaded);
     }
 
+    load_own_library(filename)
+}
+
+#[cfg(windows)]
+pub fn open_already_loaded(filename: &str) -> Option<(libloading::Library, Option<PathBuf>)> {
+    let module = libloading::os::windows::Library::open_already_loaded(filename)
+        .ok()?
+        .into_raw();
+    let path = module_file_name(module as _);
+    let lib = unsafe { libloading::os::windows::Library::from_raw(module) };
+    Some((lib.into(), path))
+}
+
+pub fn load_own_library(
+    filename: &str,
+) -> Result<(libloading::Library, Option<PathBuf>), libloading::Error> {
     let mut found_err = None;
     for dir in lib_dirs() {
         let path = dir.join(filename);

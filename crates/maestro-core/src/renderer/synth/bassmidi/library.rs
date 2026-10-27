@@ -142,7 +142,7 @@ impl BASSMIDILib {
     pub fn load_inner() -> Result<Self, RendererError> {
         Self::pin_shared_objects();
 
-        let load_hint = |name: &str, e: libloading::Error| {
+        let load_hint = |name: &str, e: String| {
             RendererError::SynthInit(format!(
                 "The BASSMIDI synthesizer requires the '{name}' shared library, which could not \
                  be loaded. \n\nDetails: {e}"
