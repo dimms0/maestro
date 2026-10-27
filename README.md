@@ -8,7 +8,7 @@
 
 </div>
 
-> ⚠️ Maestro is currently in beta stage. This means that some functionality may be buggy or missing. If you try the program, it would be highly appreciated if you could share feedback (bugs, issues and/or suggestions) [in GitHub issues](https://github.com/dimms0/maestro/issues) or in our [Discord server](https://dimms.gr/discord).
+> ⚠️ Maestro is currently in beta stage. This means that some functionality may be buggy or missing. If you try the program, it would be highly appreciated if you could share feedback (bugs, issues and/or suggestions) [in GitHub issues](https://github.com/dimms0/maestro/issues).
 
 ## Features
 
