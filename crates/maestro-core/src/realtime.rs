@@ -39,6 +39,26 @@ fn requested_params(options: &RealtimeEngineOptions) -> Option<AudioParameters> 
     (!options.config.device_audio_params).then_some(options.audio_params)
 }
 
+// run the audio device stuff on a different thread than the host app
+// to avoid RPC_E_CHANGED_MODE errors on WASAPI in case it is already
+// initialized ft. microslop
+#[cfg(windows)]
+fn on_device_thread<T: Send>(f: impl FnOnce() -> T + Send) -> T {
+    std::thread::scope(|s| {
+        std::thread::Builder::new()
+            .name("maestro-device".to_string())
+            .spawn_scoped(s, f)
+            .expect("failed to spawn audio device thread")
+            .join()
+            .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+    })
+}
+
+#[cfg(not(windows))]
+fn on_device_thread<T>(f: impl FnOnce() -> T) -> T {
+    f()
+}
+
 fn start_stream(
     renderer: &Arc<Mutex<MaestroRenderer>>,
     clock: &Arc<RealtimeClock>,
@@ -76,7 +96,9 @@ fn start_stream(
 
 impl MaestroRealtimeEngine {
     pub fn new(options: RealtimeEngineOptions) -> Result<Self, MaestroComponentError> {
-        let output = stream::resolve_output(requested_params(&options), &options.config)?;
+        let output = on_device_thread(|| {
+            stream::resolve_output(requested_params(&options), &options.config)
+        })?;
         let stream_params = output.params;
 
         let ports = options.ports.unwrap_or(1).clamp(1, 16);
@@ -102,14 +124,10 @@ impl MaestroRealtimeEngine {
         )?;
 
         let renderer = Arc::new(Mutex::new(renderer));
-        let stream = start_stream(
-            &renderer,
-            &clock,
-            &output,
-            &options.config,
-            sender.load_limiter(),
-            &stats,
-        )?;
+        let limiter = sender.load_limiter();
+        let stream = on_device_thread(|| {
+            start_stream(&renderer, &clock, &output, &options.config, limiter, &stats)
+        })?;
 
         Ok(Self {
             renderer,
@@ -153,20 +171,17 @@ impl MaestroRealtimeEngine {
             || old.audio_params != new.audio_params
         {
             self.stream = None;
-            let output = stream::resolve_output(requested_params(new), &new.config)?;
+            let output =
+                on_device_thread(|| stream::resolve_output(requested_params(new), &new.config))?;
             if output.params != self.stream_params {
                 return Ok(false);
             }
 
             let limiter = self.sender.load_limiter();
-            self.stream = Some(start_stream(
-                &self.renderer,
-                &self.clock,
-                &output,
-                &new.config,
-                limiter,
-                &self.stats,
-            )?);
+            let (renderer, clock, stats) = (&self.renderer, &self.clock, &self.stats);
+            self.stream = Some(on_device_thread(|| {
+                start_stream(renderer, clock, &output, &new.config, limiter, stats)
+            })?);
         }
 
         self.options = options;
