@@ -618,19 +618,136 @@ export component EventProcessorSection inherits SectionCard {
     }
 }
 
+// One stage in the signal-flow strip: lit while it is in the path.
+component FlowChip inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+
+    height: 24px;
+    min-width: label.preferred-width + 18px;
+    border-radius: 12px;
+    border-width: 1px;
+    border-color: root.active ? Theme.accent_green : Theme.border_color;
+    background: root.active ? Theme.accent_green.with-alpha(0.15) : transparent;
+
+    animate border-color, background { duration: 120ms; }
+
+    label := Text {
+        text: root.text;
+        font-family: Theme.font;
+        font-size: 11px;
+        color: root.active ? Theme.text_primary : Theme.text_disabled;
+    }
+}
+
+component FlowArrow inherits MaestroIcon {
+    source: Icons.arrow_right;
+    size: 10px;
+    colorize: Theme.text_disabled;
+}
+
+// A numbered effect in the chain: header with its switch, then its knobs.
+component StageCard inherits Rectangle {
+    in property <int> index;
+    in property <string> title;
+    in property <string> subtext;
+    in property <bool> enabled;
+    in property <bool> active;
+    in property <bool> toggleable: true;
+    in property <bool> has_controls: true;
+
+    callback toggled(bool);
+
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: root.active ? Theme.accent_green.with-alpha(0.5) : Theme.border_color;
+    background: Theme.bg_input;
+
+    animate border-color { duration: 120ms; }
+
+    VerticalLayout {
+        padding: 12px;
+
+        HorizontalLayout {
+            spacing: 12px;
+
+            Rectangle {
+                width: 22px;
+                height: 22px;
+                border-radius: 11px;
+                background: root.active ? Theme.accent_green : Theme.bg_card;
+                border-width: 1px;
+                border-color: root.active ? Theme.accent_green : Theme.border_color;
+
+                Text {
+                    text: root.index;
+                    font-family: Theme.font;
+                    font-size: 11px;
+                    font-weight: 700;
+                    color: root.active ? Theme.bg_main : Theme.text_secondary;
+                }
+            }
+
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 2px;
+
+                BodyText {
+                    text: root.title;
+                    font-weight: 600;
+                    color: root.active ? Theme.text_primary : Theme.text_secondary;
+                }
+
+                if (root.subtext != ""): LabelText {
+                    text: root.subtext;
+                    font-size: 11px;
+                    wrap: word-wrap;
+                }
+            }
+
+            if (root.toggleable): MaestroSwitch {
+                width: 40px;
+                enabled: root.enabled;
+                checked: root.active;
+                toggled(v) => { root.toggled(v); }
+            }
+        }
+
+        HorizontalLayout {
+            padding-top: root.has_controls ? 12px : 0;
+            spacing: 28px;
+            alignment: center;
+            opacity: root.active ? 1.0 : 0.4;
+
+            @children
+        }
+    }
+}
+
+// The line that joins one stage to the next, under the stage numbers.
+component StageLink inherits Rectangle {
+    height: 10px;
+
+    Rectangle {
+        x: 12px + 10px;
+        width: 2px;
+        background: Theme.border_color;
+    }
+}
+
 export component PostProcessorSection inherits SectionCard {
     property <SlintPostProcessorConfig> edit;
+    property <SlintPostProcessorConfig> pp: SettingsEditorState.current_config.post_processor;
 
     // As with the event processor, this flag is the user's toggle below rather
     // than a component capability.
     property <bool> on: SettingsEditorState.current_config.has_post_processor;
 
-    property <bool> limiting: root.on && SettingsEditorState.current_config.post_processor.has_limiter;
-
     title: "Post Processor";
 
     Setting {
         text: "Enable audio post processing";
+        subtext: "Runs the synth's output through the effects below, top to bottom.";
 
         MaestroSwitch {
             checked: root.on;
@@ -642,104 +759,306 @@ export component PostProcessorSection inherits SectionCard {
         spacing: 12px;
         opacity: root.on ? 1.0 : 0.4;
 
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: center;
+            cross-axis-alignment: center;
+
+            FlowChip {
+                text: "Synth";
+                active: root.on;
+            }
+
+            FlowArrow { }
+
+            FlowChip {
+                text: "DC Blocker";
+                active: root.on && root.pp.dc_blocker;
+            }
+
+            FlowArrow { }
+
+            FlowChip {
+                text: "EQ";
+                active: root.on && root.pp.has_equalizer;
+            }
+
+            FlowArrow { }
+
+            FlowChip {
+                text: "Volume";
+                active: root.on;
+            }
+
+            FlowArrow { }
+
+            FlowChip {
+                text: "Reverb";
+                active: root.on && root.pp.has_reverb;
+            }
+
+            FlowArrow { }
+
+            FlowChip {
+                text: "Limiter";
+                active: root.on && root.pp.has_limiter;
+            }
+
+
+            FlowArrow { }
+
+            FlowChip {
+                text: "Output";
+                active: root.on;
+            }
+        }
+
         LabelText {
             text: "Drag a knob up or down to set it — hold Shift for fine steps, scroll to nudge it, double-click to go back to the default.";
-            color: Theme.text_secondary;
-            font_size: 12px;
+            font-size: 11px;
+            horizontal-alignment: center;
             wrap: word-wrap;
         }
 
-        HorizontalLayout {
-            spacing: 16px;
-            padding-bottom: 8px;
-            alignment: space-evenly;
-
-            MaestroKnob {
-                label: "Master Volume";
+        VerticalLayout {
+            StageCard {
+                index: 1;
+                title: "DC Blocker";
+                subtext: "Removes any constant offset from the signal, which would otherwise waste headroom and cause clicks when playback starts or stops.";
                 enabled: root.on;
-                minimum: 0;
-                maximum: 4;
-                default_value: 1;
-                step: 0.05;
-                decimals: 2;
-                unit: "x";
-                size: 120px;
-                value: SettingsEditorState.current_config.post_processor.volume;
-                edited(v) => {
-                    root.edit = SettingsEditorState.current_config.post_processor;
-                    root.edit.volume = v;
+                active: root.on && root.pp.dc_blocker;
+                has_controls: false;
+                toggled(v) => {
+                    root.edit = root.pp;
+                    root.edit.dc_blocker = v;
                     SettingsEditorState.update_post_processor(root.edit);
                 }
             }
 
-            HorizontalSeparator { }
+            StageLink { }
 
-            VerticalLayout {
-                MaestroSwitch {
-                    text: "Audio Limiter";
-                    enabled: root.on;
-                    checked: SettingsEditorState.current_config.post_processor.has_limiter;
-                    toggled(v) => {
-                        root.edit = SettingsEditorState.current_config.post_processor;
-                        root.edit.has_limiter = v;
+            StageCard {
+                index: 2;
+                title: "Equalizer";
+                enabled: root.on;
+                active: root.on && root.pp.has_equalizer;
+                toggled(v) => {
+                    root.edit = root.pp;
+                    root.edit.has_equalizer = v;
+                    SettingsEditorState.update_post_processor(root.edit);
+                }
+
+                MaestroKnob {
+                    label: "Low · 120 Hz";
+                    enabled: root.on && root.pp.has_equalizer;
+                    minimum: -24;
+                    maximum: 24;
+                    default_value: 0;
+                    step: 0.5;
+                    decimals: 1;
+                    unit: " dB";
+                    value: root.pp.eq_low_db;
+                    edited(v) => {
+                        root.edit = root.pp;
+                        root.edit.eq_low_db = v;
                         SettingsEditorState.update_post_processor(root.edit);
                     }
                 }
 
-                HorizontalLayout {
-                    spacing: 24px;
-                    alignment: center;
-                    cross-axis-alignment: center;
-
-                    // Both times are dialled on a logarithmic taper: the short end is
-                    // where the audible difference is, and a linear dial would bunch it
-                    // all into the first few degrees.
-                    MaestroKnob {
-                        label: "Attack";
-                        enabled: root.limiting;
-                        logarithmic: true;
-                        minimum: 0.1;
-                        maximum: 500;
-                        default_value: 20;
-                        decimals: 1;
-                        unit: " ms";
-                        value: SettingsEditorState.current_config.post_processor.limiter_attack_ms;
-                        edited(v) => {
-                            root.edit = SettingsEditorState.current_config.post_processor;
-                            root.edit.limiter_attack_ms = v;
-                            SettingsEditorState.update_post_processor(root.edit);
-                        }
+                MaestroKnob {
+                    label: "Mid · 1 kHz";
+                    enabled: root.on && root.pp.has_equalizer;
+                    minimum: -24;
+                    maximum: 24;
+                    default_value: 0;
+                    step: 0.5;
+                    decimals: 1;
+                    unit: " dB";
+                    value: root.pp.eq_mid_db;
+                    edited(v) => {
+                        root.edit = root.pp;
+                        root.edit.eq_mid_db = v;
+                        SettingsEditorState.update_post_processor(root.edit);
                     }
+                }
 
-                    MaestroKnob {
-                        label: "Release";
-                        enabled: root.limiting;
-                        logarithmic: true;
-                        minimum: 1;
-                        maximum: 5000;
-                        default_value: 400;
-                        decimals: 0;
-                        unit: " ms";
-                        value: SettingsEditorState.current_config.post_processor.limiter_release_ms;
-                        edited(v) => {
-                            root.edit = SettingsEditorState.current_config.post_processor;
-                            root.edit.limiter_release_ms = v;
-                            SettingsEditorState.update_post_processor(root.edit);
-                        }
+                MaestroKnob {
+                    label: "High · 6 kHz";
+                    enabled: root.on && root.pp.has_equalizer;
+                    minimum: -24;
+                    maximum: 24;
+                    default_value: 0;
+                    step: 0.5;
+                    decimals: 1;
+                    unit: " dB";
+                    value: root.pp.eq_high_db;
+                    edited(v) => {
+                        root.edit = root.pp;
+                        root.edit.eq_high_db = v;
+                        SettingsEditorState.update_post_processor(root.edit);
                     }
                 }
             }
-        }
 
-        Setting {
-            text: "DC Blocker";
-            has-switch: true;
-            enabled: root.on;
-            checked: SettingsEditorState.current_config.post_processor.dc_blocker;
-            toggled(v) => {
-                root.edit = SettingsEditorState.current_config.post_processor;
-                root.edit.dc_blocker = v;
-                SettingsEditorState.update_post_processor(root.edit);
+            StageLink { }
+
+            StageCard {
+                index: 3;
+                title: "Master Volume";
+                subtext: "Overall loudness. It comes before the limiter, so turning it up past 1x makes the limiter work harder rather than clipping the output.";
+                enabled: root.on;
+                active: root.on;
+                toggleable: false;
+
+                MaestroKnob {
+                    label: "Volume";
+                    enabled: root.on;
+                    minimum: 0;
+                    maximum: 4;
+                    default_value: 1;
+                    step: 0.05;
+                    decimals: 2;
+                    unit: "x";
+                    size: 80px;
+                    value: root.pp.volume;
+                    edited(v) => {
+                        root.edit = root.pp;
+                        root.edit.volume = v;
+                        SettingsEditorState.update_post_processor(root.edit);
+                    }
+                }
+            }
+
+            StageLink { }
+
+            StageCard {
+                index: 4;
+                title: "Reverb";
+                subtext: "Adds room ambience to the whole output, on top of any reverb the synth already applies.";
+                enabled: root.on;
+                active: root.on && root.pp.has_reverb;
+                toggled(v) => {
+                    root.edit = root.pp;
+                    root.edit.has_reverb = v;
+                    SettingsEditorState.update_post_processor(root.edit);
+                }
+
+                MaestroKnob {
+                    label: "Mix";
+                    enabled: root.on && root.pp.has_reverb;
+                    minimum: 0;
+                    maximum: 100;
+                    default_value: 15;
+                    decimals: 0;
+                    unit: " %";
+                    value: root.pp.reverb_mix * 100;
+                    edited(v) => {
+                        root.edit = root.pp;
+                        root.edit.reverb_mix = v / 100;
+                        SettingsEditorState.update_post_processor(root.edit);
+                    }
+                }
+
+                MaestroKnob {
+                    label: "Room Size";
+                    enabled: root.on && root.pp.has_reverb;
+                    minimum: 10;
+                    maximum: 30;
+                    default_value: 20;
+                    decimals: 0;
+                    unit: " m";
+                    value: root.pp.reverb_room_size_m;
+                    edited(v) => {
+                        root.edit = root.pp;
+                        root.edit.reverb_room_size_m = v;
+                        SettingsEditorState.update_post_processor(root.edit);
+                    }
+                }
+
+                MaestroKnob {
+                    label: "Decay";
+                    enabled: root.on && root.pp.has_reverb;
+                    logarithmic: true;
+                    minimum: 0.1;
+                    maximum: 20;
+                    default_value: 2;
+                    decimals: 1;
+                    unit: " s";
+                    value: root.pp.reverb_time_s;
+                    edited(v) => {
+                        root.edit = root.pp;
+                        root.edit.reverb_time_s = v;
+                        SettingsEditorState.update_post_processor(root.edit);
+                    }
+                }
+
+                MaestroKnob {
+                    label: "Damping";
+                    enabled: root.on && root.pp.has_reverb;
+                    minimum: 0;
+                    maximum: 100;
+                    default_value: 50;
+                    decimals: 0;
+                    unit: " %";
+                    value: root.pp.reverb_damping * 100;
+                    edited(v) => {
+                        root.edit = root.pp;
+                        root.edit.reverb_damping = v / 100;
+                        SettingsEditorState.update_post_processor(root.edit);
+                    }
+                }
+            }
+
+            StageLink { }
+
+            StageCard {
+                index: 5;
+                title: "Audio Limiter";
+                subtext: "Turns the level down when the mix gets too loud, so dense passages don't clip. Attack is how fast it reacts, release how fast it lets go.";
+                enabled: root.on;
+                active: root.on && root.pp.has_limiter;
+                toggled(v) => {
+                    root.edit = root.pp;
+                    root.edit.has_limiter = v;
+                    SettingsEditorState.update_post_processor(root.edit);
+                }
+
+                // Both times are dialled on a logarithmic taper: the short end is
+                // where the audible difference is, and a linear dial would bunch it
+                // all into the first few degrees.
+                MaestroKnob {
+                    label: "Attack";
+                    enabled: root.on && root.pp.has_limiter;
+                    logarithmic: true;
+                    minimum: 0.1;
+                    maximum: 500;
+                    default_value: 20;
+                    decimals: 1;
+                    unit: " ms";
+                    value: root.pp.limiter_attack_ms;
+                    edited(v) => {
+                        root.edit = root.pp;
+                        root.edit.limiter_attack_ms = v;
+                        SettingsEditorState.update_post_processor(root.edit);
+                    }
+                }
+
+                MaestroKnob {
+                    label: "Release";
+                    enabled: root.on && root.pp.has_limiter;
+                    logarithmic: true;
+                    minimum: 1;
+                    maximum: 5000;
+                    default_value: 400;
+                    decimals: 0;
+                    unit: " ms";
+                    value: root.pp.limiter_release_ms;
+                    edited(v) => {
+                        root.edit = root.pp;
+                        root.edit.limiter_release_ms = v;
+                        SettingsEditorState.update_post_processor(root.edit);
+                    }
+                }
             }
         }
     }

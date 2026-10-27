@@ -4,7 +4,7 @@ use maestro_core::{
     file_renderer::{BITRATES_KBPS, DEFAULT_BITRATE_KBPS, OutputFormat, WavBitDepth},
     renderer::SynthAvailability,
     renderer::config::{
-        EventProcessorConfig, PostProcessorConfig, SynthConfig,
+        EqualizerConfig, EventProcessorConfig, PostProcessorConfig, ReverbConfig, SynthConfig,
         bassmidi::{BASSMIDIConfig, BASSMIDIInterpolation, BASSMIDIThreading},
         fluidsynth::{
             FluidSynthBankSelect, FluidSynthConfig, FluidSynthInterpolation,
@@ -516,12 +516,23 @@ pub fn postproc_to_slint(
     rem: &RememberedSettings,
 ) -> SlintPostProcessorConfig {
     let lim = p.limiter.unwrap_or(rem.limiter);
+    let eq = p.equalizer.unwrap_or(rem.equalizer);
+    let rev = p.reverb.unwrap_or(rem.reverb);
     SlintPostProcessorConfig {
         volume: p.volume,
         has_limiter: p.limiter.is_some(),
         limiter_attack_ms: lim.attack_ms,
         limiter_release_ms: lim.release_ms,
         dc_blocker: p.dc_blocker,
+        has_equalizer: p.equalizer.is_some(),
+        eq_low_db: eq.low_db,
+        eq_mid_db: eq.mid_db,
+        eq_high_db: eq.high_db,
+        has_reverb: p.reverb.is_some(),
+        reverb_mix: rev.mix,
+        reverb_room_size_m: rev.room_size_m,
+        reverb_time_s: rev.time_s,
+        reverb_damping: rev.damping,
     }
 }
 
@@ -531,11 +542,24 @@ pub fn slint_to_postproc(
 ) -> PostProcessorConfig {
     rem.limiter.attack_ms = sl.limiter_attack_ms;
     rem.limiter.release_ms = sl.limiter_release_ms;
+    rem.equalizer = EqualizerConfig {
+        low_db: sl.eq_low_db,
+        mid_db: sl.eq_mid_db,
+        high_db: sl.eq_high_db,
+    };
+    rem.reverb = ReverbConfig {
+        mix: sl.reverb_mix,
+        room_size_m: sl.reverb_room_size_m,
+        time_s: sl.reverb_time_s,
+        damping: sl.reverb_damping,
+    };
 
     PostProcessorConfig {
         volume: sl.volume,
         limiter: sl.has_limiter.then_some(rem.limiter),
         dc_blocker: sl.dc_blocker,
+        equalizer: sl.has_equalizer.then_some(rem.equalizer),
+        reverb: sl.has_reverb.then_some(rem.reverb),
     }
 }
 

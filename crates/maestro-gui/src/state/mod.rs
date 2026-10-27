@@ -9,8 +9,8 @@ use maestro_core::{
     audio_params::AudioParameters,
     realtime::config::{NpsLimit, RealtimeConfig},
     renderer::config::{
-        AudioLimiterConfig, EventProcessorConfig, PostProcessorConfig, RendererConfig,
-        bassmidi::BASSMIDIThreading,
+        AudioLimiterConfig, EqualizerConfig, EventProcessorConfig, PostProcessorConfig,
+        RendererConfig, ReverbConfig, bassmidi::BASSMIDIThreading,
     },
     soundfont::{DEFAULT_SOUNDFONT_LIST_NAME, SoundFontList},
 };
@@ -51,6 +51,8 @@ pub struct RememberedSettings {
     pub buffer_size: u32,
     pub port_threads: usize,
     pub limiter: AudioLimiterConfig,
+    pub equalizer: EqualizerConfig,
+    pub reverb: ReverbConfig,
     pub bass_threading: BASSMIDIThreading,
     pub bass_thread_count: u8,
     pub fixed_velocity: u8,
@@ -65,6 +67,8 @@ impl Default for RememberedSettings {
             buffer_size: DEFAULT_BUFFER_SIZE,
             port_threads: 4,
             limiter: AudioLimiterConfig::default(),
+            equalizer: EqualizerConfig::default(),
+            reverb: ReverbConfig::default(),
             bass_threading: BASSMIDIThreading {
                 thread_count: 0,
                 divide_channels: false,

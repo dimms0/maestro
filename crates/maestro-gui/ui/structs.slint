@@ -138,6 +138,15 @@ export struct SlintPostProcessorConfig {
     limiter_attack_ms: float,
     limiter_release_ms: float,
     dc_blocker: bool,
+    has_equalizer: bool,
+    eq_low_db: float,
+    eq_mid_db: float,
+    eq_high_db: float,
+    has_reverb: bool,
+    reverb_mix: float,
+    reverb_room_size_m: float,
+    reverb_time_s: float,
+    reverb_damping: float,
 }
 
 export struct SlintConverterCustom {
