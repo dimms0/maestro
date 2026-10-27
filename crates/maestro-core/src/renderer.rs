@@ -320,17 +320,11 @@ impl MaestroRenderer {
         evproc: Option<EventProcessorConfig>,
         postproc: Option<PostProcessorConfig>,
     ) -> Result<bool, RendererError> {
-        if config.synth != self.config.synth {
-            // every port runs the same synth so the first one speaks for all
-            let Some((first, rest)) = self.ports.split_first_mut() else {
-                return Ok(false);
-            };
-            if !first.reload_config(&config.synth) {
-                return Ok(false);
-            }
-            for port in rest {
-                port.reload_config(&config.synth);
-            }
+        if config.synth != self.config.synth
+            && (self.ports.is_empty()
+                || !self.ports.iter_mut().all(|p| p.reload_config(&config.synth)))
+        {
+            return Ok(false);
         }
 
         if config.port_threads != self.config.port_threads {

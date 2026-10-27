@@ -22,7 +22,7 @@ use crate::{
             EventBuffer, SoundFontHandle, SynthModule,
             kestrel::{
                 gpu,
-                library::{KestrelBank, KestrelLib},
+                library::{KestrelBank, KestrelLib, bank_settings},
             },
         },
     },
@@ -226,8 +226,33 @@ impl SynthModule for KestrelSynth {
     type Config = KestrelConfig;
 
     fn reload_config(&mut self, config: &KestrelConfig) -> bool {
-        // Every setting is fixed when the GPU buffers are made
-        self.config == config.clamped()
+        let config = config.clamped();
+        if config == self.config {
+            return true;
+        }
+        if bank_settings(&config) != bank_settings(&self.config) {
+            return false;
+        }
+
+        let engine_cfg = engine_config(&config, self.engine_cfg.sample_rate);
+        if engine_cfg.validate().is_err() {
+            return false;
+        }
+        if let Some(engine) = &mut self.engine {
+            let (Ok(synth), Ok(driver)) = (
+                self.lib.synth(&engine.bank, &engine_cfg),
+                live_driver(&engine_cfg, &engine.bank),
+            ) else {
+                return false;
+            };
+            engine.synth = synth;
+            engine.driver = driver;
+        }
+
+        self.config = config;
+        *self.engine_cfg = engine_cfg;
+        self.restart();
+        true
     }
 
     fn set_soundfonts(&mut self, handles: &[SoundFontHandle]) -> Result<(), RendererError> {

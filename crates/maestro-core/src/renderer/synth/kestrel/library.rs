@@ -30,9 +30,20 @@ pub(crate) struct KestrelBank {
     pub shared: GpuShared,
 }
 
-// Settings shape the samples and the device buffers, so a bank is only shared
-// by ports with the same ones
 type BankKey = (Vec<KestrelFont>, KestrelConfig, u32);
+
+pub(super) fn bank_settings(c: &KestrelConfig) -> KestrelConfig {
+    KestrelConfig {
+        gpu: c.gpu,
+        resample_pool: c.resample_pool,
+        pool_budget_mib: c.pool_budget_mib,
+        decay_curve: c.decay_curve,
+        release_curve: c.release_curve,
+        release_floor_db: c.release_floor_db,
+        filter: c.filter,
+        ..Default::default()
+    }
+}
 
 pub(crate) struct KestrelLib {
     soundfonts: RwLock<Arena<KestrelFont>>,
@@ -58,7 +69,7 @@ impl KestrelLib {
         config: &KestrelConfig,
         cfg: &kestrel::Config,
     ) -> Result<Arc<KestrelBank>, RendererError> {
-        let key = (fonts.to_vec(), *config, cfg.sample_rate);
+        let key = (fonts.to_vec(), bank_settings(config), cfg.sample_rate);
         let mut banks = self.banks.lock().unwrap();
         banks.retain(|(_, weak)| weak.strong_count() > 0);
 
