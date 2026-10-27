@@ -32,6 +32,16 @@
   https://github.com/FluidSynth/fluidsynth/blob/master/LICENSE for the full
   license text.
 
+- **Kestrel** — Copyright thtstickyboi
+  (https://github.com/thtstickyboi/kestrel-midi), licensed under the Mozilla
+  Public License 2.0. The GPU synthesizer is compiled into Maestro as a Rust
+  crate, from a copy modified to add a live render mode. The MPL applies file
+  by file, so Kestrel's files, including the modified ones, stay under the MPL
+  and their source must be offered with every release; Maestro's own license
+  is unaffected. Kestrel's own notices (claxon, and code adapted from SYNCore
+  and OmniConverter) are in `THIRD-PARTY.md` in its source. See
+  https://www.mozilla.org/MPL/2.0/ for the full license text.
+
 - **libsndfile** — Copyright Erik de Castro Lopo and contributors
   (https://github.com/libsndfile/libsndfile), licensed under the GNU Lesser
   General Public License v2.1 or later. FluidSynth reads the Ogg Vorbis

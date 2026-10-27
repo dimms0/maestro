@@ -4,10 +4,10 @@ use crate::{
     AudioDeviceState, DeviceManagerState, MainWindow, RendererState, SettingsEditorState,
     SflistState, SlintApiApp, SlintAudioParameters, SlintComponentConfig, SlintComponentSummary,
     SlintPortAssignment, SlintRealtimeConfig, SlintRendererConfig, SlintSoundFont,
-    SoundfontEditorState,
+    SoundfontEditorState, SynthKind,
     slint_conv::{
-        converter_custom_to_slint, evproc_to_slint, postproc_to_slint, synth_options,
-        synth_to_slint, system_custom_to_slint,
+        converter_custom_to_slint, evproc_to_slint, kestrel_gpu_options, postproc_to_slint,
+        slint_to_kestrel, synth_options, synth_to_slint, system_custom_to_slint,
     },
     state::{AppData, ConfigComponent, app_id},
 };
@@ -321,6 +321,10 @@ pub fn sync_config_to_slint(ui: &MainWindow, state: &AppData) {
         editor.set_synth_options(ModelRc::new(VecModel::from(options)));
         editor.set_synth_kinds(ModelRc::new(VecModel::from(kinds)));
         editor.set_synth_index(index as i32);
+        if cfg.synth.kind == SynthKind::Kestrel {
+            let gpus = kestrel_gpu_options(&slint_to_kestrel(&cfg.synth));
+            editor.set_kestrel_gpus(ModelRc::new(VecModel::from(gpus)));
+        }
         editor.set_current_config(cfg);
     }
     if editor.get_bitrates().row_count() == 0 {

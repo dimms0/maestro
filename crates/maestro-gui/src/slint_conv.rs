@@ -2,7 +2,6 @@ use slint::{Model, ModelRc, VecModel};
 
 use maestro_core::{
     file_renderer::{BITRATES_KBPS, DEFAULT_BITRATE_KBPS, OutputFormat, WavBitDepth},
-    renderer::SynthAvailability,
     renderer::config::{
         EqualizerConfig, EventProcessorConfig, PostProcessorConfig, ReverbConfig, SynthConfig,
         bassmidi::{BASSMIDIConfig, BASSMIDIInterpolation, BASSMIDIThreading},
@@ -10,13 +9,18 @@ use maestro_core::{
             FluidSynthBankSelect, FluidSynthConfig, FluidSynthInterpolation,
             FluidSynthPortamentoTime, FluidSynthReverbEngine,
         },
+        kestrel::{
+            KestrelAdmitRule, KestrelConfig, KestrelEnvelopeCurve, KestrelInterpolation,
+            KestrelStealRule,
+        },
         svms::{SVMSConfig, SVMSRenderBackend},
     },
+    renderer::{KestrelAdapter, SynthAvailability, kestrel_adapters},
 };
 
 use crate::{
-    SlintComboItem, SlintEventProcessorConfig, SlintPostProcessorConfig, SlintSynthConfig,
-    SynthKind, Tab,
+    SlintComboItem, SlintEventProcessorConfig, SlintGpuItem, SlintPostProcessorConfig,
+    SlintSynthConfig, SynthKind, Tab,
     state::{ConverterCustom, RememberedSettings},
 };
 
@@ -190,7 +194,7 @@ struct SynthEntry {
     optional: bool,
 }
 
-const SYNTHS: [SynthEntry; 3] = [
+const SYNTHS: [SynthEntry; 4] = [
     SynthEntry {
         kind: SynthKind::Fluidsynth,
         name: "FluidSynth",
@@ -209,6 +213,12 @@ const SYNTHS: [SynthEntry; 3] = [
         badges: ["SF2", "SFZ", ""],
         optional: true,
     },
+    SynthEntry {
+        kind: SynthKind::Kestrel,
+        name: "Kestrel (GPU)",
+        badges: ["SF2", "SFZ", ""],
+        optional: false,
+    },
 ];
 
 pub fn synth_options(current: SynthKind) -> (Vec<SlintComboItem>, Vec<SynthKind>) {
@@ -221,6 +231,7 @@ pub fn synth_options(current: SynthKind) -> (Vec<SlintComboItem>, Vec<SynthKind>
                 SynthKind::Fluidsynth => available.fluidsynth,
                 SynthKind::Bassmidi => available.bassmidi,
                 SynthKind::Svms => available.svms,
+                SynthKind::Kestrel => available.kestrel,
             };
             let text = match installed {
                 true => synth.name.into(),
@@ -292,6 +303,10 @@ pub fn synth_to_slint(synth: &SynthConfig, rem: &RememberedSettings) -> SlintSyn
             out.kind = SynthKind::Svms;
             svms_to_slint(c, &mut out);
         }
+        SynthConfig::Kestrel(c) => {
+            out.kind = SynthKind::Kestrel;
+            kestrel_to_slint(c, &mut out);
+        }
     }
 
     out
@@ -353,6 +368,7 @@ fn defaults_slint_synth(rem: &RememberedSettings) -> SlintSynthConfig {
 
     threading_to_slint(b.multithreading, rem, &mut out);
     svms_to_slint(&SVMSConfig::default(), &mut out);
+    kestrel_to_slint(&KestrelConfig::default(), &mut out);
     out
 }
 
@@ -360,6 +376,123 @@ fn svms_to_slint(c: &SVMSConfig, out: &mut SlintSynthConfig) {
     out.svms_voice_limit = c.voice_limit as i32;
     out.svms_render_threads = c.render_threads as i32;
     out.svms_render_backend = i32::from(c.render_backend);
+}
+
+fn kestrel_to_slint(c: &KestrelConfig, out: &mut SlintSynthConfig) {
+    out.kestrel_gpu = c
+        .gpu
+        .and_then(|gpu| kestrel_adapters(c).0.iter().position(|a| a.gpu == gpu))
+        .map_or(0, |i| i as i32 + 1);
+    out.kestrel_voice_limit = c.voice_limit as i32;
+    out.kestrel_interpolation = i32::from(c.interpolation);
+    out.kestrel_note_grid = c.note_grid;
+    out.kestrel_steal_percent = c.max_steal_percent as i32;
+    out.kestrel_filter = c.filter;
+    out.kestrel_lfo = c.lfo;
+    out.kestrel_mod_envelope = c.mod_envelope;
+    out.kestrel_decay_curve = i32::from(c.decay_curve);
+    out.kestrel_release_curve = i32::from(c.release_curve);
+    out.kestrel_release_floor_db = c.release_floor_db;
+    out.kestrel_max_layers = c.max_layers as i32;
+    out.kestrel_param_variants = c.max_param_variants as i32;
+    out.kestrel_gain_ramp = c.gain_ramp;
+    out.kestrel_filter_ramp = c.filter_ramp;
+    out.kestrel_steal_rule = i32::from(c.steal_rule);
+    out.kestrel_admit_rule = i32::from(c.admit_rule);
+    out.kestrel_steal_fade_frames = c.steal_fade_frames as i32;
+    out.kestrel_resample_pool = c.resample_pool;
+    out.kestrel_pool_budget_mib = c.pool_budget_mib as i32;
+    out.kestrel_block_frames = c.block_frames as i32;
+    out.kestrel_gate_frames = c.gate_frames.ilog2() as i32 - 2;
+    out.kestrel_workgroup_size = c.workgroup_size.ilog2() as i32 - 5;
+    out.kestrel_render_workgroups = c.render_workgroups as i32;
+    out.kestrel_submit_voices = c.submit_voices as i32;
+    out.kestrel_build_threads = c.build_threads as i32;
+    out.kestrel_sort_voices = c.sort_voices;
+    out.kestrel_kahan_reduce = c.kahan_reduce;
+    out.kestrel_unchecked_shaders = c.unchecked_shaders;
+}
+
+pub fn slint_to_kestrel(sl: &SlintSynthConfig) -> KestrelConfig {
+    let base = KestrelConfig {
+        voice_limit: sl.kestrel_voice_limit.max(1) as u32,
+        interpolation: KestrelInterpolation::try_from(sl.kestrel_interpolation).unwrap_or_default(),
+        note_grid: sl.kestrel_note_grid,
+        max_steal_percent: sl.kestrel_steal_percent.max(0) as u32,
+        filter: sl.kestrel_filter,
+        lfo: sl.kestrel_lfo,
+        mod_envelope: sl.kestrel_mod_envelope,
+        decay_curve: KestrelEnvelopeCurve::try_from(sl.kestrel_decay_curve).unwrap_or_default(),
+        release_curve: KestrelEnvelopeCurve::try_from(sl.kestrel_release_curve).unwrap_or_default(),
+        release_floor_db: sl.kestrel_release_floor_db,
+        max_layers: sl.kestrel_max_layers.max(0) as u32,
+        max_param_variants: sl.kestrel_param_variants.max(0) as u32,
+        gain_ramp: sl.kestrel_gain_ramp,
+        filter_ramp: sl.kestrel_filter_ramp,
+        steal_rule: KestrelStealRule::try_from(sl.kestrel_steal_rule).unwrap_or_default(),
+        admit_rule: KestrelAdmitRule::try_from(sl.kestrel_admit_rule).unwrap_or_default(),
+        steal_fade_frames: sl.kestrel_steal_fade_frames.max(0) as u32,
+        resample_pool: sl.kestrel_resample_pool,
+        pool_budget_mib: sl.kestrel_pool_budget_mib.max(0) as u32,
+        block_frames: sl.kestrel_block_frames.max(0) as u32,
+        gate_frames: 4 << sl.kestrel_gate_frames.clamp(0, 3),
+        workgroup_size: 32 << sl.kestrel_workgroup_size.clamp(0, 5),
+        render_workgroups: sl.kestrel_render_workgroups.max(0) as u32,
+        submit_voices: sl.kestrel_submit_voices.max(0) as u32,
+        build_threads: sl.kestrel_build_threads.max(0) as u32,
+        sort_voices: sl.kestrel_sort_voices,
+        kahan_reduce: sl.kestrel_kahan_reduce,
+        unchecked_shaders: sl.kestrel_unchecked_shaders,
+        gpu: None,
+    };
+    let gpu = (sl.kestrel_gpu > 0)
+        .then(|| {
+            kestrel_adapters(&base)
+                .0
+                .get(sl.kestrel_gpu as usize - 1)
+                .map(|a| a.gpu)
+        })
+        .flatten();
+    KestrelConfig { gpu, ..base }.clamped()
+}
+
+pub fn kestrel_gpu_options(c: &KestrelConfig) -> Vec<SlintGpuItem> {
+    let (adapters, auto) = kestrel_adapters(c);
+    // Kestrel names the driver in parentheses after the card
+    let split = |a: &KestrelAdapter| match a.name.split_once(" (") {
+        Some((name, driver)) => (name.to_string(), driver.trim_end_matches(')').to_string()),
+        None => (a.name.clone(), String::new()),
+    };
+    let item = |a: &KestrelAdapter| {
+        let (name, driver) = split(a);
+        let kind = if a.integrated {
+            "Integrated"
+        } else {
+            "Dedicated"
+        };
+        let mut detail = format!(
+            "{kind} · {:?} · up to {} voices",
+            a.gpu.backend,
+            crate::utils::fmt_count(a.max_voices as u64)
+        );
+        if !driver.is_empty() {
+            detail += &format!(" · {driver}");
+        }
+        SlintGpuItem {
+            name: name.into(),
+            detail: detail.into(),
+        }
+    };
+    let automatic = SlintGpuItem {
+        name: "Automatic".into(),
+        detail: match auto.map(|i| &adapters[i]) {
+            Some(a) => format!("Uses {} on {:?}", split(a).0, a.gpu.backend).into(),
+            None => "No GPU found".into(),
+        },
+    };
+    std::iter::once(automatic)
+        .chain(adapters.iter().map(item))
+        .collect()
 }
 
 pub fn slint_to_synth(sl: &SlintSynthConfig, rem: &mut RememberedSettings) -> SynthConfig {
@@ -428,6 +561,7 @@ pub fn slint_to_synth(sl: &SlintSynthConfig, rem: &mut RememberedSettings) -> Sy
             }
             .clamped(),
         ),
+        SynthKind::Kestrel => SynthConfig::Kestrel(slint_to_kestrel(sl)),
     }
 }
 

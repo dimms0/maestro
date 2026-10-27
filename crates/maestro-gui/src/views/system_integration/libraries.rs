@@ -1,6 +1,6 @@
 use maestro_core::{
     paths::{self, LibSource},
-    renderer::{LibraryStatus, probe_libraries},
+    renderer::{KESTREL_VERSION, LibraryStatus, probe_libraries},
 };
 
 use crate::{IntegrationStatus, LibraryAction, SlintLibraryItem};
@@ -42,7 +42,15 @@ fn listed_libraries() -> Vec<LibraryStatus> {
 }
 
 pub fn probe() -> Vec<SlintLibraryItem> {
-    listed_libraries().iter().map(to_slint).collect()
+    let mut items: Vec<_> = listed_libraries().iter().map(to_slint).collect();
+    items.push(SlintLibraryItem {
+        name: "Kestrel".into(),
+        version: KESTREL_VERSION.into(),
+        source: "built in".into(),
+        status: IntegrationStatus::Ok,
+        ..Default::default()
+    });
+    items
 }
 
 pub fn act(index: i32, action: LibraryAction) -> Result<(), String> {

@@ -848,6 +848,555 @@ component SVMSPanel inherits SynthPanel {
     }
 }
 
+component GpuRow inherits Rectangle {
+    in property <string> name;
+    in property <string> detail;
+    in property <bool> current;
+
+    callback clicked;
+
+    height: 48px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: root.current ? Theme.border_focus : Theme.border_color;
+    background: root.current ? Theme.primary : (touch.has-hover ? Theme.bg_card_hover : Theme.bg_input);
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 12px;
+
+        Rectangle {
+            width: 14px;
+            height: 14px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 7px;
+            border-width: 2px;
+            border-color: root.current ? Theme.border_focus : Theme.text_secondary;
+
+            if (root.current): Rectangle {
+                width: 6px;
+                height: 6px;
+                border-radius: 3px;
+                background: Theme.border_focus;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+
+            BodyText {
+                text: root.name;
+                overflow: elide;
+            }
+
+            LabelText {
+                text: root.detail;
+                font-size: 11px;
+                overflow: elide;
+            }
+        }
+    }
+}
+
+component KestrelPanel inherits SynthPanel {
+    in property <bool> show_advanced: false;
+
+    edit: SettingsEditorState.current_config.synth;
+
+    SectionCard {
+        title: "GPU";
+
+        LabelText {
+            font-size: 10px;
+            text: "The graphics card Kestrel renders on, the backend it is opened through, and the most voices it can hold at these settings. Automatic picks a dedicated card over an integrated one, and Vulkan or Metal over DX12.";
+            wrap: word-wrap;
+        }
+
+        VerticalLayout {
+            spacing: 6px;
+
+            for gpu[i] in SettingsEditorState.kestrel_gpus: GpuRow {
+                name: gpu.name;
+                detail: gpu.detail;
+                current: i == SettingsEditorState.current_config.synth.kestrel_gpu;
+                clicked => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_gpu = i;
+                    root.commit();
+                }
+            }
+        }
+    }
+
+    SectionCard {
+        title: "General";
+
+        Setting {
+            text: "Voice Limit";
+            subtext: "The maximum number of voices Kestrel plays at once, per port. The voice pool lives in video memory: about 250 MB per million voices. A limit over what the GPU can hold is lowered to its maximum.";
+
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 1;
+                maximum: 16777216;
+                value: SettingsEditorState.current_config.synth.kestrel_voice_limit;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_voice_limit = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Interpolation Method";
+            subtext: "How samples are resampled to the notes being played. Cubic sounds cleaner but reads twice as much sample data per voice.";
+
+            MaestroComboBox {
+                width: 150px;
+                model: ["Nearest", "Linear", "Cubic"];
+                current_index: SettingsEditorState.current_config.synth.kestrel_interpolation;
+                selected(v, i) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_interpolation = i;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "BASSMIDI Note Grid";
+            subtext: "Moves note envelopes in 4 ms steps like BASSMIDI does, so notes shorter than 4 ms still sound. Only needed for files that rely on it, and costs about 12% of rendering speed.";
+
+            MaestroSwitch {
+                checked: SettingsEditorState.current_config.synth.kestrel_note_grid;
+                toggled(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_note_grid = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Max Steal Percent";
+            subtext: "How much of the voice pool one block may take over from sounding voices when the pool is full. Lower values let the notes that do start ring for longer; 100 lets a dense passage replace the whole pool every block, which pumps.";
+
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 1;
+                maximum: 100;
+                value: SettingsEditorState.current_config.synth.kestrel_steal_percent;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_steal_percent = v;
+                    root.commit();
+                }
+            }
+        }
+    }
+
+    if (root.show_advanced): SectionCard {
+        title: "SoundFont Playback";
+
+        Setting {
+            text: "Low-Pass Filter";
+            subtext: "Runs each voice through the SoundFont's low-pass filter. Presets that leave the cutoff at its default skip it either way.";
+
+            MaestroSwitch {
+                checked: SettingsEditorState.current_config.synth.kestrel_filter;
+                toggled(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_filter = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Vibrato and Tremolo";
+            subtext: "Plays the SoundFont's vibrato and tremolo LFOs. Many General MIDI SoundFonts rely on them.";
+
+            MaestroSwitch {
+                checked: SettingsEditorState.current_config.synth.kestrel_lfo;
+                toggled(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_lfo = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Modulation Envelope";
+            subtext: "Plays the SoundFont's modulation envelope and its pitch and filter sweeps, which shape the attack of many synth sounds.";
+
+            MaestroSwitch {
+                checked: SettingsEditorState.current_config.synth.kestrel_mod_envelope;
+                toggled(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_mod_envelope = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Decay Curve";
+            subtext: "Shape of the envelope's decay stage. Exponential is what the SoundFont specification asks for; linear matches XSynth's linear envelope option.";
+
+            MaestroComboBox {
+                width: 150px;
+                model: ["Exponential", "Linear"];
+                current_index: SettingsEditorState.current_config.synth.kestrel_decay_curve;
+                selected(v, i) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_decay_curve = i;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Release Curve";
+            subtext: "Shape of the envelope's release stage.";
+
+            MaestroComboBox {
+                width: 150px;
+                model: ["Exponential", "Linear"];
+                current_index: SettingsEditorState.current_config.synth.kestrel_release_curve;
+                selected(v, i) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_release_curve = i;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Release Floor (dB)";
+            subtext: "The level under which a releasing voice is considered silent and stopped. Higher values free voices sooner but cut release tails short.";
+
+            MaestroSpinBox {
+                width: 150px;
+                minimum: -160;
+                maximum: -20;
+                step: 1;
+                decimals: 1;
+                value: SettingsEditorState.current_config.synth.kestrel_release_floor_db;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_release_floor_db = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Layers per Note";
+            subtext: "The most voices one note may start. Each SoundFont layer is one voice and a stereo sample is two; this caps runaway presets.";
+
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 1;
+                maximum: 255;
+                value: SettingsEditorState.current_config.synth.kestrel_max_layers;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_max_layers = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Sound Controller Steps";
+            subtext: "How many different settings the sound controllers (CC71 to CC75) can sweep through. Each one is a copy of the SoundFont's parameters in memory; past the limit a channel reuses the closest one.";
+
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 1;
+                maximum: 63;
+                value: SettingsEditorState.current_config.synth.kestrel_param_variants;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_param_variants = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Smooth Volume Changes";
+            subtext: "Ramps channel volume and expression changes over a fraction of a millisecond instead of stepping them, which avoids clicks on abrupt CC7 or CC11 moves.";
+
+            MaestroSwitch {
+                checked: SettingsEditorState.current_config.synth.kestrel_gain_ramp;
+                toggled(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_gain_ramp = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Smooth Filter Changes";
+            subtext: "Ramps filter changes from CC71 and CC74 instead of switching them, which avoids the filter ringing on abrupt moves.";
+
+            MaestroSwitch {
+                checked: SettingsEditorState.current_config.synth.kestrel_filter_ramp;
+                toggled(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_filter_ramp = v;
+                    root.commit();
+                }
+            }
+        }
+    }
+
+    if (root.show_advanced): SectionCard {
+        title: "Voice Management";
+
+        Setting {
+            text: "Steal Rule";
+            subtext: "Which voices make room when the pool is full. Quietest stops the ones contributing least to the mix, Oldest stops the ones that started first, and Drop New refuses the new note instead.";
+
+            MaestroComboBox {
+                width: 150px;
+                model: ["Quietest", "Oldest", "Drop New"];
+                current_index: SettingsEditorState.current_config.synth.kestrel_steal_rule;
+                selected(v, i) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_steal_rule = i;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Admission Rule";
+            subtext: "Which new notes start when a block has more of them than the pool has room for. Loudest keeps the most audible ones; Even thins them out evenly regardless of what they are.";
+
+            MaestroComboBox {
+                width: 150px;
+                model: ["Loudest", "Even"];
+                current_index: SettingsEditorState.current_config.synth.kestrel_admit_rule;
+                selected(v, i) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_admit_rule = i;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Steal Fade (frames)";
+            subtext: "How long a stolen voice fades out for instead of being cut. Must be shorter than the block size.";
+
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 1;
+                maximum: 8191;
+                value: SettingsEditorState.current_config.synth.kestrel_steal_fade_frames;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_steal_fade_frames = v;
+                    root.commit();
+                }
+            }
+        }
+    }
+
+    if (root.show_advanced): SectionCard {
+        title: "Sample Memory";
+
+        Setting {
+            text: "Resample Samples on Load";
+            subtext: "Converts every sample to the output rate when the SoundFont loads. Off keeps the original rates and resamples while playing instead.";
+
+            MaestroSwitch {
+                checked: SettingsEditorState.current_config.synth.kestrel_resample_pool;
+                toggled(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_resample_pool = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Sample Memory Budget (MiB)";
+            subtext: "The most video memory the SoundFont's samples may take. A SoundFont over it is loaded at half the sample rate, and again until it fits. 0 sizes it from the GPU: three quarters of its video memory, at least 2048 MiB.";
+
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 0;
+                maximum: 65536;
+                value: SettingsEditorState.current_config.synth.kestrel_pool_budget_mib;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_pool_budget_mib = v;
+                    root.commit();
+                }
+            }
+        }
+    }
+
+    if (root.show_advanced): SectionCard {
+        title: "Performance";
+
+        Setting {
+            text: "Block Size";
+            subtext: "How many frames Kestrel sends to the GPU at a time, in steps of 32. Larger blocks render faster but take longer each, so keep this small for live playback and raise it to 4096 for converting files, which then renders several times faster. When the render buffer is not a whole number of blocks, the output is delayed by one block.";
+
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 128;
+                maximum: 8192;
+                step: 32;
+                value: SettingsEditorState.current_config.synth.kestrel_block_frames;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_block_frames = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Gate Resolution (frames)";
+            subtext: "How often note-offs, channel controllers and LFOs are updated on the GPU. Smaller is more precise but slower.";
+
+            MaestroComboBox {
+                width: 150px;
+                model: ["4", "8", "16", "32"];
+                current_index: SettingsEditorState.current_config.synth.kestrel_gate_frames;
+                selected(v, i) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_gate_frames = i;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Workgroup Size";
+            subtext: "GPU threads per render workgroup. 256 measured fastest on current cards.";
+
+            MaestroComboBox {
+                width: 150px;
+                model: ["32", "64", "128", "256", "512", "1024"];
+                current_index: SettingsEditorState.current_config.synth.kestrel_workgroup_size;
+                selected(v, i) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_workgroup_size = i;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Render Workgroups";
+            subtext: "The most workgroups one render pass dispatches; voices past that are looped over. More can be faster but takes more video memory.";
+
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 1;
+                maximum: 65535;
+                value: SettingsEditorState.current_config.synth.kestrel_render_workgroups;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_render_workgroups = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Voices per Submission";
+            subtext: "The most voices one piece of GPU work renders before a block is split. Windows resets the graphics driver when one piece runs over 2 seconds; Kestrel lowers this by itself when a part runs long.";
+
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 1;
+                maximum: 16777216;
+                value: SettingsEditorState.current_config.synth.kestrel_submit_voices;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_submit_voices = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Voice Building Threads";
+            subtext: "CPU threads that prepare each block's new voices while the GPU waits for them.";
+
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 1;
+                maximum: 64;
+                value: SettingsEditorState.current_config.synth.kestrel_build_threads;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_build_threads = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Sort Voices";
+            subtext: "Keeps the voice pool sorted so voices reading the same samples run together. By far the biggest speedup in Kestrel; turn off only to measure it.";
+
+            MaestroSwitch {
+                checked: SettingsEditorState.current_config.synth.kestrel_sort_voices;
+                toggled(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_sort_voices = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Compensated Summation";
+            subtext: "Mixes voices with Kahan summation for slightly lower rounding error, at some cost in speed.";
+
+            MaestroSwitch {
+                checked: SettingsEditorState.current_config.synth.kestrel_kahan_reduce;
+                toggled(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_kahan_reduce = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Unchecked Shaders";
+            subtext: "Compiles the GPU shaders without bounds checks. Somewhat faster, but a bug becomes a GPU memory error instead of a harmless one.";
+
+            MaestroSwitch {
+                checked: SettingsEditorState.current_config.synth.kestrel_unchecked_shaders;
+                toggled(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kestrel_unchecked_shaders = v;
+                    root.commit();
+                }
+            }
+        }
+    }
+}
+
 // Synthesizer picker plus the parameter panel of whichever backend is active.
 // Adding a synth means adding a `SynthKind` variant, one entry in `SYNTHS`
 // (slint_conv.rs) and one panel below.
@@ -891,6 +1440,9 @@ export component SynthSection inherits MaestroCard {
             show_advanced: root.show_advanced;
         }
         if (root.kind == SynthKind.svms): SVMSPanel {
+            show_advanced: root.show_advanced;
+        }
+        if (root.kind == SynthKind.kestrel): KestrelPanel {
             show_advanced: root.show_advanced;
         }
     }

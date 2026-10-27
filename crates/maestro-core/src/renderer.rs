@@ -16,6 +16,7 @@ use crate::{
             SoundFontHandle, SynthLibrary,
             bassmidi::{BASSMIDILib, BASSMIDISynth},
             fluidsynth::{FluidSynthLib, FluidSynthSynth},
+            kestrel::{KestrelLib, KestrelSynth},
             svms::{SVMSLib, SVMSSynth},
         },
     },
@@ -30,6 +31,7 @@ mod post_processor;
 pub mod sender;
 mod synth;
 
+pub use synth::kestrel::{KESTREL_VERSION, KestrelAdapter, kestrel_adapters};
 pub use synth::probe::{LibraryStatus, SynthAvailability, probe_libraries};
 
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
@@ -107,6 +109,22 @@ impl MaestroRenderer {
                         audio_params,
                     );
                     ports.push(PortRenderer::SVMS(port));
+                }
+
+                library
+            }
+            SynthConfig::Kestrel(cfg) => {
+                let library = KestrelLib::init()?;
+
+                for i in 0..port_count {
+                    let newsynth = KestrelSynth::new(library.clone(), &cfg, audio_params)?;
+                    let port = PortSynthManager::<KestrelSynth>::new(
+                        i,
+                        newsynth,
+                        evproc.clone(),
+                        audio_params,
+                    );
+                    ports.push(PortRenderer::Kestrel(port));
                 }
 
                 library
