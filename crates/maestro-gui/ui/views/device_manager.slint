@@ -111,7 +111,7 @@ component StatsRow inherits MaestroCard {
 
             LabelText {
                 horizontal-alignment: right;
-                width: 100px;
+                overflow: TextOverflow.elide;
                 text: root.stats.render_load_txt;
             }
         }

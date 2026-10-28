@@ -160,21 +160,20 @@ export component SystemIntegrationView inherits Rectangle {
                                 item: SystemIntegrationState.service;
                             }
 
-                            // TODO remove check when WMS is implemented
-                            if (!SystemIntegrationState.windows): VerticalLayout {
+                            VerticalLayout {
                                 spacing: 4px;
-
-                                MaestroSwitch {
+                                // TODO remove check when WMS is implemented
+                                if (!SystemIntegrationState.windows): MaestroSwitch {
                                     text: "Start on login";
                                     checked: SystemIntegrationState.autostart;
                                     enabled: !SystemIntegrationState.busy;
                                     toggled(v) => { SystemIntegrationState.set_autostart(v); }
                                 }
 
-                                LabelText {
+                                if (!SystemIntegrationState.windows): LabelText {
                                     text: "Maestro starts automatically when you log in, so its virtual devices are already there when other apps open.";
                                     font-size: 12px;
-                                    wrap: word-wrap;
+                                    wrap: TextWrap.word-wrap;
                                 }
                             }
 

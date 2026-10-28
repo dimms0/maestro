@@ -30,11 +30,22 @@ export component PortAssignmentPanel inherits MaestroCard {
     // the panel has always used, so the layout is unchanged once it is open.
     property <length> collapsed_width: 44px;
 
-    max-width: root.expanded ? 400px : root.collapsed_width;
-    min-width: root.expanded ? 150px : root.collapsed_width;
-    preferred-width: root.expanded ? 400px : root.collapsed_width;
+    // Min and max must follow the animation too, or they clamp it to the end
+    // size instantly.
+    property <length> panel_width: root.expanded ? 400px : root.collapsed_width;
+    animate panel_width {
+        duration: 250ms;
+        easing: ease-in-out;
+    }
 
-    if (!root.expanded): Rectangle {
+    max-width: root.panel_width;
+    min-width: min(root.panel_width, 150px);
+    preferred-width: root.panel_width;
+
+    if (panel_width < 45px): Rectangle {
+        x: 0;
+        width: root.collapsed_width;
+
         // The whole strip re-opens the panel, not just the button.
         TouchArea {
             clicked => { root.expanded = true; }
@@ -44,10 +55,12 @@ export component PortAssignmentPanel inherits MaestroCard {
             padding: 8px;
             spacing: 10px;
             alignment: start;
+            cross-axis-alignment: center;
 
             MaestroIconButton {
                 icon: Icons.arrow_left;
                 height: 28px;
+                width: parent.width - 16px;
                 clicked => { root.expanded = true; }
             }
 
@@ -67,7 +80,11 @@ export component PortAssignmentPanel inherits MaestroCard {
         }
     }
 
-    if (root.expanded): VerticalLayout {
+    // Laid out at no less than its minimum width while the panel grows; the
+    // card clips the overflow.
+    if (panel_width > 44px): VerticalLayout {
+        x: 0;
+        width: max(root.width, 150px);
         padding: 16px;
         spacing: 12px;
 

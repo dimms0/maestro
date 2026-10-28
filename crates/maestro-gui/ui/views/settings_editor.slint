@@ -236,7 +236,7 @@ export component SettingsEditor inherits Rectangle {
 
                 VerticalLayout {
                     spacing: 16px;
-                    width: Math.min(820px, parent.width);
+                    width: Math.clamp(parent.width, 500px, 820px);
 
                     if (root.page == SettingsPage.general): GeneralPage { }
 
