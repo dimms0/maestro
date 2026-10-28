@@ -23,7 +23,16 @@ serde_json = "1.0"
 directories = "6.0.0"
 midi-parser = { path = "../midi-parser" }
 rayon = "1.12"
-slint = { version = "~1.17", features = ["unstable-winit-030"] }
+slint = { version = "~1.18", default-features = false, features = [
+    "std",
+    "backend-default",
+    "unstable-winit-030",
+    "renderer-software",
+    "accessibility",
+    "compat-1-2",
+    "system-tray",
+    "renderer-skia",
+] }
 rfd = "0.17"
 libloading = "0.9"
 ureq = { version = "3", optional = true, features = ["json"] }
@@ -33,7 +42,7 @@ default = ["update-check"]
 update-check = ["dep:ureq"]
 
 [build-dependencies]
-slint-build = "~1.17"
+slint-build = "~1.18"
 # Used only when the target is Windows; see build.rs.
 winresource = "0.1"
 
