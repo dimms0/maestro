@@ -36,6 +36,8 @@ pub use synth::probe::{LibraryStatus, SynthAvailability, probe_libraries};
 
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
 
+pub(crate) struct LoadedSoundFonts(Vec<Vec<SoundFontHandle>>);
+
 pub(crate) struct MaestroRenderer {
     library: Arc<dyn SynthLibrary>,
     ports: Box<[PortRenderer]>,
@@ -231,77 +233,97 @@ impl MaestroRenderer {
     }
 
     pub fn load_soundfonts(&mut self, list: &SoundFontList) -> Result<(), RendererError> {
-        for old_port in &mut self.port_soundfonts {
-            for handle in old_port.drain(..) {
-                self.library.free_soundfont_handle(handle);
-            }
-        }
-        let num_ports = self.ports.len();
+        let loaded = self.soundfont_loader()(list)?;
+        self.apply_soundfonts(loaded)
+    }
 
-        let load_handles =
-            |filtered: &[&SoundFont]| -> Result<Vec<SoundFontHandle>, RendererError> {
-                let mut vec = Vec::new();
+    pub(crate) fn soundfont_loader(
+        &self,
+    ) -> impl FnOnce(&SoundFontList) -> Result<LoadedSoundFonts, RendererError> + use<> {
+        let (library, synth, num_ports) =
+            (self.library.clone(), self.config.synth, self.ports.len());
 
-                for sf in filtered {
-                    match self.library.load_soundfont_handle(&self.config.synth, sf) {
-                        Ok(handle) => vec.push(handle),
+        move |list| {
+            let load_handles =
+                |filtered: &[&SoundFont]| -> Result<Vec<SoundFontHandle>, RendererError> {
+                    let mut vec = Vec::new();
+
+                    for sf in filtered {
+                        match library.load_soundfont_handle(&synth, sf) {
+                            Ok(handle) => vec.push(handle),
+                            Err(err) => {
+                                for handle in vec.drain(..) {
+                                    library.free_soundfont_handle(handle);
+                                }
+                                return Err(err);
+                            }
+                        }
+                    }
+
+                    Ok(vec)
+                };
+
+            let mut loaded_lists: HashMap<&str, Vec<SoundFontHandle>> = HashMap::new();
+            let mut port_handles = Vec::with_capacity(num_ports);
+
+            for i in 0..num_ports {
+                let list_name = list.port_assignments.get(&i).or(list.default_list.as_ref());
+
+                if let Some(name) = list_name
+                    && !loaded_lists.contains_key(name.as_str())
+                {
+                    let filtered = list.lists.get(name).map(|sfs| {
+                        let supported = library.supported_soundfont_types();
+                        sfs.iter()
+                            .rev()
+                            .filter(|sf| sf.enabled && supported.contains(&sf.font_type()))
+                            .collect::<Vec<_>>()
+                    });
+                    let handles = filtered
+                        .ok_or_else(|| {
+                            RendererError::SoundFont(format!("Sub-list '{}' not found", name))
+                        })
+                        .and_then(|filtered| load_handles(&filtered));
+
+                    match handles {
+                        Ok(handles) => loaded_lists.insert(name, handles),
                         Err(err) => {
-                            for handle in vec.drain(..) {
-                                self.library.free_soundfont_handle(handle);
+                            for handle in loaded_lists.into_values().flatten() {
+                                library.free_soundfont_handle(handle);
                             }
                             return Err(err);
                         }
-                    }
+                    };
                 }
 
-                Ok(vec)
-            };
-
-        let mut apply_sfs_to_port =
-            |idx: usize, handles: &[SoundFontHandle]| -> Result<(), RendererError> {
-                let res = self.ports[idx].set_soundfonts(handles);
-
-                if res.is_ok() {
-                    self.port_soundfonts[idx].extend_from_slice(handles);
-                }
-
-                res
-            };
-
-        let mut loaded_lists: HashMap<&str, Vec<SoundFontHandle>> = HashMap::new();
-
-        for i in 0..num_ports {
-            let list_name = list.port_assignments.get(&i).or(list.default_list.as_ref());
-
-            if let Some(name) = list_name {
-                if !loaded_lists.contains_key(name.as_str()) {
-                    let sfs = list.lists.get(name).ok_or_else(|| {
-                        RendererError::SoundFont(format!("Sub-list '{}' not found", name))
-                    })?;
-                    let supported = self.library.supported_soundfont_types();
-
-                    let filtered: Vec<_> = sfs
-                        .iter()
-                        .rev()
-                        .filter(|sf| {
-                            if !sf.enabled {
-                                return false;
-                            }
-                            let ty = sf.font_type();
-                            supported.contains(&ty)
-                        })
-                        .collect();
-                    let handles = load_handles(&filtered)?;
-                    loaded_lists.insert(name, handles);
-                }
-
-                if let Some(handles) = loaded_lists.get(name.as_str()) {
-                    apply_sfs_to_port(i, handles)?;
-                }
+                let handles = list_name.and_then(|name| loaded_lists.get(name.as_str()));
+                port_handles.push(handles.cloned().unwrap_or_default());
             }
+
+            Ok(LoadedSoundFonts(port_handles))
+        }
+    }
+
+    pub(crate) fn apply_soundfonts(
+        &mut self,
+        loaded: LoadedSoundFonts,
+    ) -> Result<(), RendererError> {
+        let mut replaced = Vec::new();
+        let mut res = Ok(());
+
+        for (idx, handles) in loaded.0.into_iter().enumerate() {
+            res = self.ports[idx].set_soundfonts(&handles);
+            if res.is_err() {
+                break;
+            }
+            replaced.push(std::mem::replace(&mut self.port_soundfonts[idx], handles));
         }
 
-        Ok(())
+        for handle in replaced.into_iter().flatten() {
+            self.library.free_soundfont_handle(handle);
+        }
+
+        res
     }
 
     pub fn reset(&mut self) {
@@ -322,7 +344,10 @@ impl MaestroRenderer {
     ) -> Result<bool, RendererError> {
         if config.synth != self.config.synth
             && (self.ports.is_empty()
-                || !self.ports.iter_mut().all(|p| p.reload_config(&config.synth)))
+                || !self
+                    .ports
+                    .iter_mut()
+                    .all(|p| p.reload_config(&config.synth)))
         {
             return Ok(false);
         }

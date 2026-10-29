@@ -198,7 +198,9 @@ impl MaestroRealtimeEngine {
     }
 
     pub fn set_soundfonts(&self, list: SoundFontList) -> Result<(), RendererError> {
-        self.renderer.lock().unwrap().load_soundfonts(&list)
+        let loader = self.renderer.lock().unwrap().soundfont_loader();
+        let loaded = loader(&list)?;
+        self.renderer.lock().unwrap().apply_soundfonts(loaded)
     }
 
     pub fn get_statistics(&self) -> MaestroRealtimeStatistics {
