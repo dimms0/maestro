@@ -144,7 +144,7 @@ pub fn load_config_cache(name: String, path: PathBuf) -> Option<ComponentConfigC
     // If the name doesn't match to a component return None (error)
     let profile = ComponentProfile::for_name(&name)?;
 
-    let cache = ComponentConfigCache {
+    let mut cache = ComponentConfigCache {
         profile,
         name,
         dirty: false,
@@ -159,12 +159,12 @@ pub fn load_config_cache(name: String, path: PathBuf) -> Option<ComponentConfigC
         post_processor: value_or_default(&val, "post_processor", &mut recovered),
         converter_custom: value_or_default(&val, "custom", &mut recovered),
         system_custom: value_or_default(&val, "custom", &mut recovered),
-        // Starts at the defaults: every setting that is switched on carries its
-        // own value, so there is nothing to remember until one is switched off.
         remembered: RememberedSettings::default(),
         val,
         path,
     };
+    let synth = cache.renderer.synth;
+    cache.remembered.remember_synth(&synth);
 
     Some(cache)
 }

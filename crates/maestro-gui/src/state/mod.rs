@@ -10,7 +10,11 @@ use maestro_core::{
     realtime::config::{NpsLimit, RealtimeConfig},
     renderer::config::{
         AudioLimiterConfig, EqualizerConfig, EventProcessorConfig, PostProcessorConfig,
-        RendererConfig, ReverbConfig, bassmidi::BASSMIDIThreading,
+        RendererConfig, ReverbConfig, SynthConfig,
+        bassmidi::{BASSMIDIConfig, BASSMIDIThreading},
+        fluidsynth::FluidSynthConfig,
+        kestrel::KestrelConfig,
+        svms::SVMSConfig,
     },
     soundfont::{DEFAULT_SOUNDFONT_LIST_NAME, SoundFontList},
 };
@@ -57,6 +61,21 @@ pub struct RememberedSettings {
     pub bass_thread_count: u8,
     pub fixed_velocity: u8,
     pub idle_timeout_minutes: u32,
+    pub fluidsynth: FluidSynthConfig,
+    pub bassmidi: BASSMIDIConfig,
+    pub svms: SVMSConfig,
+    pub kestrel: KestrelConfig,
+}
+
+impl RememberedSettings {
+    pub fn remember_synth(&mut self, synth: &SynthConfig) {
+        match *synth {
+            SynthConfig::FluidSynth(c) => self.fluidsynth = c,
+            SynthConfig::BASSMIDI(c) => self.bassmidi = c,
+            SynthConfig::SVMS(c) => self.svms = c,
+            SynthConfig::Kestrel(c) => self.kestrel = c,
+        }
+    }
 }
 
 impl Default for RememberedSettings {
@@ -76,6 +95,10 @@ impl Default for RememberedSettings {
             bass_thread_count: 4,
             fixed_velocity: 127,
             idle_timeout_minutes: 10,
+            fluidsynth: FluidSynthConfig::default(),
+            bassmidi: BASSMIDIConfig::default(),
+            svms: SVMSConfig::default(),
+            kestrel: KestrelConfig::default(),
         }
     }
 }

@@ -313,8 +313,8 @@ pub fn synth_to_slint(synth: &SynthConfig, rem: &RememberedSettings) -> SlintSyn
 }
 
 fn defaults_slint_synth(rem: &RememberedSettings) -> SlintSynthConfig {
-    let f = FluidSynthConfig::default();
-    let b = BASSMIDIConfig::default();
+    let f = rem.fluidsynth;
+    let b = rem.bassmidi;
 
     let mut out = SlintSynthConfig {
         kind: SynthKind::Bassmidi,
@@ -367,8 +367,8 @@ fn defaults_slint_synth(rem: &RememberedSettings) -> SlintSynthConfig {
     };
 
     threading_to_slint(b.multithreading, rem, &mut out);
-    svms_to_slint(&SVMSConfig::default(), &mut out);
-    kestrel_to_slint(&KestrelConfig::default(), &mut out);
+    svms_to_slint(&rem.svms, &mut out);
+    kestrel_to_slint(&rem.kestrel, &mut out);
     out
 }
 
@@ -506,7 +506,7 @@ pub fn slint_to_synth(sl: &SlintSynthConfig, rem: &mut RememberedSettings) -> Sy
         divide_channels: sl.bass_divide_channels,
     };
 
-    match sl.kind {
+    let synth = match sl.kind {
         SynthKind::Fluidsynth => SynthConfig::FluidSynth(FluidSynthConfig {
             voice_limit: sl.fluid_voice_limit.max(1) as u32,
             interpolation: FluidSynthInterpolation::try_from(sl.fluid_interpolation)
@@ -562,7 +562,9 @@ pub fn slint_to_synth(sl: &SlintSynthConfig, rem: &mut RememberedSettings) -> Sy
             .clamped(),
         ),
         SynthKind::Kestrel => SynthConfig::Kestrel(slint_to_kestrel(sl)),
-    }
+    };
+    rem.remember_synth(&synth);
+    synth
 }
 
 // Event processor
