@@ -1,6 +1,7 @@
 #[cfg(windows)]
 mod imp {
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 
     use windows_sys::Win32::Foundation::{HANDLE, HWND};
     use windows_sys::Win32::Media::Audio::{
@@ -30,25 +31,11 @@ mod imp {
     ) {
     }
 
-    #[derive(Clone, Copy)]
-    struct CallbackState {
-        dummy_device: usize,
-        callback_instance: DWORD_PTR,
-        callback: CallbackFunction,
-        callback_type: DWORD,
-    }
-
-    fn callback_state() -> &'static Mutex<CallbackState> {
-        static CALLBACK_STATE: OnceLock<Mutex<CallbackState>> = OnceLock::new();
-        CALLBACK_STATE.get_or_init(|| {
-            Mutex::new(CallbackState {
-                dummy_device: 0,
-                callback_instance: 0,
-                callback: def_callback,
-                callback_type: 0,
-            })
-        })
-    }
+    static DUMMY_DEVICE: AtomicUsize = AtomicUsize::new(0);
+    static CALLBACK_INSTANCE: AtomicUsize = AtomicUsize::new(0);
+    static CALLBACK: AtomicUsize = AtomicUsize::new(0);
+    static CALLBACK_TYPE: AtomicU32 = AtomicU32::new(0);
+    static INIT_LOCK: Mutex<()> = Mutex::new(());
 
     unsafe fn check_header(hdr: *mut MIDIHDR, size: u32) -> Result<(), u32> {
         if hdr.is_null() || (size as usize) < std::mem::size_of::<MIDIHDR>() {
@@ -177,15 +164,16 @@ mod imp {
         _OMU: DWORD_PTR,
         OMCM: DWORD,
     ) -> u32 {
-        let mut state = callback_state().lock().unwrap();
-        state.dummy_device = OMHM as usize;
-        state.callback = OMCB;
-        state.callback_instance = OMI;
-        state.callback_type = OMCM;
+        let _guard = INIT_LOCK.lock().unwrap();
+        CALLBACK_TYPE.store(0, Ordering::Release);
+        DUMMY_DEVICE.store(OMHM as usize, Ordering::Relaxed);
+        CALLBACK.store(OMCB as usize, Ordering::Relaxed);
+        CALLBACK_INSTANCE.store(OMI, Ordering::Relaxed);
+        CALLBACK_TYPE.store(OMCM, Ordering::Release);
 
         if OMCM == CALLBACK_WINDOW
-            && !std::ptr::fn_addr_eq(state.callback, def_callback as CallbackFunction)
-            && unsafe { IsWindow(state.callback as HWND) } != 0
+            && !std::ptr::fn_addr_eq(OMCB, def_callback as CallbackFunction)
+            && unsafe { IsWindow(OMCB as HWND) } != 0
         {
             return 0;
         }
@@ -196,34 +184,37 @@ mod imp {
     #[unsafe(no_mangle)]
     #[allow(clippy::missing_safety_doc)]
     pub unsafe extern "C" fn RunCallbackFunction(Msg: DWORD, P1: DWORD_PTR, P2: DWORD_PTR) {
-        let state = *callback_state().lock().unwrap();
+        let callback_type = CALLBACK_TYPE.load(Ordering::Acquire);
+        let callback = CALLBACK.load(Ordering::Relaxed);
 
         //We do a match case just to support stuff if needed
-        match state.callback_type {
+        match callback_type {
+            CALLBACK_NULL => {}
             CALLBACK_FUNCTION => unsafe {
-                (state.callback)(
-                    state.dummy_device as HMIDIOUT,
+                let callback = std::mem::transmute::<usize, CallbackFunction>(callback);
+                callback(
+                    DUMMY_DEVICE.load(Ordering::Relaxed) as HMIDIOUT,
                     Msg,
                     P1,
                     P2,
-                    state.callback_instance,
+                    CALLBACK_INSTANCE.load(Ordering::Relaxed),
                 );
             },
             CALLBACK_EVENT => unsafe {
-                SetEvent(state.callback as HANDLE);
+                SetEvent(callback as HANDLE);
             },
             CALLBACK_THREAD => {
                 // The field holds a thread id rather than a function in this mode.
                 if let Ok(p2) = P2.try_into() {
-                    unsafe { PostThreadMessageW(state.callback as usize as DWORD, Msg, P1, p2) };
+                    unsafe { PostThreadMessageW(callback as DWORD, Msg, P1, p2) };
                 }
             }
             CALLBACK_WINDOW => {
                 if let Ok(p2) = P2.try_into() {
-                    unsafe { PostMessageW(state.callback as HWND, Msg, P1, p2) };
+                    unsafe { PostMessageW(callback as HWND, Msg, P1, p2) };
                 }
             }
-            _ => crate::log_info("Callback type was NULL, doing nothing"),
+            _ => {}
         }
     }
 }
