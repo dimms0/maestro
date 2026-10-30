@@ -53,7 +53,9 @@ pub(crate) struct SVMSOfflineSessionConfig {
     pub limiter_release_ms: f32,
     // Key shards: 0 or 1 = one core; an older runtime rejects nonzero
     pub shards: u32,
-    pub reserved: [u32; 3],
+    // GPU render stage: 0 off, 1 auto; an older runtime rejects nonzero
+    pub gpu_api: u32,
+    pub reserved: [u32; 2],
 }
 
 #[repr(C)]

@@ -43,6 +43,8 @@ pub enum SVMSRenderBackend {
     Scalar = 1,
     SSE2 = 2,
     AVX2 = 3,
+    // Not an SVMS backend value: CPU stays Auto and the GPU render stage is requested
+    GPU = 4,
 }
 
 impl TryFrom<i32> for SVMSRenderBackend {
@@ -54,6 +56,7 @@ impl TryFrom<i32> for SVMSRenderBackend {
             1 => Ok(Self::Scalar),
             2 => Ok(Self::SSE2),
             3 => Ok(Self::AVX2),
+            4 => Ok(Self::GPU),
             _ => Err(format!("Unsupported SVMS render backend: {value}")),
         }
     }

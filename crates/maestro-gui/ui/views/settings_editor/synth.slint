@@ -853,7 +853,7 @@ component SVMSPanel inherits SynthPanel {
 
             MaestroComboBox {
                 width: 150px;
-                model: ["Automatic", "Scalar", "SSE2", "AVX2"];
+                model: ["Automatic", "Scalar", "SSE2", "AVX2", "GPU"];
                 current_index: SettingsEditorState.current_config.synth.svms_render_backend;
                 selected(v, i) => {
                     root.edit = SettingsEditorState.current_config.synth;

@@ -116,7 +116,7 @@ export struct SlintSynthConfig {
     svms_voice_limit: int,
     svms_render_threads: int, // 0 = automatic
     svms_shards: int, // 1 = off
-    svms_render_backend: int, // 0 Auto, 1 Scalar, 2 SSE2, 3 AVX2
+    svms_render_backend: int, // 0 Auto, 1 Scalar, 2 SSE2, 3 AVX2, 4 GPU
 
     // --- Kestrel ---
     kestrel_gpu: int, // 0 Automatic, otherwise 1 + index into kestrel_gpus

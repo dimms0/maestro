@@ -6,7 +6,7 @@ use crate::{
     event::{MaestroEvent, MaestroTimedEvent, sysex},
     helpers::prepapre_cache_vec,
     renderer::{
-        config::svms::SVMSConfig,
+        config::svms::{SVMSConfig, SVMSRenderBackend},
         synth::{
             EventBuffer, SoundFontHandle, SynthModule,
             svms::{
@@ -92,7 +92,12 @@ impl SVMSSynth {
             max_voices: c.voice_limit,
             render_threads: c.render_threads,
             max_block_frames: MAX_BLOCK_FRAMES,
-            render_backend: i32::from(c.render_backend) as u32,
+            render_backend: if c.render_backend == SVMSRenderBackend::GPU {
+                0
+            } else {
+                i32::from(c.render_backend) as u32
+            },
+            gpu_api: u32::from(c.render_backend == SVMSRenderBackend::GPU),
             master_volume: 1.0,
             // The limiter stays disabled, but SVMS still range-checks these
             // (threshold 0.1..=1, attack >= 0.01, release >= 1), so zero is rejected
@@ -102,7 +107,7 @@ impl SVMSSynth {
             limiter_release_ms: 100.0,
             // 1 is sent as 0 so runtimes without sharding still accept the config
             shards: if c.shards > 1 { c.shards } else { 0 },
-            reserved: [0; 3],
+            reserved: [0; 2],
             ..Default::default()
         };
 
