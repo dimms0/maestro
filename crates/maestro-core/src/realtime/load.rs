@@ -7,8 +7,6 @@ const RECOVERY_PER_SECOND: f32 = 3.0;
 const AVERAGE_WEIGHT: f32 = 0.05;
 const MIN_NPS: f32 = 100.0;
 
-/// Kept well under `u64::MAX / 127`, where the NPS limiter's
-/// `vel * max / 127` would overflow.
 const MAX_CAP: f32 = 1_000_000_000.0;
 
 pub(crate) struct LoadLimiter {

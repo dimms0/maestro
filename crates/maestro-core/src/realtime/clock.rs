@@ -241,8 +241,12 @@ impl RealtimeClock {
     }
 
     pub fn stamp(&self, at: u64) -> u32 {
+        self.stamp_with(at, host_time::host_now)
+    }
+
+    pub fn stamp_with(&self, at: u64, now: impl FnOnce() -> u64) -> u32 {
         let at = match at {
-            0 if self.auto_timestamp.load(Ordering::Relaxed) => host_time::host_now(),
+            0 if self.auto_timestamp.load(Ordering::Relaxed) => now(),
             0 => return self.unstamped.load(Ordering::Relaxed),
             at => at,
         };

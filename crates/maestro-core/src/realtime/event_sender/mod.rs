@@ -1,4 +1,7 @@
-use std::sync::{Arc, MutexGuard};
+use std::{
+    cell::OnceCell,
+    sync::{Arc, MutexGuard},
+};
 
 use crate::{
     error::RealtimeEngineError,
@@ -11,6 +14,7 @@ use crate::{
             coalescer::EventCoalescer,
             nps::{NpsBatch, NpsTracker},
         },
+        host_time,
         load::LoadLimiter,
     },
     renderer::sender::{PortEventSender, PortQueue},
@@ -83,12 +87,12 @@ impl RealtimeEventSender {
     }
 
     #[inline]
-    fn admit(&self, port: u8, event: MaestroEvent) -> bool {
+    fn admit(&self, port: u8, event: MaestroEvent, now: impl FnOnce() -> u64) -> bool {
         let tracked = |channel: u8| port as usize * 16 + channel as usize;
 
         match event {
             MaestroEvent::NoteOn { channel, key, vel } => {
-                self.nps.note_on(tracked(channel), key, vel)
+                self.nps.note_on(tracked(channel), key, vel, now)
             }
             MaestroEvent::NoteOff { channel, key } => self.nps.note_off(tracked(channel), key),
             _ => true,
@@ -101,7 +105,11 @@ impl RealtimeEventSender {
             return;
         };
 
-        if !self.admit(port, event) || self.coalescer.record(port, event) {
+        // limiter and timestamp share one clock read
+        let now = OnceCell::new();
+        let now = || *now.get_or_init(host_time::host_now);
+
+        if !self.admit(port, event, now) || self.coalescer.record(port, event) {
             return;
         }
 
@@ -110,7 +118,7 @@ impl RealtimeEventSender {
         // Timestamp only if it passes the filters to reduce cycles per send
         sender.send(MaestroTimedEvent {
             event,
-            pos: self.clock.stamp(at),
+            pos: self.clock.stamp_with(at, now),
         });
     }
 
@@ -165,6 +173,7 @@ impl RealtimeEventSender {
 struct Batch<'a> {
     sender: &'a RealtimeEventSender,
     at: u64,
+    now: Option<u64>,
     pos: Option<u32>,
     nps: NpsBatch,
     queue: Option<(u8, MutexGuard<'a, PortQueue>)>,
@@ -172,11 +181,14 @@ struct Batch<'a> {
 
 impl<'a> Batch<'a> {
     fn new(sender: &'a RealtimeEventSender, at: u64) -> Self {
+        let mut now = None;
+        let nps = sender.nps.batch(|| *now.insert(host_time::host_now()));
         Self {
             sender,
             at,
+            now,
             pos: None,
-            nps: sender.nps.batch(),
+            nps,
             queue: None,
         }
     }
@@ -203,7 +215,12 @@ impl<'a> Batch<'a> {
         }
 
         self.nps.events += 1;
-        let pos = *self.pos.get_or_insert_with(|| sender.clock.stamp(self.at));
+        let pos = *self.pos.get_or_insert_with(|| {
+            let now = self.now;
+            sender
+                .clock
+                .stamp_with(self.at, || now.unwrap_or_else(host_time::host_now))
+        });
 
         let queue = match &mut self.queue {
             Some((locked, queue)) if *locked == port => queue,

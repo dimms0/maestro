@@ -120,6 +120,13 @@ fn drive<T>(
 /// `vel * max / 127` would overflow.
 const NPS_UNREACHABLE: usize = 1_000_000_000;
 
+/// Low enough that the burst the limiter allows after every untimed reset is
+/// a few notes, so nearly every note in a chunk takes the rejection path.
+const NPS_REJECTING: NpsLimit = NpsLimit {
+    max: 1_000,
+    load_limiter: false,
+};
+
 fn short(sender: &RealtimeEventSender, event: &u32, at: u64) {
     sender.process_short(0, *event, at);
 }
@@ -160,7 +167,7 @@ fn send_path(c: &mut Criterion) {
         (
             "nps_limited",
             RealtimeConfig {
-                max_nps: Some(NpsLimit::default()),
+                max_nps: Some(NPS_REJECTING),
                 ..bare.clone()
             },
             None,
@@ -206,6 +213,13 @@ fn send_path(c: &mut Criterion) {
 
     for (name, config) in [
         ("bare", bare.clone()),
+        (
+            "nps_limited",
+            RealtimeConfig {
+                max_nps: Some(NPS_REJECTING),
+                ..bare.clone()
+            },
+        ),
         ("default", RealtimeConfig::default()),
     ] {
         if let Some(rig) = rig(config, None) {
