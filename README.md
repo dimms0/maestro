@@ -105,10 +105,8 @@ everything KDMAPI does and more:
 
 ### Settings
 
-The **Maestro API** settings turn the API on or off and provide the defaults
-for new applications. The first time an application connects, it gets its own
-profile, seeded from those defaults and afterwards the user is free to configure
-each app's profile to their liking. Realtime playback and file rendering use the
+The first time an application connects, it gets its own profile, which the user is
+free to configure their liking. Realtime playback and file rendering use the
 same profile (under review, might change).
 
 ### Using it

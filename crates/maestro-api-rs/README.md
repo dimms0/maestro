@@ -35,7 +35,7 @@ job.run()?; // blocks; call job.progress() and job.cancel() from another thread
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-If the user has turned the API off, opening fails with `ErrorKind::Disabled`.
+If the user has turned the application off, opening fails with `ErrorKind::Disabled`.
 That's their choice, not a fault: carry on without Maestro.
 
 ## Versions

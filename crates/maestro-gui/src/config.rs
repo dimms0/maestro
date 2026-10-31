@@ -58,11 +58,10 @@ pub fn get_soundfont_list_files() -> Vec<(String, PathBuf)> {
     lists
 }
 
-const STANDARD_COMPONENTS: [(&str, ConfigComponent); 4] = [
+const STANDARD_COMPONENTS: [(&str, ConfigComponent); 3] = [
     ("system", ConfigComponent::System),
     ("kdmapi", ConfigComponent::KDMAPI),
     ("converter", ConfigComponent::Converter),
-    ("api", ConfigComponent::Api),
 ];
 
 pub fn get_component_files() -> Vec<(String, PathBuf)> {
@@ -74,7 +73,9 @@ pub fn get_component_files() -> Vec<(String, PathBuf)> {
         .filter_map(|name| {
             let path = match crate::state::app_id(&name) {
                 Some(id) => manager.get_app_config_path(id),
-                None => manager.get_component_config_path(&ConfigComponent::from_name(&name)?),
+                None => manager.get_component_config_path(
+                    &ConfigComponent::from_name(&name).filter(|c| *c != ConfigComponent::Api)?,
+                ),
             };
             Some((name, path))
         })

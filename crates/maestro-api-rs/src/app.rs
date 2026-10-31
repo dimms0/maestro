@@ -36,7 +36,7 @@ pub enum Notification {
     /// The engine failed to restart.
     EngineStopped,
     EngineStarted,
-    /// The user disabled the API, or this application's settings.
+    /// The user disabled this application's settings.
     EngineDisabled,
     Other(u32),
 }

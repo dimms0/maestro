@@ -111,8 +111,7 @@ enum {
   MAESTRO_OK = 0,
   MAESTRO_ERR_INVALID_ARG = -1,
   MAESTRO_ERR_UNSUPPORTED = -2, /* a value this library doesn't recognize */
-  MAESTRO_ERR_DISABLED =
-      -3, /* the user disabled the API, or this application's profile */
+  MAESTRO_ERR_DISABLED = -3, /* the user disabled this application's profile */
   MAESTRO_ERR_INTERNAL = -4, /* includes a panic caught at the FFI boundary */
   MAESTRO_ERR_UNAVAILABLE = -5, /* the synthesizer or the audio device could
                                  * not be started */
@@ -192,7 +191,7 @@ enum {
   MAESTRO_NOTIFY_ENGINE_STOPPED = 1, /* the engine failed to restart */
   MAESTRO_NOTIFY_ENGINE_STARTED = 2,
   MAESTRO_NOTIFY_ENGINE_DISABLED =
-      3 /* the user disabled the API, or this application's profile */
+      3 /* the user disabled this application's profile */
 };
 
 typedef void(MAESTRO_CALL *MaestroNotifyFn)(void *user, MaestroNotify what);

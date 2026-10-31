@@ -1,12 +1,10 @@
-use std::path::PathBuf;
-
 use maestro_core::{
     audio_params::AudioParameters,
     error::ConfigError,
     realtime::{RealtimeEngineOptions, config::RealtimeConfig},
     renderer::config::{EventProcessorConfig, PostProcessorConfig, RendererConfig},
     soundfont::DEFAULT_SOUNDFONT_LIST_NAME,
-    system_cfg::{ConfigComponent, MaestroConfigManager},
+    system_cfg::MaestroConfigManager,
 };
 use serde::{Deserialize, Serialize};
 
@@ -60,14 +58,6 @@ impl ApiConfig {
     }
 }
 
-pub fn global_path(manager: &MaestroConfigManager) -> PathBuf {
-    manager.get_component_config_path(&ConfigComponent::Api)
-}
-
-pub fn load_global(manager: &MaestroConfigManager) -> Result<ApiConfig, ConfigError> {
-    manager.load_or_default(&global_path(manager))
-}
-
 pub fn load_app(manager: &MaestroConfigManager, app_id: &str) -> Result<ApiConfig, ConfigError> {
     manager.load_json(&manager.get_app_config_path(app_id))
 }
@@ -82,8 +72,9 @@ pub fn ensure_app(
         return Ok(());
     }
 
-    let mut config = load_global(manager)?;
-    config.enabled = true;
-    config.app_name = Some(app_name.unwrap_or(app_id).to_string());
+    let config = ApiConfig {
+        app_name: Some(app_name.unwrap_or(app_id).to_string()),
+        ..ApiConfig::default()
+    };
     manager.save_json(&path, &config)
 }

@@ -156,8 +156,8 @@ impl Maestro {
     /// Opens a live engine, with its own audio output. A process can have
     /// several open at once. Needs Maestro 0.2 or later.
     ///
-    /// Fails with [`ErrorKind::Disabled`] when the user has turned the API off
-    /// for this application; treat that as "carry on without Maestro".
+    /// Fails with [`ErrorKind::Disabled`] when the user has turned this
+    /// application off; treat that as "carry on without Maestro".
     pub fn open_realtime(&self, app: &App, options: RealtimeOptions) -> Result<Realtime, Error> {
         Realtime::open(*self, app, options)
     }

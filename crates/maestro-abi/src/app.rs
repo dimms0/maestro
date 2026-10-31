@@ -64,22 +64,8 @@ impl App {
     }
 
     /// The app's profile, created from the defaults on first use, unless the
-    /// user turned the API or the app off.
+    /// user turned the app off.
     pub fn profile(&self, manager: &MaestroConfigManager) -> Result<ApiConfig, Failure> {
-        let global = profile::load_global(manager).unwrap_or_else(|e| {
-            self.callbacks.log(
-                MAESTRO_LOG_WARN,
-                &format!("The Maestro API settings could not be read ({e}); using the defaults"),
-            );
-            ApiConfig::default()
-        });
-        if !global.enabled {
-            return Err(Failure::new(
-                MAESTRO_ERR_DISABLED,
-                "The Maestro API is turned off in Maestro's settings",
-            ));
-        }
-
         if let Err(e) = profile::ensure_app(manager, &self.id, self.name.as_deref()) {
             self.callbacks.log(
                 MAESTRO_LOG_WARN,
@@ -91,10 +77,7 @@ impl App {
                 MAESTRO_LOG_WARN,
                 &format!("This application's settings could not be read ({e}); using the defaults"),
             );
-            ApiConfig {
-                enabled: true,
-                ..global
-            }
+            ApiConfig::default()
         });
         if !config.enabled {
             return Err(Failure::new(

@@ -355,9 +355,6 @@ pub fn sync_device_to_slint(ui: &MainWindow, state: &AppData) {
     if let Some(kd) = state.config(ConfigComponent::KDMAPI) {
         dev.set_kdmapi(summary(state, kd));
     }
-    if let Some(api) = state.config(ConfigComponent::Api) {
-        dev.set_api(summary(state, api));
-    }
     let apps: Vec<SlintApiApp> = state
         .config_files
         .iter()

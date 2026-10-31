@@ -11,7 +11,7 @@ pub enum ErrorKind {
     /// The installed library doesn't provide an interface, or doesn't
     /// recognize a value: it is older than these bindings.
     Unsupported,
-    /// The user turned the API off, or turned it off for this application.
+    /// The user turned Maestro off for this application.
     /// That's their choice, not a fault: carry on without Maestro.
     Disabled,
     /// Includes a panic caught inside the library.

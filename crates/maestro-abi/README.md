@@ -44,9 +44,8 @@ The Windows installer and the `.deb`/`.rpm` packages make the link (via
 
 ## Settings
 
-The `api` component is the API's on/off switch and the template for new
-applications. The first time an application opens an engine or a render job, it gets its own
-profile under `components/apps/<app id>.json`, seeded from those defaults.
+The first time an application opens an engine or a render job, it gets its own
+profile under `components/apps/<app id>.json`.
 From then on that profile is the user's: it appears on the Virtual MIDI Device
 tab, and `show_settings` opens it in a standalone editor.
 Edits apply live, and the application is told through its notify callback.

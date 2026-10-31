@@ -145,6 +145,7 @@ component DeviceComponentCard inherits MaestroCard {
     in property <string> enable_text;
     // Only components that keep local form state need a Discard button.
     in property <bool> discardable: false;
+    in property <bool> saveable: true;
 
     in property <bool> enabled: true;
     in property <string> disabled_text;
@@ -167,12 +168,13 @@ component DeviceComponentCard inherits MaestroCard {
 
         HorizontalLayout {
             alignment: space-between;
+            height: 36px;
 
             TitleText {
                 text: root.title;
             }
 
-            MaestroButton {
+            if (root.settings_text != ""): MaestroButton {
                 icon: Icons.settings;
                 text: root.settings_text;
                 disabled: !root.enabled;
@@ -231,7 +233,7 @@ component DeviceComponentCard inherits MaestroCard {
                 clicked => { root.discarded(); }
             }
 
-            MaestroButton {
+            if (root.saveable): MaestroButton {
                 text: "Save";
                 primary: true;
                 disabled: !root.summary.dirty || !root.enabled;
@@ -352,11 +354,11 @@ export component DeviceManagerView inherits Rectangle {
                             spacing: 20px;
 
                             TitleText {
-                                text: "Active Applications";
+                                text: "Active Instances";
                             }
 
                             if (DeviceManagerState.stats.length == 0): LabelText {
-                                text: "No application is using Maestro right now.";
+                                text: "No active Maestro instances.";
                                 font-size: 13px;
                             }
 
@@ -385,25 +387,15 @@ export component DeviceManagerView inherits Rectangle {
 
                         enabled: SystemIntegrationState.api.status == IntegrationStatus.ok;
                         disabled_text: "The Maestro API is not installed. Go to the System Integration tab to install it.";
-                        component: DeviceComponent.api;
-                        summary: DeviceManagerState.api;
-                        title: "Maestro API";
-                        settings_text: "Default Settings";
-                        enable_text: "Allow applications to use the Maestro API";
-                        switch_on: DeviceManagerState.api.enabled;
-                        switch_toggled(v) => {
-                            DeviceManagerState.set_enabled(DeviceComponent.api, v);
-                        }
-
-                        // SflistField {
-                        //     component: DeviceComponent.api;
-                        //     index: DeviceManagerState.api.sflist_index;
-                        // }
+                        title: "Per-App Management";
+                        settings_text: "";
+                        switch_visible: false;
+                        saveable: false;
 
                         LabelText {
                             text: DeviceManagerState.api_apps.length == 0
-                                ? "Applications appear here once they connect. Each starts from these defaults and then keeps its own settings."
-                                : "Each application started from these defaults and keeps its own settings:";
+                                ? "Applications that use Maestro API appear here once they connect. Each starts from the defaults and then keeps its own settings."
+                                : "Each application keeps its own settings.";
                             font-size: 12px;
                             wrap: word-wrap;
                         }

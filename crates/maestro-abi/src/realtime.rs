@@ -92,13 +92,10 @@ impl Realtime {
         shared.start(&manager, &config)?;
 
         let (tx, rx) = channel();
-        let watchers = [
-            (
-                manager.get_app_config_path(&shared.app_id),
-                manager.sflist_dirs(),
-            ),
-            (profile::global_path(&manager), Vec::new()),
-        ]
+        let watchers = [(
+            manager.get_app_config_path(&shared.app_id),
+            manager.sflist_dirs(),
+        )]
         .into_iter()
         .filter_map(|(path, sflist_dirs)| {
             let tx = tx.clone();
@@ -214,7 +211,6 @@ impl Shared {
     }
 
     fn reload(&self, manager: &MaestroConfigManager) {
-        let global_enabled = profile::load_global(manager).is_ok_and(|g| g.enabled);
         let new = match profile::load_app(manager, &self.app_id) {
             Ok(config) => config,
             Err(e) => {
@@ -230,7 +226,7 @@ impl Shared {
         let old = std::mem::replace(&mut *self.config.lock().unwrap(), new.clone());
         let running = self.engine.read().unwrap().is_some();
 
-        if !global_enabled || !new.enabled {
+        if !new.enabled {
             if running {
                 self.stop();
                 self.callbacks.notify(MAESTRO_NOTIFY_ENGINE_DISABLED);
