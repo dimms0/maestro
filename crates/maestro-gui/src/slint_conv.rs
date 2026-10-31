@@ -376,6 +376,7 @@ fn svms_to_slint(c: &SVMSConfig, out: &mut SlintSynthConfig) {
     out.svms_voice_limit = c.voice_limit as i32;
     out.svms_render_threads = c.render_threads as i32;
     out.svms_render_backend = i32::from(c.render_backend);
+    out.svms_shards = c.shards as i32;
 }
 
 fn kestrel_to_slint(c: &KestrelConfig, out: &mut SlintSynthConfig) {
@@ -558,6 +559,7 @@ pub fn slint_to_synth(sl: &SlintSynthConfig, rem: &mut RememberedSettings) -> Sy
                 render_threads: sl.svms_render_threads.max(0) as u32,
                 render_backend: SVMSRenderBackend::try_from(sl.svms_render_backend)
                     .unwrap_or_default(),
+                shards: sl.svms_shards.max(1) as u32,
             }
             .clamped(),
         ),
