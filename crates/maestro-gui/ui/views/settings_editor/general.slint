@@ -416,30 +416,4 @@ export component RealtimeSection inherits SectionCard {
             SettingsEditorState.update_realtime(root.edit);
         }
     }
-
-    Setting {
-        text: "Coalesce control events every (ms)";
-        subtext: "Collects CC, program change, pitch and aftertouch events and sends the latest changes once per set ms to the synthesizer. Enabling this will quantize the events.";
-
-        has-switch: true;
-        checked: SettingsEditorState.current_config.realtime.has_coalesce;
-        toggled(v) => {
-            root.edit = SettingsEditorState.current_config.realtime;
-            root.edit.has_coalesce = v;
-            SettingsEditorState.update_realtime(root.edit);
-        }
-
-        MaestroSpinBox {
-            width: 150px;
-            minimum: 1;
-            maximum: 100;
-            value: SettingsEditorState.current_config.realtime.coalesce_ms;
-            enabled: SettingsEditorState.current_config.realtime.has_coalesce;
-            edited(v) => {
-                root.edit = SettingsEditorState.current_config.realtime;
-                root.edit.coalesce_ms = v;
-                SettingsEditorState.update_realtime(root.edit);
-            }
-        }
-    }
 }

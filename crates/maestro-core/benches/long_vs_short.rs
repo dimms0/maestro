@@ -169,7 +169,6 @@ fn configs() -> Vec<(&'static str, RealtimeConfig)> {
             RealtimeConfig {
                 auto_timestamp: false,
                 max_nps: None,
-                coalesce_window_ms: None,
                 ..RealtimeConfig::default()
             },
         ),

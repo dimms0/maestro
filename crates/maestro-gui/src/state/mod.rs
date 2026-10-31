@@ -51,7 +51,6 @@ impl SoundfontFileCache {
 #[derive(Clone, Debug)]
 pub struct RememberedSettings {
     pub nps_limit: NpsLimit,
-    pub coalesce_window_ms: u32,
     pub buffer_size: u32,
     pub port_threads: usize,
     pub limiter: AudioLimiterConfig,
@@ -82,7 +81,6 @@ impl Default for RememberedSettings {
     fn default() -> Self {
         Self {
             nps_limit: NpsLimit::default(),
-            coalesce_window_ms: 10,
             buffer_size: DEFAULT_BUFFER_SIZE,
             port_threads: 4,
             limiter: AudioLimiterConfig::default(),

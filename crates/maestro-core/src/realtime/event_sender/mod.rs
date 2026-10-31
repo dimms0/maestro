@@ -10,17 +10,13 @@ use crate::{
     realtime::{
         MaestroRealtimeStatistics, RealtimeEngineOptions,
         config::RealtimeConfig,
-        event_sender::{
-            coalescer::EventCoalescer,
-            nps::{NpsBatch, NpsTracker},
-        },
+        event_sender::nps::{NpsBatch, NpsTracker},
         host_time,
         load::LoadLimiter,
     },
     renderer::sender::{PortEventSender, PortQueue},
 };
 
-mod coalescer;
 mod nps;
 
 pub use crate::event::ump::UMP_GROUPS;
@@ -30,7 +26,6 @@ impl Clone for RealtimeEventSender {
         Self {
             ports: self.ports.clone(),
             nps: self.nps.clone(),
-            coalescer: self.coalescer.clone(),
             clock: self.clock.clone(),
             translator: MidiTranslator::new(),
         }
@@ -41,7 +36,6 @@ pub struct RealtimeEventSender {
     ports: Box<[Arc<PortEventSender>]>,
 
     nps: NpsTracker,
-    coalescer: EventCoalescer,
 
     clock: Arc<RealtimeClock>,
     translator: MidiTranslator,
@@ -59,18 +53,9 @@ impl RealtimeEventSender {
         let nps = NpsTracker::new(ports as usize * 16, options.config.max_nps, stats)
             .map_err(RealtimeEngineError::Thread)?;
 
-        let coalescer = EventCoalescer::new(
-            port_senders.clone(),
-            clock.clone(),
-            options.config.coalesce_window_ms,
-            nps.event_counter(),
-        )
-        .map_err(RealtimeEngineError::Thread)?;
-
         Ok(Self {
             ports: port_senders,
             nps,
-            coalescer,
             clock,
             translator: MidiTranslator::new(),
         })
@@ -79,7 +64,6 @@ impl RealtimeEventSender {
     pub(super) fn reload_config(&self, config: &RealtimeConfig) {
         self.clock.set_auto_timestamp(config.auto_timestamp);
         self.nps.set_limit(config.max_nps);
-        self.coalescer.set_window(config.coalesce_window_ms);
     }
 
     pub(super) fn load_limiter(&self) -> Arc<LoadLimiter> {
@@ -109,7 +93,7 @@ impl RealtimeEventSender {
         let now = OnceCell::new();
         let now = || *now.get_or_init(host_time::host_now);
 
-        if !self.admit(port, event, now) || self.coalescer.record(port, event) {
+        if !self.admit(port, event, now) {
             return;
         }
 
@@ -163,7 +147,6 @@ impl RealtimeEventSender {
         for port in &self.ports {
             port.reset();
         }
-        self.coalescer.reset();
 
         self.translator.reset();
         self.nps.reset();
@@ -210,7 +193,7 @@ impl<'a> Batch<'a> {
             MaestroEvent::NoteOff { channel, key } => sender.nps.note_off(tracked(channel), key),
             _ => true,
         };
-        if !admitted || sender.coalescer.record(port, event) {
+        if !admitted {
             return;
         }
 

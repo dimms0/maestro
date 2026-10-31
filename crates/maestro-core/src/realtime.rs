@@ -164,7 +164,6 @@ impl MaestroRealtimeEngine {
         let stream_config = |c: &config::RealtimeConfig| config::RealtimeConfig {
             auto_timestamp: false,
             max_nps: None,
-            coalesce_window_ms: None,
             ..c.clone()
         };
         if stream_config(&old.config) != stream_config(&new.config)

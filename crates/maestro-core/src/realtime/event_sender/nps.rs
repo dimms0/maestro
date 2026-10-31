@@ -267,10 +267,6 @@ impl NpsTracker {
         self.current_events.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub(crate) fn event_counter(&self) -> Arc<AtomicU64> {
-        self.current_events.clone()
-    }
-
     #[inline]
     pub(crate) fn note_off(&self, channel: usize, key: u8) -> bool {
         self.active_notes

@@ -131,10 +131,7 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
                     max: rt.max_nps.max(0) as usize,
                     load_limiter: rt.load_limiter,
                 };
-                f.remembered.coalesce_window_ms = rt.coalesce_ms.max(1) as u32;
                 f.realtime.max_nps = rt.has_max_nps.then_some(f.remembered.nps_limit);
-                f.realtime.coalesce_window_ms =
-                    rt.has_coalesce.then_some(f.remembered.coalesce_window_ms);
 
                 f.realtime.audio_host = host;
                 f.realtime.output_device = device;
