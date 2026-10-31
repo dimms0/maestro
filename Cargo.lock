@@ -3500,7 +3500,7 @@ checksum = "dae608c151f68243f2b000364e1f7b186d9c29845f7d2d85bd31b9ad77ad552b"
 
 [[package]]
 name = "maestro-abi"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "maestro-core",
  "midi-parser",
@@ -3517,7 +3517,7 @@ dependencies = [
 
 [[package]]
 name = "maestro-core"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "anyhow",
  "audio_thread_priority",
@@ -3547,7 +3547,7 @@ dependencies = [
 
 [[package]]
 name = "maestro-daemon"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "alsa",
  "alsa-sys",
@@ -3565,7 +3565,7 @@ dependencies = [
 
 [[package]]
 name = "maestro-gui"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "directories",
  "libc",
@@ -3585,7 +3585,7 @@ dependencies = [
 
 [[package]]
 name = "maestro-kdmapi"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "maestro-core",
  "native-dialog",
@@ -3675,7 +3675,7 @@ dependencies = [
 
 [[package]]
 name = "midi-parser"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "memmap2",
  "rayon",
