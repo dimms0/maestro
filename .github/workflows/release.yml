@@ -17,6 +17,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: softprops/action-gh-release@v2
         with:
+          draft: true
           files: crates/maestro-abi/include/maestro.h
 
   linux:
@@ -42,6 +43,7 @@ jobs:
       - run: ./packaging/linux/build-tarball.sh --arch ${{ matrix.arch }}
       - uses: softprops/action-gh-release@v2
         with:
+          draft: true
           files: |
             target/debian/*.deb
             target/${{ matrix.target }}/debian/*.deb
@@ -69,6 +71,7 @@ jobs:
       - run: ./packaging/macos/build-app.sh --arch ${{ matrix.arch }}
       - uses: softprops/action-gh-release@v2
         with:
+          draft: true
           files: target/packaging/*.dmg
 
   windows:
@@ -116,4 +119,5 @@ jobs:
           MAESTRO_COMPANION_ARCHS: ${{ matrix.companions }}
       - uses: softprops/action-gh-release@v2
         with:
+          draft: true
           files: maestro-*-setup.exe
