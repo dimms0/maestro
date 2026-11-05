@@ -35,9 +35,9 @@ export struct SlintRealtimeConfig {
     device_audio_params: bool,
     render_buffer_ms: float,
     auto_timestamp: bool,
+    skip_behind: bool,
     max_nps: int,
     has_max_nps: bool,
-    load_limiter: bool,
 
     // Indices into AudioDeviceState.hosts / .devices. Index 0 of each is the
     // "default" entry, which maps back to `None` on the Rust side.
@@ -274,8 +274,6 @@ export struct SlintComponentStats {
     eps: string,
     render_load_txt: string,
     render_load: float,
-    // Empty unless the engine has lowered the NPS limit to keep up.
-    limiting: string,
 }
 
 export struct SlintMidiRenderEntry {

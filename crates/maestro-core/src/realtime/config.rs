@@ -9,8 +9,11 @@ pub struct RealtimeConfig {
     /// of playing them at the start of the next render block.
     pub auto_timestamp: bool,
 
+    /// Drop notes while the renderer is behind realtime.
+    pub skip_behind: bool,
+
     /// Limit on notes per second. `None` lets every note through.
-    pub max_nps: Option<NpsLimit>,
+    pub max_nps: Option<usize>,
 
     /// Audio host (backend) to open the output on, as a `cpal::HostId` string
     /// such as `"ALSA"`, `"JACK"`, `"WASAPI"` or `"ASIO"`. `None` uses the
@@ -39,30 +42,12 @@ impl Default for RealtimeConfig {
             device_audio_params: true,
             render_buffer_ms: 20.0,
             auto_timestamp: true,
-            max_nps: Some(NpsLimit::default()),
+            skip_behind: true,
+            max_nps: Some(400_000),
             audio_host: None,
             output_device: None,
             buffer_size: None,
             realtime_priority: false,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
-pub struct NpsLimit {
-    pub max: usize,
-
-    /// Lower the limit while the renderer can't keep up with realtime, scaled
-    /// by how far over budget it is, and raise it back up to `max` as the load
-    /// drops.
-    pub load_limiter: bool,
-}
-
-impl Default for NpsLimit {
-    fn default() -> Self {
-        Self {
-            max: 400_000,
-            load_limiter: true,
         }
     }
 }

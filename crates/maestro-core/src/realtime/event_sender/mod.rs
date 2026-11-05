@@ -1,5 +1,5 @@
 use std::{
-    cell::OnceCell,
+    ops::Range,
     sync::{Arc, MutexGuard},
 };
 
@@ -12,7 +12,6 @@ use crate::{
         config::RealtimeConfig,
         event_sender::nps::{NpsBatch, NpsTracker},
         host_time,
-        load::LoadLimiter,
     },
     renderer::sender::{PortEventSender, PortQueue},
 };
@@ -63,24 +62,32 @@ impl RealtimeEventSender {
 
     pub(super) fn reload_config(&self, config: &RealtimeConfig) {
         self.clock.set_auto_timestamp(config.auto_timestamp);
+        self.clock.set_skip_behind(config.skip_behind);
         self.nps.set_limit(config.max_nps);
     }
 
-    pub(super) fn load_limiter(&self) -> Arc<LoadLimiter> {
-        self.nps.limiter()
-    }
-
     #[inline]
-    fn admit(&self, port: u8, event: MaestroEvent, now: impl FnOnce() -> u64) -> bool {
-        let tracked = |channel: u8| port as usize * 16 + channel as usize;
+    fn admit(&self, port: u8, event: MaestroEvent, now: u64, behind: bool) -> bool {
+        let tracked = port as usize * 16;
 
-        match event {
+        let counted = match event {
             MaestroEvent::NoteOn { channel, key, vel } => {
-                self.nps.note_on(tracked(channel), key, vel, now)
+                return self
+                    .nps
+                    .note_on(tracked + channel as usize, key, vel, now, behind);
             }
-            MaestroEvent::NoteOff { channel, key } => self.nps.note_off(tracked(channel), key),
-            _ => true,
+            MaestroEvent::NoteOff { channel, key } => {
+                self.nps.note_off(tracked + channel as usize, key)
+            }
+            event => {
+                self.nps.clear(silences_channels(tracked, event));
+                true
+            }
+        };
+        if counted {
+            self.nps.count_event();
         }
+        counted
     }
 
     #[inline]
@@ -89,21 +96,12 @@ impl RealtimeEventSender {
             return;
         };
 
-        // limiter and timestamp share one clock read
-        let now = OnceCell::new();
-        let now = || *now.get_or_init(host_time::host_now);
-
-        if !self.admit(port, event, now) {
-            return;
+        let now = host_time::now();
+        let behind = self.clock.behind(now);
+        if self.admit(port, event, now, behind) {
+            let pos = self.clock.stamp(at, now, behind);
+            sender.send(MaestroTimedEvent { event, pos });
         }
-
-        self.nps.count_event();
-
-        // Timestamp only if it passes the filters to reduce cycles per send
-        sender.send(MaestroTimedEvent {
-            event,
-            pos: self.clock.stamp_with(at, now),
-        });
     }
 
     pub fn process_short(&self, port: u8, short: u32, at: u64) {
@@ -127,7 +125,10 @@ impl RealtimeEventSender {
     }
 
     pub fn notes_off(&self) {
-        let pos = self.clock.stamp(0);
+        let now = host_time::now();
+        let pos = self.clock.stamp(0, now, self.clock.behind(now));
+        self.nps.clear(0..self.ports.len() * 16);
+
         for port in &self.ports {
             let mut queue = port.lock();
             for channel in 0..16 {
@@ -153,10 +154,24 @@ impl RealtimeEventSender {
     }
 }
 
+#[inline]
+fn silences_channels(port_base: usize, event: MaestroEvent) -> Range<usize> {
+    match event {
+        MaestroEvent::ControlChange {
+            channel,
+            param: 120 | 123,
+            ..
+        } => port_base + channel as usize..port_base + channel as usize + 1,
+        MaestroEvent::SystemReset => port_base..port_base + 16,
+        _ => 0..0,
+    }
+}
+
 struct Batch<'a> {
     sender: &'a RealtimeEventSender,
     at: u64,
-    now: Option<u64>,
+    now: u64,
+    behind: bool,
     pos: Option<u32>,
     nps: NpsBatch,
     queue: Option<(u8, MutexGuard<'a, PortQueue>)>,
@@ -164,14 +179,14 @@ struct Batch<'a> {
 
 impl<'a> Batch<'a> {
     fn new(sender: &'a RealtimeEventSender, at: u64) -> Self {
-        let mut now = None;
-        let nps = sender.nps.batch(|| *now.insert(host_time::host_now()));
+        let now = host_time::now();
         Self {
             sender,
             at,
             now,
+            behind: sender.clock.behind(now),
             pos: None,
-            nps,
+            nps: sender.nps.batch(now),
             queue: None,
         }
     }
@@ -183,27 +198,33 @@ impl<'a> Batch<'a> {
             return;
         };
 
-        let tracked = |channel: u8| port as usize * 16 + channel as usize;
+        let tracked = port as usize * 16;
         let admitted = match event {
-            MaestroEvent::NoteOn { channel, key, vel } => {
-                sender
-                    .nps
-                    .batch_note_on(&mut self.nps, tracked(channel), key, vel)
+            MaestroEvent::NoteOn { channel, key, vel } => sender.nps.batch_note_on(
+                &mut self.nps,
+                tracked + channel as usize,
+                key,
+                vel,
+                self.behind,
+            ),
+            MaestroEvent::NoteOff { channel, key } => {
+                sender.nps.note_off(tracked + channel as usize, key)
             }
-            MaestroEvent::NoteOff { channel, key } => sender.nps.note_off(tracked(channel), key),
-            _ => true,
+            event => {
+                sender.nps.clear(silences_channels(tracked, event));
+                true
+            }
         };
         if !admitted {
             return;
         }
 
         self.nps.events += 1;
-        let pos = *self.pos.get_or_insert_with(|| {
-            let now = self.now;
-            sender
-                .clock
-                .stamp_with(self.at, || now.unwrap_or_else(host_time::host_now))
-        });
+
+        let (at, now, behind) = (self.at, self.now, self.behind);
+        let pos = *self
+            .pos
+            .get_or_insert_with(|| sender.clock.stamp(at, now, behind));
 
         let queue = match &mut self.queue {
             Some((locked, queue)) if *locked == port => queue,

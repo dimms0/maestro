@@ -275,9 +275,9 @@ pub fn build_slint_component_config(state: &AppData) -> Option<SlintComponentCon
             device_audio_params: file.realtime.device_audio_params,
             render_buffer_ms: file.realtime.render_buffer_ms,
             auto_timestamp: file.realtime.auto_timestamp,
-            max_nps: nps_limit.max as i32,
+            skip_behind: file.realtime.skip_behind,
+            max_nps: nps_limit as i32,
             has_max_nps: file.realtime.max_nps.is_some(),
-            load_limiter: nps_limit.load_limiter,
 
             audio_host_index: state.audio.host_index(file.realtime.audio_host.as_deref()),
             output_device_index: state

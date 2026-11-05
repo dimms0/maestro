@@ -7,7 +7,7 @@ pub use component::{
 
 use maestro_core::{
     audio_params::AudioParameters,
-    realtime::config::{NpsLimit, RealtimeConfig},
+    realtime::config::RealtimeConfig,
     renderer::config::{
         AudioLimiterConfig, EqualizerConfig, EventProcessorConfig, PostProcessorConfig,
         RendererConfig, ReverbConfig, SynthConfig,
@@ -50,7 +50,7 @@ impl SoundfontFileCache {
 
 #[derive(Clone, Debug)]
 pub struct RememberedSettings {
-    pub nps_limit: NpsLimit,
+    pub nps_limit: usize,
     pub buffer_size: u32,
     pub port_threads: usize,
     pub limiter: AudioLimiterConfig,
@@ -80,7 +80,7 @@ impl RememberedSettings {
 impl Default for RememberedSettings {
     fn default() -> Self {
         Self {
-            nps_limit: NpsLimit::default(),
+            nps_limit: 400_000,
             buffer_size: DEFAULT_BUFFER_SIZE,
             port_threads: 4,
             limiter: AudioLimiterConfig::default(),

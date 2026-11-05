@@ -64,90 +64,97 @@ pub(crate) struct RealtimeClock {
     offset: AtomicI64,
     /// `committed` plus the lookahead limit, past which stamps skip the
     /// latch. Kept ready-made rather than added up on every event.
-    lookahead_end: AtomicU64,
+    lookahead_end: AtomicI64,
+    schedule_end: AtomicI64,
 
     /// Frames the renderer has committed to producing, i.e. where the block
     /// after the one being rendered starts. Events stamped while a block
     /// renders are consumed by the block after it, so this is what they are
     /// measured against.
-    committed: AtomicU64,
-    /// How far ahead of `committed` the timeline may run. Tells a desync from
-    /// the render thread's normal swing.
-    max_lookahead: AtomicU64,
+    committed: AtomicI64,
 
+    /// Host time the timeline passes `lookahead_end` at, which means the
+    /// renderer has fallen behind. `u64::MAX` while nothing is skipped.
+    behind_at: AtomicU64,
     unstamped: AtomicU32,
     auto_timestamp: AtomicBool,
+    skip_behind: AtomicBool,
 
+    handed_out: Padded<AtomicI64>,
+
+    /// How far ahead of `committed` the timeline may run. Tells a desync from
+    /// the render thread's normal swing.
+    max_lookahead: AtomicI64,
     /// Frames between the device being handed audio and playing it.
     output_delay: AtomicU64,
     /// Frames from an event stamped now until it is heard.
     latency: AtomicU64,
 
-    /// The furthest position any event has been stamped at. No stamp may ever
-    /// land before it, whatever the corrections do to the timeline.
-    handed_out: AtomicU64,
-
     /// Closest and furthest the timeline came to the renderer in the current
     /// window, and the frame the window runs out at.
     window_min: AtomicI64,
     window_max: AtomicI64,
-    window_end: AtomicU64,
+    window_end: AtomicI64,
 
-    /// Host clock time the timeline starts at
-    start: u64,
+    /// Frames per host tick in 0.64 fixed point
+    scale: u64,
     sample_rate: u64,
     channels: u64,
     /// [`SYNC_WINDOW_NS`] in frames, so that measuring the window costs nothing
     /// more than the elapsed frames every block needs anyway.
-    sync_window: u64,
+    sync_window: i64,
     /// Floor the lookahead limit never drops below, a tenth of a second.
-    min_lookahead: u64,
+    min_lookahead: i64,
     /// [`MAX_SCHEDULE_SECS`] in frames.
-    max_schedule: u64,
+    max_schedule: i64,
 }
 
+/// Keeps the latch that every stamp writes off the cache line the stamps read
+#[repr(align(64))]
+struct Padded<T>(T);
+
 impl RealtimeClock {
-    pub fn new(audio_params: &AudioParameters, auto_timestamp: bool) -> Self {
+    pub fn new(audio_params: &AudioParameters, auto_timestamp: bool, skip_behind: bool) -> Self {
+        host_time::calibrate();
+
         let sample_rate = audio_params.sample_rate as u64;
-        let min_lookahead = sample_rate / 10;
-        let sync_window = sample_rate * SYNC_WINDOW_NS / NANOS_PER_SEC;
+        let min_lookahead = sample_rate as i64 / 10;
 
         Self {
             offset: AtomicI64::new(0),
-            lookahead_end: AtomicU64::new(min_lookahead),
-            committed: AtomicU64::new(0),
-            max_lookahead: AtomicU64::new(min_lookahead),
+            lookahead_end: AtomicI64::new(min_lookahead),
+            schedule_end: AtomicI64::new(0),
+            committed: AtomicI64::new(0),
+            behind_at: AtomicU64::new(u64::MAX),
             unstamped: AtomicU32::new(0),
             auto_timestamp: AtomicBool::new(auto_timestamp),
+            skip_behind: AtomicBool::new(skip_behind),
+            handed_out: Padded(AtomicI64::new(0)),
+            max_lookahead: AtomicI64::new(min_lookahead),
             output_delay: AtomicU64::new(0),
             latency: AtomicU64::new(0),
-            handed_out: AtomicU64::new(0),
             window_min: AtomicI64::new(i64::MAX),
             window_max: AtomicI64::new(i64::MIN),
-            window_end: AtomicU64::new(sync_window),
-            start: host_time::host_now(),
+            window_end: AtomicI64::new(0),
+            scale: ((u128::from(sample_rate) << 64) / u128::from(host_time::ticks_per_sec()))
+                .min(u64::MAX as u128) as u64,
             sample_rate,
             channels: u16::from(audio_params.channels) as u64,
-            sync_window,
+            sync_window: (sample_rate * SYNC_WINDOW_NS / NANOS_PER_SEC) as i64,
             min_lookahead,
-            max_schedule: sample_rate * MAX_SCHEDULE_SECS,
+            max_schedule: (sample_rate * MAX_SCHEDULE_SECS) as i64,
         }
     }
 
-    fn frames(&self, at: u64) -> u64 {
-        let elapsed = at.saturating_sub(self.start);
-        let per_sec = host_time::ticks_per_sec();
-
-        // Splitting the elapsed ticks at the second keeps this to 64-bit
-        // arithmetic: the whole seconds scale exactly, and the ticks left over
-        // are far too few to overflow when scaled. The result is the same
-        // `elapsed * sample_rate / ticks_per_sec` down to the frame.
-
-        elapsed / per_sec * self.sample_rate + elapsed % per_sec * self.sample_rate / per_sec
+    #[inline]
+    fn frames(&self, at: u64) -> i64 {
+        ((u128::from(at) * u128::from(self.scale)) >> 64) as i64
     }
 
-    fn timeline(&self, elapsed: u64) -> i64 {
-        self.offset.load(Ordering::Relaxed) + elapsed as i64
+    fn ticks(&self, frames: i64) -> u64 {
+        (frames.max(0) as u128 * u128::from(host_time::ticks_per_sec())
+            / u128::from(self.sample_rate))
+        .min(u64::MAX as u128) as u64
     }
 
     fn clear_measurements(&self) {
@@ -155,75 +162,65 @@ impl RealtimeClock {
         self.window_max.store(i64::MIN, Ordering::Relaxed);
     }
 
-    /// `queued` is how many samples are rendered but not yet handed to the device.
     pub fn begin_block(&self, samples: u64, queued: u64) {
-        let frames = samples / self.channels;
-        let now = self.frames(host_time::host_now());
+        self.sync(host_time::resync(), samples, queued);
+    }
 
-        let lookahead = self.max_lookahead.load(Ordering::Relaxed);
+    fn sync(&self, host: u64, samples: u64, queued: u64) {
+        let frames = (samples / self.channels) as i64;
+        let now = self.frames(host);
+
+        let mut lookahead = self.max_lookahead.load(Ordering::Relaxed);
         let committed = self.committed.load(Ordering::Relaxed) + frames;
         self.committed.store(committed, Ordering::Relaxed);
-        self.lookahead_end
-            .store(committed + lookahead, Ordering::Relaxed);
+        self.schedule_end
+            .store(committed + self.max_schedule, Ordering::Relaxed);
         self.unstamped.store(
-            (committed.saturating_sub(self.sample_rate) * self.channels) as u32,
+            ((committed - self.sample_rate as i64).max(0) as u64 * self.channels) as u32,
             Ordering::Relaxed,
         );
 
-        let offset = self.offset.load(Ordering::Relaxed);
-        let target = (TARGET_LEAD_BLOCKS * frames) as i64;
-        let lead = offset + now as i64 - committed as i64;
+        let mut offset = self.offset.load(Ordering::Relaxed);
+        let target = TARGET_LEAD_BLOCKS as i64 * frames;
+        let lead = offset + now - committed;
 
-        let desynced = lead < 0 || lead > lookahead as i64;
+        let desynced = lead < 0 || lead > lookahead;
 
-        // An event stamped now lands `lead` past this block, which plays once
-        // everything queued ahead of it has gone through the device.
         let lead_after = if desynced { target } else { lead };
-        let ahead = queued / self.channels + frames + self.output_delay.load(Ordering::Relaxed);
+        let ahead =
+            queued / self.channels + frames as u64 + self.output_delay.load(Ordering::Relaxed);
         self.latency
             .store(ahead + lead_after as u64, Ordering::Relaxed);
 
         if desynced {
-            // Either the renderer caught up with the timeline, so events would
-            // land in audio that is already rendered, or it ran away from the
-            // renderer while nothing was being produced (a stall, a paused
-            // stream, the very first block). Neither can wait for the window:
-            // correct the whole error at once and drop the measurements, which
-            // were taken against the old offset.
-            self.offset.store(offset + target - lead, Ordering::Relaxed);
+            offset += target - lead;
             self.clear_measurements();
-            return;
+        } else {
+            let window_min = self.window_min.load(Ordering::Relaxed).min(lead);
+            let window_max = self.window_max.load(Ordering::Relaxed).max(lead);
+
+            if now < self.window_end.load(Ordering::Relaxed) {
+                self.window_min.store(window_min, Ordering::Relaxed);
+                self.window_max.store(window_max, Ordering::Relaxed);
+            } else {
+                offset += target - window_min;
+                lookahead = (2 * (window_max - window_min) + target).max(self.min_lookahead);
+                self.max_lookahead.store(lookahead, Ordering::Relaxed);
+                self.clear_measurements();
+                self.window_end
+                    .store(now + self.sync_window, Ordering::Relaxed);
+            }
         }
 
-        let window_min = self.window_min.load(Ordering::Relaxed).min(lead);
-        let window_max = self.window_max.load(Ordering::Relaxed).max(lead);
+        let lookahead_end = committed + lookahead;
+        self.offset.store(offset, Ordering::Relaxed);
+        self.lookahead_end.store(lookahead_end, Ordering::Relaxed);
 
-        if now < self.window_end.load(Ordering::Relaxed) {
-            self.window_min.store(window_min, Ordering::Relaxed);
-            self.window_max.store(window_max, Ordering::Relaxed);
-            return;
-        }
-
-        // The closest the timeline came to the renderer over the window is the
-        // trough of its staircase, with the burstiness filtered out. Nudging
-        // that onto the target absorbs the drift between the audio device and
-        // its nominal rate: a handful of frames per window, far too little to
-        // disturb the spacing of the events.
-        self.offset
-            .store(offset + target - window_min, Ordering::Relaxed);
-
-        // How far the renderer's pacing moved during the window that just
-        // ended. Leaving twice that much room on top of a tenth of a second
-        // keeps the lookahead limit clear of a healthy render thread.
-        let swing = (window_max - window_min).max(0) as u64;
-        let lookahead = (2 * swing + target as u64).max(self.min_lookahead);
-
-        self.max_lookahead.store(lookahead, Ordering::Relaxed);
-        self.lookahead_end
-            .store(committed + lookahead, Ordering::Relaxed);
-        self.clear_measurements();
-        self.window_end
-            .store(now + self.sync_window, Ordering::Relaxed);
+        let behind_at = match self.skip_behind.load(Ordering::Relaxed) {
+            true => self.ticks(lookahead_end - offset),
+            false => u64::MAX,
+        };
+        self.behind_at.store(behind_at, Ordering::Relaxed);
     }
 
     pub fn set_output_delay(&self, delay: Duration) {
@@ -240,32 +237,43 @@ impl RealtimeClock {
         self.auto_timestamp.store(auto_timestamp, Ordering::Relaxed);
     }
 
-    pub fn stamp(&self, at: u64) -> u32 {
-        self.stamp_with(at, host_time::host_now)
+    pub fn set_skip_behind(&self, skip: bool) {
+        self.skip_behind.store(skip, Ordering::Relaxed);
+        if !skip {
+            self.behind_at.store(u64::MAX, Ordering::Relaxed);
+        }
     }
 
-    pub fn stamp_with(&self, at: u64, now: impl FnOnce() -> u64) -> u32 {
-        let at = match at {
-            0 if self.auto_timestamp.load(Ordering::Relaxed) => now(),
-            0 => return self.unstamped.load(Ordering::Relaxed),
-            at => at,
-        };
+    #[inline]
+    pub fn behind(&self, now: u64) -> bool {
+        now > self.behind_at.load(Ordering::Relaxed)
+    }
 
-        // A bogus timestamp cannot hold an event back indefinitely
-        let committed = self.committed.load(Ordering::Relaxed);
-        let frames =
-            (self.timeline(self.frames(at)).max(0) as u64).min(committed + self.max_schedule);
-
-        // Stamps landing on an already handed out frame skip the read-modify-write
-        let handed_out = self.handed_out.load(Ordering::Relaxed);
-        let frames = if frames > self.lookahead_end.load(Ordering::Relaxed) {
-            frames
-        } else if frames > handed_out {
-            frames.max(self.handed_out.fetch_max(frames, Ordering::Relaxed))
+    #[inline]
+    pub fn stamp(&self, at: u64, now: u64, behind: bool) -> u32 {
+        let frames = if behind {
+            let committed = self.committed.load(Ordering::Relaxed);
+            self.handed_out.0.load(Ordering::Relaxed).max(committed)
         } else {
-            handed_out
+            let at = match at {
+                0 if self.auto_timestamp.load(Ordering::Relaxed) => now,
+                0 => return self.unstamped.load(Ordering::Relaxed),
+                at => at,
+            };
+
+            let frames = (self.offset.load(Ordering::Relaxed) + self.frames(at))
+                .min(self.schedule_end.load(Ordering::Relaxed));
+
+            let handed_out = self.handed_out.0.load(Ordering::Relaxed);
+            if frames > self.lookahead_end.load(Ordering::Relaxed) {
+                frames
+            } else if frames > handed_out {
+                frames.max(self.handed_out.0.fetch_max(frames, Ordering::Relaxed))
+            } else {
+                handed_out
+            }
         };
 
-        (frames * self.channels) as u32
+        (frames as u64 * self.channels) as u32
     }
 }

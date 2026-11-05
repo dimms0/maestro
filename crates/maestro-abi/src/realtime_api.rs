@@ -203,7 +203,7 @@ unsafe extern "C" fn get_stats(
                 voice_count: live.stats.get_renderer().read_voice_count(),
                 nps: live.stats.read_nps(),
                 eps: live.stats.read_eps(),
-                nps_limit: live.stats.read_nps_limit(),
+                nps_limit: shared.config.lock().unwrap().realtime.max_nps.unwrap_or(0) as u64,
             })
         }
     })

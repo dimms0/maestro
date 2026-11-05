@@ -19,7 +19,7 @@ use crate::{realtime::MaestroRealtimeStatistics, system_cfg::ConfigComponent};
 
 pub type SharedStats = Arc<Mutex<Option<MaestroRealtimeStatistics>>>;
 
-const MAGIC: u32 = 0x4d53_5432; // "MST2"
+const MAGIC: u32 = 0x4d53_5433; // "MST3"
 const NAME_CAP: usize = 64;
 const FRAME_LEN: usize = size_of::<MaestroStats>();
 
@@ -39,7 +39,6 @@ pub struct MaestroStats {
     pub rss_bytes: u64,
     pub nps: u64,
     pub eps: u64,
-    pub nps_limit: u64,
     pub render_last: f32,
     pub render_avg: f32,
     pub render_peak: f32,
@@ -60,7 +59,6 @@ impl MaestroStats {
             rss_bytes: crate::sysinfo::rss_bytes().unwrap_or(0),
             nps: 0,
             eps: 0,
-            nps_limit: 0,
             render_last: 0.0,
             render_avg: 0.0,
             render_peak: 0.0,
@@ -76,7 +74,6 @@ impl MaestroStats {
             frame.render_last = renderer.get_last_render_time();
             frame.render_avg = renderer.get_average_render_time();
             frame.render_peak = engine.read_render_peak();
-            frame.nps_limit = engine.read_nps_limit();
             frame.nps = engine.read_nps();
             frame.eps = engine.read_eps();
         }

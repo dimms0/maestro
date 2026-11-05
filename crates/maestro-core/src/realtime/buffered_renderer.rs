@@ -12,7 +12,7 @@ use crate::{
     audio_params::AudioParameters,
     error::RealtimeEngineError,
     realtime::{
-        MaestroRealtimeStatistics, config::RealtimeConfig, load::LoadLimiter, priority::Priority,
+        MaestroRealtimeStatistics, config::RealtimeConfig, priority::Priority,
         statistics::PeakWindow,
     },
 };
@@ -40,7 +40,6 @@ impl BufferedRenderer {
         mut render_func: F,
         stream_params: AudioParameters,
         config: &RealtimeConfig,
-        limiter: Arc<LoadLimiter>,
         stats: MaestroRealtimeStatistics,
     ) -> Result<Self, RealtimeEngineError>
     where
@@ -109,7 +108,6 @@ impl BufferedRenderer {
                         render_func(&mut vec, queued);
 
                         let load = start.elapsed().as_secs_f32() / audio_div;
-                        limiter.update(load, audio_div);
                         if let Some(peak) = render_peak.record(load * 100.0, vec.len() as u64) {
                             stats.set_render_peak(peak);
                         }

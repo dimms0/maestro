@@ -14,10 +14,7 @@ use crate::{
     sync::{sync_audio_devices_to_slint, sync_device_to_slint},
     views::device_manager::WINDOWS_COMPAT_TEXT,
 };
-use maestro_core::{
-    audio_params::{AudioParameters, ChannelCount},
-    realtime::config::NpsLimit,
-};
+use maestro_core::audio_params::{AudioParameters, ChannelCount};
 
 /// Dialog title used for problems raised while saving a component config.
 pub(crate) const ERROR_TITLE: &str = "Settings";
@@ -125,12 +122,10 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
                 f.realtime.device_audio_params = rt.device_audio_params;
                 f.realtime.render_buffer_ms = rt.render_buffer_ms;
                 f.realtime.auto_timestamp = rt.auto_timestamp;
+                f.realtime.skip_behind = rt.skip_behind;
                 f.realtime.realtime_priority = rt.realtime_priority;
 
-                f.remembered.nps_limit = NpsLimit {
-                    max: rt.max_nps.max(0) as usize,
-                    load_limiter: rt.load_limiter,
-                };
+                f.remembered.nps_limit = rt.max_nps.max(0) as usize;
                 f.realtime.max_nps = rt.has_max_nps.then_some(f.remembered.nps_limit);
 
                 f.realtime.audio_host = host;

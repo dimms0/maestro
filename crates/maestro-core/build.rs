@@ -20,9 +20,15 @@ fn git_path(name: &str) -> Option<PathBuf> {
 
 fn kestrel_version() -> Option<String> {
     let lock = std::fs::read_to_string("../../Cargo.lock").ok()?;
-    let entry = lock.split("[[package]]").find(|p| p.contains("name = \"kestrel\""))?;
+    let entry = lock
+        .split("[[package]]")
+        .find(|p| p.contains("name = \"kestrel\""))?;
     let line = entry.lines().find(|l| l.starts_with("version = "))?;
-    Some(line.trim_start_matches("version = ").trim_matches('"').to_string())
+    Some(
+        line.trim_start_matches("version = ")
+            .trim_matches('"')
+            .to_string(),
+    )
 }
 
 fn main() {

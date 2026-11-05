@@ -10,8 +10,7 @@ use criterion::{
 };
 use maestro_core::{
     realtime::{
-        MaestroRealtimeEngine, RealtimeEngineOptions, RealtimeEventSender,
-        config::{NpsLimit, RealtimeConfig},
+        MaestroRealtimeEngine, RealtimeEngineOptions, RealtimeEventSender, config::RealtimeConfig,
         host_time,
     },
     renderer::config::EventProcessorConfig,
@@ -122,10 +121,7 @@ const NPS_UNREACHABLE: usize = 1_000_000_000;
 
 /// Low enough that the burst the limiter allows after every untimed reset is
 /// a few notes, so nearly every note in a chunk takes the rejection path.
-const NPS_REJECTING: NpsLimit = NpsLimit {
-    max: 1_000,
-    load_limiter: false,
-};
+const NPS_REJECTING: usize = 1_000;
 
 fn short(sender: &RealtimeEventSender, event: &u32, at: u64) {
     sender.process_short(0, *event, at);
@@ -156,10 +152,7 @@ fn send_path(c: &mut Criterion) {
         (
             "nps_gate",
             RealtimeConfig {
-                max_nps: Some(NpsLimit {
-                    max: NPS_UNREACHABLE,
-                    load_limiter: false,
-                }),
+                max_nps: Some(NPS_UNREACHABLE),
                 ..bare.clone()
             },
             None,

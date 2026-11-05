@@ -27,8 +27,7 @@ use std::{
 
 use maestro_core::{
     realtime::{
-        MaestroRealtimeEngine, RealtimeEngineOptions, RealtimeEventSender,
-        config::{NpsLimit, RealtimeConfig},
+        MaestroRealtimeEngine, RealtimeEngineOptions, RealtimeEventSender, config::RealtimeConfig,
     },
     soundfont::SoundFontList,
 };
@@ -177,10 +176,7 @@ fn configs() -> Vec<(&'static str, RealtimeConfig)> {
         (
             "nps_open",
             RealtimeConfig {
-                max_nps: Some(NpsLimit {
-                    max: 1_000_000_000,
-                    load_limiter: false,
-                }),
+                max_nps: Some(1_000_000_000),
                 ..RealtimeConfig::default()
             },
         ),

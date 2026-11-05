@@ -65,7 +65,7 @@ pub struct Stats {
     pub nps: u64,
     /// Events per second processed.
     pub eps: u64,
-    /// The current notes-per-second limit, after the load limiter.
+    /// The current notes-per-second limit.
     pub nps_limit: u64,
     /// From an event's timestamp until it is heard; zero until audio starts.
     pub latency: Duration,

@@ -1,15 +1,16 @@
 use std::{
     collections::VecDeque,
     io,
+    ops::Range,
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
     },
     thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
 
-use crate::realtime::{MaestroRealtimeStatistics, config::NpsLimit, host_time, load::LoadLimiter};
+use crate::realtime::{MaestroRealtimeStatistics, host_time};
 
 // Original code by Arduano for XSynth (LGPL-3.0)
 // (https://github.com/BlackMIDIDevs/xsynth/blob/master/realtime/src/event_senders/nps.rs)
@@ -20,12 +21,7 @@ const STATS_WINDOW_MILLISECONDS: u64 = 10;
 const BURST_NANOS: u64 = 25_000_000;
 const FRAC_BITS: u32 = 8;
 
-fn background_loop(
-    current_notes: &AtomicU64,
-    current_events: &AtomicU64,
-    stats: &MaestroRealtimeStatistics,
-    stop: &AtomicBool,
-) {
+fn background_loop(counts: &AtomicU64, stats: &MaestroRealtimeStatistics, stop: &AtomicBool) {
     let mut windows: VecDeque<(Instant, u64, u64)> = VecDeque::new();
     let mut total_notes: u64 = 0;
     let mut total_events: u64 = 0;
@@ -34,11 +30,11 @@ fn background_loop(
         thread::sleep(Duration::from_millis(STATS_WINDOW_MILLISECONDS));
         let now = Instant::now();
 
-        let notes = current_notes.swap(0, Ordering::AcqRel);
-        let events = current_events.swap(0, Ordering::AcqRel);
+        let counts = counts.swap(0, Ordering::AcqRel);
+        let (notes, events) = (counts >> 32, counts & u32::MAX as u64);
         total_notes += notes;
         total_events += events;
-        if notes > 0 || events > 0 {
+        if counts > 0 {
             windows.push_back((now, notes, events));
         }
 
@@ -59,6 +55,8 @@ struct Bucket {
     epoch: u64,
     second: u64,
     burst: u64,
+    /// Ticks per note at the limit
+    interval: AtomicU64,
     /// Time the bucket runs empty
     tat: AtomicU64,
 }
@@ -69,6 +67,7 @@ impl Bucket {
             epoch: host_time::host_now(),
             second: host_time::ticks_per_sec() << FRAC_BITS,
             burst: host_time::ns_to_ticks(BURST_NANOS) << FRAC_BITS,
+            interval: AtomicU64::new(0),
             tat: AtomicU64::new(0),
         }
     }
@@ -78,21 +77,29 @@ impl Bucket {
         host.saturating_sub(self.epoch) << FRAC_BITS
     }
 
-    #[inline]
-    fn interval(&self, max: u64) -> Option<u64> {
-        (max > 0).then(|| (self.second / max).max(1))
+    fn set_limit(&self, limit: Option<usize>) {
+        let interval = match limit {
+            None => 0,
+            Some(0) => u64::MAX,
+            Some(max) => (self.second / max as u64).max(1),
+        };
+        self.interval.store(interval, Ordering::Relaxed);
     }
 
-    fn admit(&self, now: u64, vel: u8, max: u64) -> bool {
-        let Some(interval) = self.interval(max) else {
-            return false;
-        };
-        self.tat
-            .try_update(Ordering::Relaxed, Ordering::Relaxed, |tat| {
-                let start = tat.max(now);
-                fits(self.burst, start - now, vel).then_some(start + interval)
-            })
-            .is_ok()
+    #[inline]
+    fn interval(&self) -> u64 {
+        self.interval.load(Ordering::Relaxed)
+    }
+
+    fn admit(&self, now: u64, vel: u8, interval: u64) -> bool {
+        interval != u64::MAX
+            && self
+                .tat
+                .try_update(Ordering::Relaxed, Ordering::Relaxed, |tat| {
+                    let start = tat.max(now);
+                    fits(self.burst, start - now, vel).then_some(start + interval)
+                })
+                .is_ok()
     }
 
     fn take(&self, now: u64, interval: u64, notes: u64) {
@@ -110,8 +117,8 @@ fn fits(burst: u64, level: u64, vel: u8) -> bool {
 }
 
 pub(crate) struct NpsBatch {
-    /// Note interval, start time and burst while limited
-    limit: Option<(u64, u64, u64)>,
+    /// Note interval and start time while limited
+    limit: Option<(u64, u64)>,
     tat: u64,
     notes: u64,
     pub events: u64,
@@ -119,11 +126,9 @@ pub(crate) struct NpsBatch {
 
 pub(crate) struct NpsTracker {
     bucket: Arc<Bucket>,
-    current_notes: Arc<AtomicU64>,
-    current_events: Arc<AtomicU64>,
-    active_notes: Arc<[AtomicU64]>,
-    limiter: Arc<LoadLimiter>,
-    limited: Arc<AtomicBool>,
+    // high 32 bits are notes and low 32 bits are events
+    counts: Arc<AtomicU64>,
+    active_notes: Arc<[AtomicU32]>,
     stop: Arc<AtomicBool>,
     join_handle: Option<JoinHandle<()>>,
 }
@@ -131,52 +136,36 @@ pub(crate) struct NpsTracker {
 impl NpsTracker {
     pub(crate) fn new(
         channels: usize,
-        limit: Option<NpsLimit>,
+        limit: Option<usize>,
         stats: MaestroRealtimeStatistics,
     ) -> Result<NpsTracker, io::Error> {
-        let current_notes = Arc::new(AtomicU64::new(0));
-        let current_events = Arc::new(AtomicU64::new(0));
+        let counts = Arc::new(AtomicU64::new(0));
         let stop = Arc::new(AtomicBool::new(false));
 
-        let limiter = Arc::new(LoadLimiter::new(
-            limit.map_or(0, |l| l.max as u64),
-            limit.is_some_and(|l| l.load_limiter),
-            stats.clone(),
-        ));
-
         let join_handle = {
-            let notes = current_notes.clone();
-            let events = current_events.clone();
+            let counts = counts.clone();
             let stop = stop.clone();
             Some(
                 thread::Builder::new()
                     .name("nps_tracker".to_string())
-                    .spawn(move || background_loop(&notes, &events, &stats, &stop))?,
+                    .spawn(move || background_loop(&counts, &stats, &stop))?,
             )
         };
 
+        let bucket = Bucket::new();
+        bucket.set_limit(limit);
+
         Ok(NpsTracker {
-            bucket: Arc::new(Bucket::new()),
-            current_notes,
-            current_events,
-            active_notes: (0..channels * 128).map(|_| AtomicU64::new(0)).collect(),
-            limiter,
-            limited: Arc::new(AtomicBool::new(limit.is_some())),
+            bucket: Arc::new(bucket),
+            counts,
+            active_notes: (0..channels * 128).map(|_| AtomicU32::new(0)).collect(),
             stop,
             join_handle,
         })
     }
 
-    pub(crate) fn limiter(&self) -> Arc<LoadLimiter> {
-        self.limiter.clone()
-    }
-
-    pub(crate) fn set_limit(&self, limit: Option<NpsLimit>) {
-        self.limited.store(limit.is_some(), Ordering::Relaxed);
-        self.limiter.configure(
-            limit.map_or(0, |l| l.max as u64),
-            limit.is_some_and(|l| l.load_limiter),
-        );
+    pub(crate) fn set_limit(&self, limit: Option<usize>) {
+        self.bucket.set_limit(limit);
     }
 
     #[inline]
@@ -185,37 +174,32 @@ impl NpsTracker {
         channel: usize,
         key: u8,
         vel: u8,
-        now: impl FnOnce() -> u64,
+        now: u64,
+        dropped: bool,
     ) -> bool {
         let Some(active) = self.active_notes.get(channel * 128 + key as usize) else {
             return false;
         };
 
-        if let Some(max) = self.max_nps()
-            && !self.bucket.admit(self.bucket.now(now()), vel, max)
-        {
-            return false;
+        let played = !dropped
+            && match self.bucket.interval() {
+                0 => true,
+                interval => self.bucket.admit(self.bucket.now(now), vel, interval),
+            };
+
+        if played {
+            active.fetch_add(1, Ordering::Relaxed);
+            self.counts.fetch_add(1 << 32 | 1, Ordering::Relaxed);
         }
-
-        self.current_notes.fetch_add(1, Ordering::Relaxed);
-        active.fetch_add(1, Ordering::Relaxed);
-        true
+        played
     }
 
-    fn max_nps(&self) -> Option<u64> {
-        self.limited
-            .load(Ordering::Relaxed)
-            .then(|| self.limiter.max_nps())
-    }
-
-    pub(crate) fn batch(&self, now: impl FnOnce() -> u64) -> NpsBatch {
-        let limit = self.max_nps().map(|max| {
-            let now = self.bucket.now(now());
-            // A limit of 0 lets nothing through
-            let interval = self.bucket.interval(max).unwrap_or(u64::MAX);
-            (interval, now, self.bucket.burst)
-        });
-        let tat = limit.map_or(0, |(_, now, _)| {
+    pub(crate) fn batch(&self, now: u64) -> NpsBatch {
+        let limit = match self.bucket.interval() {
+            0 => None,
+            interval => Some((interval, self.bucket.now(now))),
+        };
+        let tat = limit.map_or(0, |(_, now)| {
             self.bucket.tat.load(Ordering::Relaxed).max(now)
         });
         NpsBatch {
@@ -233,38 +217,44 @@ impl NpsTracker {
         channel: usize,
         key: u8,
         vel: u8,
+        dropped: bool,
     ) -> bool {
         let Some(active) = self.active_notes.get(channel * 128 + key as usize) else {
             return false;
         };
 
-        if let Some((interval, now, burst)) = batch.limit {
-            if interval == u64::MAX || !fits(burst, batch.tat - now, vel) {
-                return false;
-            }
-            batch.tat += interval;
-        }
+        let played = !dropped
+            && match batch.limit {
+                None => true,
+                Some((interval, now)) => {
+                    interval != u64::MAX && fits(self.bucket.burst, batch.tat - now, vel)
+                }
+            };
 
-        batch.notes += 1;
-        active.fetch_add(1, Ordering::Relaxed);
-        true
+        if played {
+            active.fetch_add(1, Ordering::Relaxed);
+            if let Some((interval, _)) = batch.limit {
+                batch.tat += interval;
+            }
+            batch.notes += 1;
+        }
+        played
     }
 
     pub(crate) fn commit(&self, batch: &NpsBatch) {
-        if batch.notes > 0 {
-            if let Some((interval, now, _)) = batch.limit {
-                self.bucket.take(now, interval, batch.notes);
-            }
-            self.current_notes.fetch_add(batch.notes, Ordering::Relaxed);
+        if batch.notes > 0
+            && let Some((interval, now)) = batch.limit
+        {
+            self.bucket.take(now, interval, batch.notes);
         }
-        if batch.events > 0 {
-            self.current_events
-                .fetch_add(batch.events, Ordering::Relaxed);
+        let counts = batch.notes << 32 | batch.events;
+        if counts > 0 {
+            self.counts.fetch_add(counts, Ordering::Relaxed);
         }
     }
 
     pub(crate) fn count_event(&self) {
-        self.current_events.fetch_add(1, Ordering::Relaxed);
+        self.counts.fetch_add(1, Ordering::Relaxed);
     }
 
     #[inline]
@@ -272,19 +262,25 @@ impl NpsTracker {
         self.active_notes
             .get(channel * 128 + key as usize)
             .is_some_and(|n| {
-                n.try_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
-                    (n > 0).then(|| n - 1)
-                })
-                .is_ok()
+                n.try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_sub(1))
+                    .is_ok()
             })
     }
 
-    pub(crate) fn reset(&self) {
-        for n in self.active_notes.iter() {
-            n.store(0, Ordering::Relaxed);
+    pub(crate) fn clear(&self, channels: Range<usize>) {
+        if let Some(notes) = self
+            .active_notes
+            .get(channels.start * 128..channels.end * 128)
+        {
+            for n in notes {
+                n.store(0, Ordering::Relaxed);
+            }
         }
+    }
+
+    pub(crate) fn reset(&self) {
+        self.clear(0..self.active_notes.len() / 128);
         self.bucket.tat.store(0, Ordering::Relaxed);
-        self.limiter.reset();
     }
 }
 
@@ -303,11 +299,8 @@ impl Clone for NpsTracker {
     fn clone(&self) -> Self {
         Self {
             bucket: self.bucket.clone(),
-            current_notes: self.current_notes.clone(),
-            current_events: self.current_events.clone(),
+            counts: self.counts.clone(),
             active_notes: self.active_notes.clone(),
-            limiter: self.limiter.clone(),
-            limited: self.limited.clone(),
             stop: self.stop.clone(),
             join_handle: None,
         }

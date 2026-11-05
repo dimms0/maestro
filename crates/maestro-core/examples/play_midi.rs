@@ -6,11 +6,7 @@ use std::{
 };
 
 use maestro_core::{
-    realtime::{
-        MaestroRealtimeEngine, RealtimeEngineOptions,
-        config::{NpsLimit, RealtimeConfig},
-        host_time,
-    },
+    realtime::{MaestroRealtimeEngine, RealtimeEngineOptions, host_time},
     renderer::config::{
         RendererConfig, SynthConfig,
         bassmidi::{BASSMIDIConfig, BASSMIDIThreading},
@@ -53,13 +49,6 @@ fn main() {
                     divide_channels: false,
                 }),
                 ..Default::default()
-            }),
-            ..Default::default()
-        },
-        config: RealtimeConfig {
-            max_nps: Some(NpsLimit {
-                max: 200_000,
-                load_limiter: false,
             }),
             ..Default::default()
         },

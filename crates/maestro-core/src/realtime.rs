@@ -1,7 +1,7 @@
 use crate::{
     audio_params::AudioParameters,
     error::{MaestroComponentError, RealtimeEngineError, RendererError},
-    realtime::{buffered_renderer::BufferedRenderer, clock::RealtimeClock, load::LoadLimiter},
+    realtime::{buffered_renderer::BufferedRenderer, clock::RealtimeClock},
     renderer::MaestroRenderer,
     soundfont::SoundFontList,
 };
@@ -16,7 +16,6 @@ mod event_sender;
 pub mod host_time;
 pub use clock::MAX_SCHEDULE_SECS;
 pub use event_sender::{RealtimeEventSender, UMP_GROUPS};
-mod load;
 mod options;
 pub(crate) mod priority;
 mod statistics;
@@ -64,7 +63,6 @@ fn start_stream(
     clock: &Arc<RealtimeClock>,
     output: &stream::ResolvedOutput,
     config: &config::RealtimeConfig,
-    limiter: Arc<LoadLimiter>,
     stats: &MaestroRealtimeStatistics,
 ) -> Result<Stream, RealtimeEngineError> {
     let renderer = renderer.clone();
@@ -77,7 +75,7 @@ fn start_stream(
         }
     };
 
-    let mut buffered = BufferedRenderer::new(func, output.params, config, limiter, stats.clone())?;
+    let mut buffered = BufferedRenderer::new(func, output.params, config, stats.clone())?;
 
     let func = {
         let clock = clock.clone();
@@ -115,6 +113,7 @@ impl MaestroRealtimeEngine {
         let clock = Arc::new(RealtimeClock::new(
             &stream_params,
             options.config.auto_timestamp,
+            options.config.skip_behind,
         ));
         let sender = RealtimeEventSender::new(
             &options,
@@ -124,10 +123,8 @@ impl MaestroRealtimeEngine {
         )?;
 
         let renderer = Arc::new(Mutex::new(renderer));
-        let limiter = sender.load_limiter();
-        let stream = on_device_thread(|| {
-            start_stream(&renderer, &clock, &output, &options.config, limiter, &stats)
-        })?;
+        let stream =
+            on_device_thread(|| start_stream(&renderer, &clock, &output, &options.config, &stats))?;
 
         Ok(Self {
             renderer,
@@ -163,6 +160,7 @@ impl MaestroRealtimeEngine {
         // Whatever the sender doesn't handle belongs to the output stream
         let stream_config = |c: &config::RealtimeConfig| config::RealtimeConfig {
             auto_timestamp: false,
+            skip_behind: false,
             max_nps: None,
             ..c.clone()
         };
@@ -176,10 +174,9 @@ impl MaestroRealtimeEngine {
                 return Ok(false);
             }
 
-            let limiter = self.sender.load_limiter();
             let (renderer, clock, stats) = (&self.renderer, &self.clock, &self.stats);
             self.stream = Some(on_device_thread(|| {
-                start_stream(renderer, clock, &output, &new.config, limiter, stats)
+                start_stream(renderer, clock, &output, &new.config, stats)
             })?);
         }
 

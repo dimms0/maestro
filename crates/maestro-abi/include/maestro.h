@@ -227,7 +227,7 @@ typedef struct MaestroRealtimeStats {
   uint64_t voice_count; /* number of current active voices */
   uint64_t nps;         /* notes per second processed by the synth */
   uint64_t eps;         /* events per second processed by the synth */
-  uint64_t nps_limit;   /* the current limit, after the load limiter */
+  uint64_t nps_limit;   /* the current NPS limit */
 } MaestroRealtimeStats;
 
 /* ---- Interface: realtime engine (since Maestro 0.2) ---- */

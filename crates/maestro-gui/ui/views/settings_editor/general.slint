@@ -404,15 +404,14 @@ export component RealtimeSection inherits SectionCard {
     }
 
     Setting {
-        text: "Skip notes when the renderer is overloaded";
-        subtext: "When rendering can't keep up with realtime, Maestro lowers the NPS limit, scaled by how far over budget it is, to avoid audio dropouts. The limit rises back to the set value as the load drops.";
+        text: "Skip notes while the renderer is behind";
+        subtext: "Notes that arrive while rendering has fallen behind realtime are dropped. Every other event is kept and plays as soon as the renderer catches up.";
 
-        enabled: SettingsEditorState.current_config.realtime.has_max_nps;
         has-switch: true;
-        checked: SettingsEditorState.current_config.realtime.load_limiter;
+        checked: SettingsEditorState.current_config.realtime.skip_behind;
         toggled(v) => {
             root.edit = SettingsEditorState.current_config.realtime;
-            root.edit.load_limiter = v;
+            root.edit.skip_behind = v;
             SettingsEditorState.update_realtime(root.edit);
         }
     }
