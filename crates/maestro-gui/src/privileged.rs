@@ -1,7 +1,10 @@
+use std::fmt::Display;
+use std::fs;
+#[cfg(windows)]
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 #[cfg(unix)]
 use std::process::Command;
-use std::{fs, io};
 
 use maestro_core::paths;
 
@@ -28,8 +31,35 @@ pub const API_FILENAME: &str = "libmaestro.dylib";
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 pub const API_FILENAME: &str = "libmaestro.so";
 
+pub const KDMAPI_FOREIGN: &str = "The system KDMAPI library belongs to OmniMIDI. Uninstall OmniMIDI \
+                                  before letting Maestro provide KDMAPI.";
+pub const API_FOREIGN: &str = "Another program's library already uses the Maestro API's name. Remove \
+                               it before installing.";
+
 const KDMAPI_MARKER: &[u8] = b"Maestro_KDMAPI_Version\0";
 const API_MARKER: &[u8] = b"maestro_get_interface\0";
+
+pub fn step(step: impl Display, reason: impl Display) -> String {
+    format!("Step: {step}\nReason: {reason}")
+}
+
+pub fn task(name: &str, result: Result<(), String>) -> Result<(), String> {
+    result.map_err(|e| format!("{name} failed.\n\n{e}"))
+}
+
+#[cfg(unix)]
+pub fn exit_reason(code: Option<i32>, stderr: &str) -> String {
+    let stderr = stderr.trim();
+    let exit = match code {
+        Some(code) => format!("exit code {code}"),
+        None => "killed by a signal".to_string(),
+    };
+    if stderr.is_empty() {
+        format!("It stopped with no error output ({exit}).")
+    } else {
+        format!("{stderr} ({exit})")
+    }
+}
 
 pub fn kdmapi_target() -> PathBuf {
     #[cfg(target_os = "windows")]
@@ -107,7 +137,7 @@ pub fn driver_links() -> [(Option<PathBuf>, PathBuf); 2] {
     ]
 }
 
-fn symlink(src: &Path, dst: &Path) -> io::Result<()> {
+fn symlink(src: &Path, dst: &Path) -> std::io::Result<()> {
     #[cfg(windows)]
     return std::os::windows::fs::symlink_file(src, dst);
     #[cfg(unix)]
@@ -172,107 +202,179 @@ fn links(filename: &str, target: PathBuf, link_name: &str) -> Vec<(Option<PathBu
     links
 }
 
-fn link(links: Vec<(Option<PathBuf>, PathBuf)>, is_ours: fn(&Path) -> bool) -> i32 {
+fn link(
+    links: Vec<(Option<PathBuf>, PathBuf)>,
+    is_ours: fn(&Path) -> bool,
+    foreign: &str,
+) -> Result<(), String> {
     let mut links = links.into_iter();
-    let Some((Some(native), native_target)) = links.next() else {
-        return 1;
+    let Some((native, native_target)) = links.next() else {
+        return Ok(());
+    };
+    let Some(native) = native else {
+        return Err(not_found(&native_target));
     };
     let links: Vec<(PathBuf, PathBuf)> = std::iter::once((native, native_target))
         .chain(links.filter_map(|(src, target)| Some((src?, target))))
         .collect();
 
-    if links
+    if let Some((_, target)) = links
         .iter()
-        .any(|(_, target)| is_present(target) && !is_ours(target))
+        .find(|(_, target)| is_present(target) && !is_ours(target))
     {
-        return 2;
+        return Err(foreign_file(target, foreign));
     }
 
     for (src, target) in links {
-        if is_present(&target) && fs::remove_file(&target).is_err() {
-            return 1;
+        if is_present(&target) {
+            remove(&target)?;
         }
-        if let Some(dir) = target.parent()
-            && fs::create_dir_all(dir).is_err()
-        {
-            return 1;
+        if let Some(dir) = target.parent() {
+            fs::create_dir_all(dir)
+                .map_err(|e| step(format!("Creating the folder {}", dir.display()), e))?;
         }
-        if symlink(&src, &target).is_err() {
-            return 1;
-        }
+        make_link(&src, &target)?;
     }
-    0
+    Ok(())
 }
 
-fn unlink(links: Vec<(Option<PathBuf>, PathBuf)>, is_ours: fn(&Path) -> bool) -> i32 {
+fn not_found(target: &Path) -> String {
+    step(
+        format!("Finding the library to link at {}", target.display()),
+        "It is missing from the Maestro program folder. Reinstall Maestro.",
+    )
+}
+
+fn foreign_file(target: &Path, foreign: &str) -> String {
+    step(
+        format!("Checking the existing file at {}", target.display()),
+        foreign,
+    )
+}
+
+fn remove(target: &Path) -> Result<(), String> {
+    fs::remove_file(target).map_err(|e| step(format!("Removing {}", target.display()), e))
+}
+
+fn make_link(src: &Path, target: &Path) -> Result<(), String> {
+    symlink(src, target).map_err(|e| {
+        step(
+            format!("Linking {} to {}", target.display(), src.display()),
+            e,
+        )
+    })
+}
+
+fn unlink(
+    links: Vec<(Option<PathBuf>, PathBuf)>,
+    is_ours: fn(&Path) -> bool,
+    foreign: &str,
+) -> Result<(), String> {
     for (_, target) in links {
         if !is_present(&target) {
             continue;
         }
         if !is_ours(&target) {
-            return 2;
+            return Err(foreign_file(&target, foreign));
         }
-        if fs::remove_file(&target).is_err() {
-            return 1;
-        }
+        remove(&target)?;
     }
-    0
+    Ok(())
 }
 
-fn unlink_kdmapi() -> i32 {
-    let code = unlink(kdmapi_links(), is_maestro_lib);
+fn unlink_kdmapi() -> Result<(), String> {
+    let result = unlink(kdmapi_links(), is_maestro_lib, KDMAPI_FOREIGN);
     #[cfg(windows)]
     for dir in kdmapi_subdirs() {
         let _ = fs::remove_dir(dir);
     }
-    code
+    result
 }
 
 #[cfg(windows)]
-fn link_driver() -> i32 {
+fn link_driver() -> Result<(), String> {
     for (src, target) in driver_links() {
         let Some(src) = src else {
-            return 1;
+            return Err(not_found(&target));
         };
         let _ = fs::remove_file(&target);
-        if symlink(&src, &target).is_err() {
-            return 1;
-        }
+        make_link(&src, &target)?;
     }
-    0
+    Ok(())
 }
 
 #[cfg(windows)]
-fn unlink_driver() -> i32 {
+fn unlink_driver() -> Result<(), String> {
     for (_, target) in driver_links() {
-        if target.exists() && fs::remove_file(&target).is_err() {
-            return 1;
+        if target.exists() {
+            remove(&target)?;
         }
     }
-    0
+    Ok(())
 }
 
 pub fn handle(args: &[String]) -> Option<i32> {
-    match args.get(1).map(String::as_str)? {
-        INSTALL_KDMAPI => Some(link(kdmapi_links(), is_maestro_lib)),
-        UNINSTALL_KDMAPI => Some(unlink_kdmapi()),
-        INSTALL_API => Some(link(api_links(), is_maestro_api)),
-        UNINSTALL_API => Some(unlink(api_links(), is_maestro_api)),
+    let result = match args.get(1).map(String::as_str)? {
+        INSTALL_KDMAPI => link(kdmapi_links(), is_maestro_lib, KDMAPI_FOREIGN),
+        UNINSTALL_KDMAPI => unlink_kdmapi(),
+        INSTALL_API => link(api_links(), is_maestro_api, API_FOREIGN),
+        UNINSTALL_API => unlink(api_links(), is_maestro_api, API_FOREIGN),
         #[cfg(windows)]
-        INSTALL_DRIVER => Some(link_driver()),
+        INSTALL_DRIVER => link_driver(),
         #[cfg(windows)]
-        UNINSTALL_DRIVER => Some(unlink_driver()),
-        _ => None,
+        UNINSTALL_DRIVER => unlink_driver(),
+        _ => return None,
+    };
+
+    Some(match result {
+        Ok(()) => 0,
+        Err(message) => {
+            report_failure(args, &message);
+            1
+        }
+    })
+}
+
+#[cfg(unix)]
+fn report_failure(_: &[String], message: &str) {
+    eprintln!("{message}");
+}
+
+// runas gives the parent no pipes, so the reason travels in a file the parent
+// names. create_new keeps an elevated process from overwriting anything
+#[cfg(windows)]
+fn report_failure(args: &[String], message: &str) {
+    if let Some(path) = args.get(2) {
+        let _ = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .and_then(|mut f| f.write_all(message.as_bytes()));
     }
 }
 
-pub fn elevate_self(command: &str) -> io::Result<i32> {
-    let exe = std::env::current_exe()?;
+#[cfg(windows)]
+pub fn report_path() -> PathBuf {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    std::env::temp_dir().join(format!("maestro-{}-{nanos}.txt", std::process::id()))
+}
+
+#[cfg(windows)]
+pub fn take_report(path: &Path) -> Option<String> {
+    let text = fs::read_to_string(path).ok()?;
+    let _ = fs::remove_file(path);
+    Some(text).filter(|t| !t.is_empty())
+}
+
+pub fn elevate_self(command: &str) -> Result<(), String> {
+    let exe = std::env::current_exe().map_err(|e| step("Finding the Maestro executable", e))?;
     elevate(&exe, &[command])
 }
 
 #[cfg(target_os = "macos")]
-pub fn elevate(exe: &Path, args: &[&str]) -> io::Result<i32> {
+pub fn elevate(exe: &Path, args: &[&str]) -> Result<(), String> {
     let quoted: Vec<String> = std::iter::once(exe.to_string_lossy().into_owned())
         .chain(args.iter().map(|a| a.to_string()))
         .map(|a| format!("'{}'", a.replace('\'', "'\\''")))
@@ -281,23 +383,73 @@ pub fn elevate(exe: &Path, args: &[&str]) -> io::Result<i32> {
         "do shell script \"{}\" with administrator privileges",
         quoted.join(" ")
     );
-    status(Command::new("osascript").arg("-e").arg(script))
+    let out = Command::new("osascript")
+        .arg("-e")
+        .arg(script)
+        .output()
+        .map_err(|e| step("Starting osascript to request administrator rights", e))?;
+    if out.status.success() {
+        return Ok(());
+    }
+    Err(osascript_error(&String::from_utf8_lossy(&out.stderr)))
+}
+
+// osascript always exits 1 and prints "0:97: execution error: <stderr> (<code>)".
+#[cfg(any(target_os = "macos", test))]
+fn osascript_error(stderr: &str) -> String {
+    const STEP: &str = "Requesting administrator rights through osascript";
+
+    let stderr = stderr.trim();
+    if stderr.ends_with("(-128)") {
+        return step(STEP, "The password prompt was cancelled.");
+    }
+    let message = stderr
+        .split_once("execution error: ")
+        .map_or(stderr, |(_, m)| m);
+    let message = message.rsplit_once(" (").map_or(message, |(m, _)| m);
+    let message = message.replace('\r', "\n");
+    if message.starts_with("Step: ") {
+        message
+    } else {
+        step(STEP, message)
+    }
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
-pub fn elevate(exe: &Path, args: &[&str]) -> io::Result<i32> {
-    status(Command::new("pkexec").arg(exe).args(args))
+pub fn elevate(exe: &Path, args: &[&str]) -> Result<(), String> {
+    let out = Command::new("pkexec")
+        .arg(exe)
+        .args(args)
+        .output()
+        .map_err(|e| step("Starting pkexec to request administrator rights", e))?;
+    pkexec_result(
+        exe,
+        out.status.code(),
+        &String::from_utf8_lossy(&out.stderr),
+    )
 }
 
-#[cfg(unix)]
-fn status(command: &mut Command) -> io::Result<i32> {
-    command.status().map(|s| s.code().unwrap_or(-1))
+#[cfg(all(unix, not(target_os = "macos")))]
+fn pkexec_result(exe: &Path, code: Option<i32>, stderr: &str) -> Result<(), String> {
+    match code {
+        Some(0) => Ok(()),
+        // pkexec's own exit codes: dismissed, or not authorized
+        Some(126 | 127) => Err(step(
+            "Requesting administrator rights through pkexec",
+            exit_reason(code, stderr),
+        )),
+        Some(1) if !stderr.trim().is_empty() => Err(stderr.trim().to_string()),
+        _ => Err(step(
+            format!("Running {} as administrator", exe.display()),
+            exit_reason(code, stderr),
+        )),
+    }
 }
 
 #[cfg(windows)]
-pub fn elevate(exe: &Path, args: &[&str]) -> io::Result<i32> {
+pub fn elevate(exe: &Path, args: &[&str]) -> Result<(), String> {
     use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::Foundation::{CloseHandle, ERROR_CANCELLED};
     use windows_sys::Win32::System::Threading::{
         GetExitCodeProcess, INFINITE, WaitForSingleObject,
     };
@@ -313,11 +465,15 @@ pub fn elevate(exe: &Path, args: &[&str]) -> io::Result<i32> {
             .collect()
     }
 
+    let report = report_path();
+    let report_arg = report.to_string_lossy();
     let verb = wide("runas");
     let file = wide(&exe.to_string_lossy());
     let params = wide(
         &args
             .iter()
+            .copied()
+            .chain(std::iter::once(report_arg.as_ref()))
             .map(|a| format!("\"{a}\""))
             .collect::<Vec<_>>()
             .join(" "),
@@ -332,7 +488,13 @@ pub fn elevate(exe: &Path, args: &[&str]) -> io::Result<i32> {
     info.nShow = SW_HIDE;
 
     if unsafe { ShellExecuteExW(&mut info) } == 0 {
-        return Err(io::Error::last_os_error());
+        let error = io::Error::last_os_error();
+        let step_name = format!("Requesting administrator rights for {}", exe.display());
+        return Err(if error.raw_os_error() == Some(ERROR_CANCELLED as i32) {
+            step(step_name, "The Windows administrator prompt was declined.")
+        } else {
+            step(step_name, error)
+        });
     }
 
     let mut code = 0u32;
@@ -341,5 +503,19 @@ pub fn elevate(exe: &Path, args: &[&str]) -> io::Result<i32> {
         GetExitCodeProcess(info.hProcess, &mut code);
         CloseHandle(info.hProcess);
     }
-    Ok(code as i32)
+
+    let report = take_report(&report);
+    if code == 0 {
+        return Ok(());
+    }
+    Err(report.unwrap_or_else(|| {
+        step(
+            format!(
+                "Running {} {} as administrator",
+                exe.display(),
+                args.join(" ")
+            ),
+            format!("It stopped with exit code {code} and gave no reason."),
+        )
+    }))
 }

@@ -1,6 +1,8 @@
 #![allow(non_snake_case)]
 
 use std::ffi::c_char;
+use std::fmt::Display;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use std::ptr::{null, null_mut};
 
@@ -46,9 +48,34 @@ const CHECK_NO_DLL_64: u32 = 8;
 const CHECK_NO_DLL_32: u32 = 16;
 const CHECK_FAILED: u32 = 255;
 
-const ERR_REGISTRY: i32 = 1;
-const ERR_NO_PORT: i32 = 2;
-const ERR_DEVICE: i32 = 3;
+fn step(step: impl Display, reason: impl Display) -> String {
+    format!("Step: {step}\nReason: {reason}")
+}
+
+fn os_error(code: u32) -> io::Error {
+    io::Error::from_raw_os_error(code as i32)
+}
+
+// SetupAPI codes are often missing from the system message table, so the hex
+// code is what stays searchable.
+fn setup_error() -> String {
+    let code = unsafe { GetLastError() };
+    format!("{} (0x{code:08X})", os_error(code))
+}
+
+fn name_text(name: &[u8]) -> String {
+    String::from_utf8_lossy(name)
+        .trim_end_matches('\0')
+        .to_string()
+}
+
+fn view(sam: REG_SAM_FLAGS) -> &'static str {
+    if sam & KEY_WOW64_32KEY != 0 {
+        "32-bit"
+    } else {
+        "64-bit"
+    }
+}
 
 fn entry_name(index: usize) -> [u8; 6] {
     let mut name = *b"midi\0\0";
@@ -58,10 +85,21 @@ fn entry_name(index: usize) -> [u8; 6] {
     name
 }
 
-fn open_drivers32(sam: REG_SAM_FLAGS) -> Option<HKEY> {
+fn open_drivers32(sam: REG_SAM_FLAGS) -> Result<HKEY, String> {
     let mut key: HKEY = null_mut();
     let res = unsafe { RegOpenKeyExA(HKEY_LOCAL_MACHINE, DRIVERS_KEY.as_ptr(), 0, sam, &mut key) };
-    (res == ERROR_SUCCESS).then_some(key)
+    if res == ERROR_SUCCESS {
+        Ok(key)
+    } else {
+        Err(step(
+            format!(
+                "Opening the {} registry key HKLM\\{}",
+                view(sam),
+                name_text(DRIVERS_KEY)
+            ),
+            os_error(res),
+        ))
+    }
 }
 
 fn read_entry(key: HKEY, name: &[u8]) -> Option<String> {
@@ -113,7 +151,7 @@ fn pick_entry(key: HKEY) -> Option<(usize, bool)> {
     free.or(wdm).map(|i| (i, true))
 }
 
-fn set_string(key: HKEY, name: &[u8], value: &[u8]) -> bool {
+fn set_string(key: HKEY, name: &[u8], value: &[u8]) -> Result<(), String> {
     let res = unsafe {
         RegSetValueExA(
             key,
@@ -124,36 +162,56 @@ fn set_string(key: HKEY, name: &[u8], value: &[u8]) -> bool {
             value.len() as u32,
         )
     };
-    res == ERROR_SUCCESS
+    if res == ERROR_SUCCESS {
+        Ok(())
+    } else {
+        Err(step(
+            format!("Writing the registry value {}", name_text(name)),
+            os_error(res),
+        ))
+    }
 }
 
-fn write_driver_entry(sam: REG_SAM_FLAGS, index: usize) -> bool {
-    let Some(key) = open_drivers32(KEY_ALL_ACCESS | sam) else {
-        return false;
-    };
-    let ok = set_string(key, &entry_name(index), DRIVER_NAME);
+fn write_driver_entry(sam: REG_SAM_FLAGS, index: usize) -> Result<(), String> {
+    let key = open_drivers32(KEY_ALL_ACCESS | sam)?;
+    let result = set_string(key, &entry_name(index), DRIVER_NAME);
     unsafe { RegCloseKey(key) };
-    ok
+    result
 }
 
-fn delete_driver_entry(sam: REG_SAM_FLAGS) -> bool {
-    let Some(key) = open_drivers32(KEY_ALL_ACCESS | sam) else {
-        return false;
-    };
-    let ok = match find_driver_entry(key) {
-        Some(i) => (unsafe { RegDeleteValueA(key, entry_name(i).as_ptr()) }) == ERROR_SUCCESS,
-        None => true,
+fn delete_driver_entry(sam: REG_SAM_FLAGS) -> Result<(), String> {
+    let key = open_drivers32(KEY_ALL_ACCESS | sam)?;
+    let result = match find_driver_entry(key) {
+        Some(i) => {
+            let name = entry_name(i);
+            match unsafe { RegDeleteValueA(key, name.as_ptr()) } {
+                ERROR_SUCCESS => Ok(()),
+                res => Err(step(
+                    format!(
+                        "Removing {} from the {} Drivers32 registry key",
+                        name_text(&name),
+                        view(sam)
+                    ),
+                    os_error(res),
+                )),
+            }
+        }
+        None => Ok(()),
     };
     unsafe { RegCloseKey(key) };
-    ok
+    result
 }
 
-fn media_devinfo() -> Option<HDEVINFO> {
+fn media_devinfo() -> Result<HDEVINFO, String> {
     let devinfo = unsafe { SetupDiGetClassDevsW(&GUID_DEVCLASS_MEDIA, null(), null_mut(), 0) };
-    (devinfo != -1).then_some(devinfo)
+    if devinfo == -1 {
+        Err(step("Opening the list of media devices", setup_error()))
+    } else {
+        Ok(devinfo)
+    }
 }
 
-fn find_device(devinfo: HDEVINFO, data: &mut SP_DEVINFO_DATA) -> Option<bool> {
+fn find_device(devinfo: HDEVINFO, data: &mut SP_DEVINFO_DATA) -> Result<bool, String> {
     let id = &HARDWARE_IDS[..HARDWARE_IDS.len() - 1];
     let mut prop = [0u8; 1024];
     let mut index = 0;
@@ -172,20 +230,24 @@ fn find_device(devinfo: HDEVINFO, data: &mut SP_DEVINFO_DATA) -> Option<bool> {
             )
         };
         if ok != 0 && prop.starts_with(id) {
-            return Some(true);
+            return Ok(true);
         }
     }
 
-    (unsafe { GetLastError() } == ERROR_NO_MORE_ITEMS).then_some(false)
+    match unsafe { GetLastError() } {
+        ERROR_NO_MORE_ITEMS => Ok(false),
+        _ => Err(step("Searching the media devices", setup_error())),
+    }
 }
 
 fn set_device_property(
     devinfo: HDEVINFO,
     data: &mut SP_DEVINFO_DATA,
     property: u32,
+    label: &str,
     value: &[u8],
-) -> bool {
-    unsafe {
+) -> Result<(), String> {
+    let ok = unsafe {
         SetupDiSetDeviceRegistryPropertyA(
             devinfo,
             data,
@@ -193,104 +255,106 @@ fn set_device_property(
             value.as_ptr(),
             value.len() as u32,
         ) != 0
+    };
+    if ok {
+        Ok(())
+    } else {
+        Err(step(format!("Setting the device's {label}"), setup_error()))
     }
 }
 
-fn write_driver_class(key: HKEY, entry: usize) -> bool {
-    if !set_string(key, PROP_DRIVER_DESC, DEVICE_DESCRIPTION)
-        || !set_string(key, PROP_PROVIDER_NAME, PROVIDER_NAME)
-    {
-        return false;
-    }
-
-    let mut drivers: HKEY = null_mut();
+fn create_subkey(parent: HKEY, name: &[u8]) -> Result<HKEY, String> {
+    let mut key: HKEY = null_mut();
     let res = unsafe {
         RegCreateKeyExA(
-            key,
-            SUBKEY_DRIVERS.as_ptr(),
+            parent,
+            name.as_ptr(),
             0,
             null(),
             0,
             KEY_ALL_ACCESS,
             null(),
-            &mut drivers,
+            &mut key,
             null_mut(),
         )
     };
-    if res != ERROR_SUCCESS {
-        return false;
+    if res == ERROR_SUCCESS {
+        Ok(key)
+    } else {
+        Err(step(
+            format!("Creating the registry key {}", name_text(name)),
+            os_error(res),
+        ))
     }
+}
 
-    let mut midi: HKEY = null_mut();
-    let ok = set_string(drivers, PROP_SUBCLASSES, SUBCLASSES)
-        && unsafe {
-            RegCreateKeyExA(
-                drivers,
-                SUBKEY_MIDI.as_ptr(),
-                0,
-                null(),
-                0,
-                KEY_ALL_ACCESS,
-                null(),
-                &mut midi,
-                null_mut(),
-            )
-        } == ERROR_SUCCESS;
+fn write_driver_class(key: HKEY, entry: usize) -> Result<(), String> {
+    set_string(key, PROP_DRIVER_DESC, DEVICE_DESCRIPTION)?;
+    set_string(key, PROP_PROVIDER_NAME, PROVIDER_NAME)?;
+
+    let drivers = create_subkey(key, SUBKEY_DRIVERS)?;
+    let midi = set_string(drivers, PROP_SUBCLASSES, SUBCLASSES)
+        .and_then(|()| create_subkey(drivers, SUBKEY_MIDI));
     unsafe { RegCloseKey(drivers) };
-    if !ok {
-        return false;
-    }
+    let midi = midi?;
 
     let mut alias = entry_name(entry);
     alias[5] = 0;
-    let ok = set_string(midi, PROP_DRIVER, DRIVER_NAME)
-        && set_string(midi, PROP_DESCRIPTION, DEVICE_DESCRIPTION)
-        && set_string(midi, PROP_ALIAS, &alias);
+    let result = set_string(midi, PROP_DRIVER, DRIVER_NAME)
+        .and_then(|()| set_string(midi, PROP_DESCRIPTION, DEVICE_DESCRIPTION))
+        .and_then(|()| set_string(midi, PROP_ALIAS, &alias));
     unsafe { RegCloseKey(midi) };
-    ok
+    result
 }
 
-fn register_device(entry: usize) -> i32 {
-    let Some(devinfo) = media_devinfo() else {
-        return ERR_DEVICE;
-    };
+fn register_device(entry: usize) -> Result<(), String> {
+    let devinfo = media_devinfo()?;
 
     let mut data = SP_DEVINFO_DATA {
         cbSize: size_of::<SP_DEVINFO_DATA>() as u32,
         ..Default::default()
     };
 
-    let code = (|| {
-        match find_device(devinfo, &mut data) {
-            None => return ERR_DEVICE,
-            Some(false) => {
-                let created = unsafe {
-                    SetupDiCreateDeviceInfoA(
-                        devinfo,
-                        DEVICE_NAME_MEDIA.as_ptr(),
-                        &GUID_DEVCLASS_MEDIA,
-                        DEVICE_DESCRIPTION.as_ptr(),
-                        null_mut(),
-                        DICD_GENERATE_ID,
-                        &mut data,
-                    )
-                };
-                if created == 0
-                    || !set_device_property(devinfo, &mut data, SPDRP_HARDWAREID, HARDWARE_IDS)
-                    || unsafe { SetupDiCallClassInstaller(DIF_REGISTERDEVICE, devinfo, &data) } == 0
-                {
-                    return ERR_DEVICE;
-                }
+    let result = (|| {
+        if !find_device(devinfo, &mut data)? {
+            let created = unsafe {
+                SetupDiCreateDeviceInfoA(
+                    devinfo,
+                    DEVICE_NAME_MEDIA.as_ptr(),
+                    &GUID_DEVCLASS_MEDIA,
+                    DEVICE_DESCRIPTION.as_ptr(),
+                    null_mut(),
+                    DICD_GENERATE_ID,
+                    &mut data,
+                )
+            };
+            if created == 0 {
+                return Err(step("Creating the Maestro device", setup_error()));
             }
-            Some(true) => {}
+            set_device_property(
+                devinfo,
+                &mut data,
+                SPDRP_HARDWAREID,
+                "hardware ID",
+                HARDWARE_IDS,
+            )?;
+            if unsafe { SetupDiCallClassInstaller(DIF_REGISTERDEVICE, devinfo, &data) } == 0 {
+                return Err(step(
+                    "Registering the Maestro device with Windows",
+                    setup_error(),
+                ));
+            }
         }
 
         let flags = (CONFIGFLAG_MANUAL_INSTALL | CONFIGFLAG_NEEDS_FORCED_CONFIG).to_ne_bytes();
-        if !set_device_property(devinfo, &mut data, SPDRP_CONFIGFLAGS, &flags)
-            || !set_device_property(devinfo, &mut data, SPDRP_MFG, PROVIDER_NAME)
-        {
-            return ERR_DEVICE;
-        }
+        set_device_property(
+            devinfo,
+            &mut data,
+            SPDRP_CONFIGFLAGS,
+            "configuration flags",
+            &flags,
+        )?;
+        set_device_property(devinfo, &mut data, SPDRP_MFG, "manufacturer", PROVIDER_NAME)?;
 
         let key = unsafe {
             SetupDiCreateDevRegKeyA(
@@ -304,47 +368,45 @@ fn register_device(entry: usize) -> i32 {
             )
         };
         if key.is_null() || key as isize == -1 {
-            return ERR_DEVICE;
+            return Err(step(
+                "Opening the device's driver registry key",
+                setup_error(),
+            ));
         }
 
-        let ok = write_driver_class(key, entry);
+        let result = write_driver_class(key, entry);
         unsafe { RegCloseKey(key) };
-        if ok { 0 } else { ERR_DEVICE }
+        result
     })();
 
     unsafe { SetupDiDestroyDeviceInfoList(devinfo) };
-    code
+    result
 }
 
-fn remove_device() -> i32 {
-    let Some(devinfo) = media_devinfo() else {
-        return ERR_DEVICE;
-    };
+fn remove_device() -> Result<(), String> {
+    let devinfo = media_devinfo()?;
 
     let mut data = SP_DEVINFO_DATA {
         cbSize: size_of::<SP_DEVINFO_DATA>() as u32,
         ..Default::default()
     };
 
-    let code = match find_device(devinfo, &mut data) {
-        Some(true) => {
-            if unsafe { SetupDiCallClassInstaller(DIF_REMOVE, devinfo, &data) } == 0
-                && unsafe { SetupDiRemoveDevice(devinfo, &mut data) } == 0
-            {
-                ERR_DEVICE
-            } else {
-                0
-            }
+    let result = find_device(devinfo, &mut data).and_then(|found| {
+        if found
+            && unsafe { SetupDiCallClassInstaller(DIF_REMOVE, devinfo, &data) } == 0
+            && unsafe { SetupDiRemoveDevice(devinfo, &mut data) } == 0
+        {
+            Err(step("Removing the Maestro device", setup_error()))
+        } else {
+            Ok(())
         }
-        Some(false) => 0,
-        None => ERR_DEVICE,
-    };
+    });
 
     unsafe { SetupDiDestroyDeviceInfoList(devinfo) };
-    code
+    result
 }
 
-fn device_registered() -> Option<bool> {
+fn device_registered() -> Result<bool, String> {
     let devinfo = media_devinfo()?;
     let mut data = SP_DEVINFO_DATA {
         cbSize: size_of::<SP_DEVINFO_DATA>() as u32,
@@ -361,26 +423,22 @@ fn system_driver_path(dir: &str) -> PathBuf {
         .join(DRIVER_NAME_STR)
 }
 
-fn check() -> u32 {
+fn check() -> Result<u32, String> {
     let mut status = 0;
 
     for (sam, bit) in [
         (KEY_WOW64_64KEY, CHECK_NO_REG_64),
         (KEY_WOW64_32KEY, CHECK_NO_REG_32),
     ] {
-        let Some(key) = open_drivers32(KEY_READ | sam) else {
-            return CHECK_FAILED;
-        };
+        let key = open_drivers32(KEY_READ | sam)?;
         if find_driver_entry(key).is_none() {
             status |= bit;
         }
         unsafe { RegCloseKey(key) };
     }
 
-    match device_registered() {
-        Some(true) => {}
-        Some(false) => status |= CHECK_NO_DEVICE,
-        None => return CHECK_FAILED,
+    if !device_registered()? {
+        status |= CHECK_NO_DEVICE;
     }
 
     if !system_driver_path("System32").exists() {
@@ -390,49 +448,88 @@ fn check() -> u32 {
         status |= CHECK_NO_DLL_32;
     }
 
-    status
+    Ok(status)
 }
 
-fn register() -> i32 {
-    let Some(key) = open_drivers32(KEY_ALL_ACCESS | KEY_WOW64_64KEY) else {
-        return ERR_REGISTRY;
-    };
+fn register() -> Result<(), String> {
+    let key = open_drivers32(KEY_ALL_ACCESS | KEY_WOW64_64KEY)?;
     let picked = pick_entry(key);
     unsafe { RegCloseKey(key) };
 
     let Some((entry, needs_write)) = picked else {
-        return ERR_NO_PORT;
+        return Err(step(
+            "Finding a free MIDI slot in the Drivers32 registry key",
+            "All ten slots, midi to midi9, are used by other drivers. Remove one of those \
+             drivers, then try again.",
+        ));
     };
 
-    if needs_write && !write_driver_entry(KEY_WOW64_64KEY, entry) {
-        return ERR_REGISTRY;
+    if needs_write {
+        write_driver_entry(KEY_WOW64_64KEY, entry)?;
     }
-    if !write_driver_entry(KEY_WOW64_32KEY, entry) {
-        return ERR_REGISTRY;
-    }
+    write_driver_entry(KEY_WOW64_32KEY, entry)?;
 
     register_device(entry)
 }
 
-fn unregister() -> i32 {
-    let ok = delete_driver_entry(KEY_WOW64_64KEY) & delete_driver_entry(KEY_WOW64_32KEY);
-    let code = remove_device();
-    if !ok { ERR_REGISTRY } else { code }
+fn unregister() -> Result<(), String> {
+    let failures: Vec<String> = [
+        delete_driver_entry(KEY_WOW64_64KEY),
+        delete_driver_entry(KEY_WOW64_32KEY),
+        remove_device(),
+    ]
+    .into_iter()
+    .filter_map(Result::err)
+    .collect();
+
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("\n\n"))
+    }
+}
+
+// rundll32 passes the GUI's report path as the argument after the entry point.
+// create_new keeps an elevated process from overwriting anything.
+fn report_failure(message: &str) {
+    if let Some(path) = std::env::args_os().nth(2) {
+        let _ = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .and_then(|mut f| f.write_all(message.as_bytes()));
+    }
+}
+
+fn exit_with(result: Result<(), String>) -> ! {
+    match result {
+        Ok(()) => std::process::exit(0),
+        Err(message) => {
+            report_failure(&message);
+            std::process::exit(1)
+        }
+    }
 }
 
 // rundll32 entry points. They must never open a dialog: the GUI runs them
-// non-interactively and reads the process exit code as the result.
+// non-interactively and reads the exit code and report file as the result.
 #[unsafe(no_mangle)]
 pub extern "system" fn Maestro_CheckReg(_: isize, _: isize, _: *const c_char, _: i32) {
-    std::process::exit(check() as i32)
+    match check() {
+        Ok(status) => std::process::exit(status as i32),
+        Err(message) => {
+            report_failure(&message);
+            std::process::exit(CHECK_FAILED as i32)
+        }
+    }
 }
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Maestro_Register(_: isize, _: isize, _: *const c_char, _: i32) {
-    std::process::exit(register())
+    exit_with(register())
 }
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Maestro_Unregister(_: isize, _: isize, _: *const c_char, _: i32) {
-    std::process::exit(unregister())
+    exit_with(unregister())
 }

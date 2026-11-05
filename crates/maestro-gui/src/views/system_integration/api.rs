@@ -2,11 +2,8 @@ use maestro_core::paths;
 
 use crate::{
     InstallAction, IntegrationStatus, SlintIntegrationItem,
-    privileged::{self, API_FILENAME, INSTALL_API, UNINSTALL_API},
+    privileged::{self, API_FILENAME, API_FOREIGN, INSTALL_API, UNINSTALL_API},
 };
-
-const FOREIGN_HINT: &str = "Another program's library already uses the Maestro API's name. Remove it \
-                            before installing.";
 
 fn item(detail: &str, hint: String, status: IntegrationStatus) -> SlintIntegrationItem {
     SlintIntegrationItem {
@@ -40,26 +37,17 @@ pub fn probe() -> SlintIntegrationItem {
     } else {
         item(
             "Name taken",
-            FOREIGN_HINT.to_string(),
+            API_FOREIGN.to_string(),
             IntegrationStatus::Warning,
         )
     }
 }
 
 pub fn act(action: InstallAction) -> Result<(), String> {
-    let command = match action {
-        InstallAction::Install => INSTALL_API,
-        InstallAction::Uninstall => UNINSTALL_API,
+    let (task, command) = match action {
+        InstallAction::Install => ("Installing the Maestro API", INSTALL_API),
+        InstallAction::Uninstall => ("Uninstalling the Maestro API", UNINSTALL_API),
     };
 
-    match privileged::elevate_self(command) {
-        Ok(0) => Ok(()),
-        Ok(2) => Err(FOREIGN_HINT.to_string()),
-        Ok(_) => {
-            Err("The Maestro API library could not be linked into the system path.".to_string())
-        }
-        Err(e) => Err(format!(
-            "Could not run the operation with elevated rights: {e}"
-        )),
-    }
+    privileged::task(task, privileged::elevate_self(command))
 }

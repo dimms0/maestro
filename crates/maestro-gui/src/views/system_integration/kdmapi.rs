@@ -2,11 +2,8 @@ use maestro_core::paths;
 
 use crate::{
     InstallAction, IntegrationStatus, SlintIntegrationItem,
-    privileged::{self, INSTALL_KDMAPI, KDMAPI_FILENAME, UNINSTALL_KDMAPI},
+    privileged::{self, INSTALL_KDMAPI, KDMAPI_FILENAME, KDMAPI_FOREIGN, UNINSTALL_KDMAPI},
 };
-
-const FOREIGN_HINT: &str = "The system KDMAPI library belongs to OmniMIDI. Uninstall OmniMIDI \
-                            before letting Maestro provide KDMAPI.";
 
 pub struct KdmapiState {
     pub item: SlintIntegrationItem,
@@ -33,7 +30,7 @@ pub fn probe() -> KdmapiState {
         return KdmapiState {
             item: item(
                 "Owned by OmniMIDI",
-                FOREIGN_HINT.to_string(),
+                KDMAPI_FOREIGN.to_string(),
                 IntegrationStatus::Warning,
             ),
             blocked: true,
@@ -85,17 +82,10 @@ pub fn probe() -> KdmapiState {
 }
 
 pub fn act(action: InstallAction) -> Result<(), String> {
-    let command = match action {
-        InstallAction::Install => INSTALL_KDMAPI,
-        InstallAction::Uninstall => UNINSTALL_KDMAPI,
+    let (task, command) = match action {
+        InstallAction::Install => ("Installing KDMAPI", INSTALL_KDMAPI),
+        InstallAction::Uninstall => ("Uninstalling KDMAPI", UNINSTALL_KDMAPI),
     };
 
-    match privileged::elevate_self(command) {
-        Ok(0) => Ok(()),
-        Ok(2) => Err(FOREIGN_HINT.to_string()),
-        Ok(_) => Err("The KDMAPI library could not be linked into the system path.".to_string()),
-        Err(e) => Err(format!(
-            "Could not run the operation with elevated rights: {e}"
-        )),
-    }
+    privileged::task(task, privileged::elevate_self(command))
 }
