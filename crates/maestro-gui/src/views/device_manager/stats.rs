@@ -4,7 +4,6 @@ use maestro_core::ipc::{
     MaestroStats, STATE_LIVE, STATE_OFF, STATE_PAUSED, STATE_STARTING, StatsSubscriber,
 };
 use maestro_core::notify::format_bytes;
-use maestro_core::system_cfg::ConfigComponent;
 use slint::{ComponentHandle, Global, Model, ModelRc, VecModel};
 
 use crate::{DeviceManagerState, MainWindow, SlintComponentStats, utils::fmt_count};
@@ -28,7 +27,8 @@ pub fn spawn(ui: &MainWindow) {
             let mut previous: Vec<MaestroStats> = Vec::new();
 
             loop {
-                let frames = subscriber.poll();
+                let mut frames = subscriber.poll();
+                frames.retain(MaestroStats::is_active);
 
                 // Do not repaint if nothing changed
                 if frames != previous {
@@ -59,12 +59,7 @@ pub fn spawn(ui: &MainWindow) {
 }
 
 fn daemon_status(frames: &[MaestroStats]) -> DaemonStatus {
-    let daemon = frames.iter().find(|f| {
-        f.component() == Some(ConfigComponent::System)
-            && f.name() == maestro_core::ipc::DAEMON_LABEL
-    });
-
-    match daemon {
+    match frames.iter().find(|f| f.is_daemon()) {
         Some(frame) => DaemonStatus {
             running: true,
             state: frame.state as i32,

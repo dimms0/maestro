@@ -97,6 +97,14 @@ impl MaestroStats {
         ConfigComponent::from_code(self.component)
     }
 
+    pub fn is_daemon(&self) -> bool {
+        self.component() == Some(ConfigComponent::System) && self.name() == DAEMON_LABEL
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.state != STATE_OFF || self.is_daemon()
+    }
+
     fn as_bytes(&self) -> &[u8] {
         unsafe { std::slice::from_raw_parts((self as *const Self).cast::<u8>(), FRAME_LEN) }
     }
