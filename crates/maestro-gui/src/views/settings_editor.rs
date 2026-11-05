@@ -125,8 +125,8 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
                 f.realtime.skip_behind = rt.skip_behind;
                 f.realtime.realtime_priority = rt.realtime_priority;
 
-                f.remembered.nps_limit = rt.max_nps.max(0) as usize;
-                f.realtime.max_nps = rt.has_max_nps.then_some(f.remembered.nps_limit);
+                f.remembered.nps_limit = rt.nps_limit.max(0) as usize;
+                f.realtime.nps_limit = rt.has_nps_limit.then_some(f.remembered.nps_limit);
 
                 f.realtime.audio_host = host;
                 f.realtime.output_device = device;

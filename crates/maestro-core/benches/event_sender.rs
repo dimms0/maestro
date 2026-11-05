@@ -132,7 +132,7 @@ fn send_path(c: &mut Criterion) {
 
     let bare = RealtimeConfig {
         auto_timestamp: false,
-        max_nps: None,
+        nps_limit: None,
         ..RealtimeConfig::default()
     };
 
@@ -152,7 +152,7 @@ fn send_path(c: &mut Criterion) {
         (
             "nps_gate",
             RealtimeConfig {
-                max_nps: Some(NPS_UNREACHABLE),
+                nps_limit: Some(NPS_UNREACHABLE),
                 ..bare.clone()
             },
             None,
@@ -160,7 +160,7 @@ fn send_path(c: &mut Criterion) {
         (
             "nps_limited",
             RealtimeConfig {
-                max_nps: Some(NPS_REJECTING),
+                nps_limit: Some(NPS_REJECTING),
                 ..bare.clone()
             },
             None,
@@ -209,7 +209,7 @@ fn send_path(c: &mut Criterion) {
         (
             "nps_limited",
             RealtimeConfig {
-                max_nps: Some(NPS_REJECTING),
+                nps_limit: Some(NPS_REJECTING),
                 ..bare.clone()
             },
         ),

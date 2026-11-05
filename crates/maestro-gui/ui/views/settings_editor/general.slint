@@ -383,21 +383,21 @@ export component RealtimeSection inherits SectionCard {
         subtext: "When the limit is reached, Maestro chooses to ignore notes with lower velocities.";
 
         has-switch: true;
-        checked: SettingsEditorState.current_config.realtime.has_max_nps;
+        checked: SettingsEditorState.current_config.realtime.has_nps_limit;
         toggled(v) => {
             root.edit = SettingsEditorState.current_config.realtime;
-            root.edit.has_max_nps = v;
+            root.edit.has_nps_limit = v;
             SettingsEditorState.update_realtime(root.edit);
         }
 
         MaestroSpinBox {
             width: 150px;
             minimum: 0;
-            value: SettingsEditorState.current_config.realtime.max_nps;
-            enabled: SettingsEditorState.current_config.realtime.has_max_nps;
+            value: SettingsEditorState.current_config.realtime.nps_limit;
+            enabled: SettingsEditorState.current_config.realtime.has_nps_limit;
             edited(v) => {
                 root.edit = SettingsEditorState.current_config.realtime;
-                root.edit.max_nps = v;
+                root.edit.nps_limit = v;
                 SettingsEditorState.update_realtime(root.edit);
             }
         }

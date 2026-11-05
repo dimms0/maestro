@@ -49,7 +49,7 @@ impl RealtimeEventSender {
     ) -> Result<Self, RealtimeEngineError> {
         let ports = options.ports.unwrap_or(1);
 
-        let nps = NpsTracker::new(ports as usize * 16, options.config.max_nps, stats)
+        let nps = NpsTracker::new(ports as usize * 16, options.config.nps_limit, stats)
             .map_err(RealtimeEngineError::Thread)?;
 
         Ok(Self {
@@ -63,7 +63,7 @@ impl RealtimeEventSender {
     pub(super) fn reload_config(&self, config: &RealtimeConfig) {
         self.clock.set_auto_timestamp(config.auto_timestamp);
         self.clock.set_skip_behind(config.skip_behind);
-        self.nps.set_limit(config.max_nps);
+        self.nps.set_limit(config.nps_limit);
     }
 
     #[inline]

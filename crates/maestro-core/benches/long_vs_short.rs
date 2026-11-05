@@ -167,7 +167,7 @@ fn configs() -> Vec<(&'static str, RealtimeConfig)> {
             "no_limit",
             RealtimeConfig {
                 auto_timestamp: false,
-                max_nps: None,
+                nps_limit: None,
                 ..RealtimeConfig::default()
             },
         ),
@@ -176,7 +176,7 @@ fn configs() -> Vec<(&'static str, RealtimeConfig)> {
         (
             "nps_open",
             RealtimeConfig {
-                max_nps: Some(1_000_000_000),
+                nps_limit: Some(1_000_000_000),
                 ..RealtimeConfig::default()
             },
         ),

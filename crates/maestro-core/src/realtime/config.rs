@@ -13,7 +13,7 @@ pub struct RealtimeConfig {
     pub skip_behind: bool,
 
     /// Limit on notes per second. `None` lets every note through.
-    pub max_nps: Option<usize>,
+    pub nps_limit: Option<usize>,
 
     /// Audio host (backend) to open the output on, as a `cpal::HostId` string
     /// such as `"ALSA"`, `"JACK"`, `"WASAPI"` or `"ASIO"`. `None` uses the
@@ -43,7 +43,7 @@ impl Default for RealtimeConfig {
             render_buffer_ms: 20.0,
             auto_timestamp: true,
             skip_behind: true,
-            max_nps: Some(400_000),
+            nps_limit: Some(400_000),
             audio_host: None,
             output_device: None,
             buffer_size: None,

@@ -36,8 +36,8 @@ export struct SlintRealtimeConfig {
     render_buffer_ms: float,
     auto_timestamp: bool,
     skip_behind: bool,
-    max_nps: int,
-    has_max_nps: bool,
+    nps_limit: int,
+    has_nps_limit: bool,
 
     // Indices into AudioDeviceState.hosts / .devices. Index 0 of each is the
     // "default" entry, which maps back to `None` on the Rust side.
@@ -48,7 +48,6 @@ export struct SlintRealtimeConfig {
     // otherwise the device default is left alone.
     buffer_size: int,
     has_buffer_size: bool,
-
     realtime_priority: bool,
 }
 

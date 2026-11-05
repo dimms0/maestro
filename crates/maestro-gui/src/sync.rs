@@ -247,7 +247,7 @@ pub fn build_slint_component_config(state: &AppData) -> Option<SlintComponentCon
     let file = state.selected_config()?;
     let p = &file.profile;
     let rem = &file.remembered;
-    let nps_limit = file.realtime.max_nps.unwrap_or(rem.nps_limit);
+    let nps_limit = file.realtime.nps_limit.unwrap_or(rem.nps_limit);
 
     Some(SlintComponentConfig {
         name: file.display_name().into(),
@@ -276,8 +276,8 @@ pub fn build_slint_component_config(state: &AppData) -> Option<SlintComponentCon
             render_buffer_ms: file.realtime.render_buffer_ms,
             auto_timestamp: file.realtime.auto_timestamp,
             skip_behind: file.realtime.skip_behind,
-            max_nps: nps_limit as i32,
-            has_max_nps: file.realtime.max_nps.is_some(),
+            nps_limit: nps_limit as i32,
+            has_nps_limit: file.realtime.nps_limit.is_some(),
 
             audio_host_index: state.audio.host_index(file.realtime.audio_host.as_deref()),
             output_device_index: state
