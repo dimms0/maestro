@@ -14,8 +14,8 @@ use crate::{
     views::system_integration::service,
 };
 
-pub const WINDOWS_COMPAT_TEXT: &str = "MIDI 2.0 functionality is not yet\
-supported on Windows as it requires Windows MIDI Services which are not\
+pub const WINDOWS_COMPAT_TEXT: &str = "MIDI 2.0 functionality is not yet \
+supported on Windows as it requires Windows MIDI Services which are not \
 officially released yet.\n\n\
 For more information about Windows MIDI Services visit: https://aka.ms/midi";
 

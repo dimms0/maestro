@@ -155,35 +155,53 @@ export component Setting {
 
     callback toggled(bool);
 
-    HorizontalLayout {
-        cross-axis-alignment: center;
-        spacing: 12px;
+    // A layout cannot size a row from text that wraps at a width only known
+    // after layout (it measures one line), so the text width and the row
+    // height are computed here instead.
+    property <length> gap: 12px;
+    property <length> text_x: lead.preferred-width + (root.has-switch ? root.gap : 0px);
+    property <length> text_w: Math.max(0px, root.width - root.text_x - ctrl.preferred-width - root.gap);
+    property <length> text_h: body.height + (root.subtext != "" ? sub.height : 0px);
+    property <length> row_h: Math.max(root.text_h, Math.max(ctrl.preferred-height, lead.preferred-height));
+
+    min-height: root.row_h;
+    preferred-height: root.row_h;
+
+    lead := HorizontalLayout {
+        x: 0;
+        y: (root.row_h - self.preferred-height) / 2;
+        width: self.preferred-width;
+        height: self.preferred-height;
 
         if (root.has-switch): MaestroSwitch {
-            horizontal-stretch: 0;
             enabled: root.enabled;
             checked: root.checked;
             toggled(v) => root.toggled(v);
         }
+    }
 
-        VerticalLayout {
-            horizontal-stretch: 0;
-            alignment: center;
+    body := BodyText {
+        x: root.text_x;
+        y: (root.row_h - root.text_h) / 2;
+        width: root.text_w;
+        text: text;
+    }
 
-            BodyText {
-                text: text;
-            }
+    sub := LabelText {
+        visible: root.subtext != "";
+        x: root.text_x;
+        y: body.y + body.height;
+        width: root.text_w;
+        font-size: 10px;
+        text: subtext;
+        wrap: word-wrap;
+    }
 
-            if (subtext != ""): LabelText {
-                font-size: 10px;
-                text: subtext;
-                wrap: word-wrap;
-            }
-        }
-
-        Rectangle {
-            horizontal-stretch: 100000000;
-        }
+    ctrl := HorizontalLayout {
+        x: root.width - self.preferred-width;
+        y: (root.row_h - self.preferred-height) / 2;
+        width: self.preferred-width;
+        height: self.preferred-height;
 
         @children
     }
