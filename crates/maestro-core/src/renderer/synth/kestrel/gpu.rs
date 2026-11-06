@@ -23,7 +23,12 @@ fn surveyed() -> &'static (Vec<Surveyed>, Option<usize>) {
     LIST.get_or_init(|| {
         // workaround for apps that use GL
         let survey = std::thread::spawn(|| kestrel::gpu::survey(&kestrel::Config::default()));
-        let Ok(Ok((found, pick))) = survey.join() else {
+        let Ok(Ok(kestrel::gpu::Survey {
+            adapters: found,
+            default: pick,
+            ..
+        })) = survey.join()
+        else {
             return Default::default();
         };
         let mut auto = None;
