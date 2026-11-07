@@ -2,7 +2,7 @@ use crate::state::{ComponentConfigCache, ComponentProfile, ConfigComponent, Reme
 use maestro_core::{
     error::ConfigError,
     soundfont::{DEFAULT_SOUNDFONT_LIST_NAME, SoundFontList},
-    system_cfg::{MaestroConfigManager, MaestroGlobalConfig},
+    system_cfg::{MaestroConfigManager, MaestroGlobalConfig, SHARED_CONFIG_KEYS, USE_SHARED_KEY},
 };
 use std::path::{Path, PathBuf};
 
@@ -58,10 +58,11 @@ pub fn get_soundfont_list_files() -> Vec<(String, PathBuf)> {
     lists
 }
 
-const STANDARD_COMPONENTS: [(&str, ConfigComponent); 3] = [
+const STANDARD_COMPONENTS: [(&str, ConfigComponent); 4] = [
     ("system", ConfigComponent::System),
     ("kdmapi", ConfigComponent::KDMAPI),
     ("converter", ConfigComponent::Converter),
+    ("shared", ConfigComponent::Shared),
 ];
 
 pub fn get_component_files() -> Vec<(String, PathBuf)> {
@@ -145,10 +146,18 @@ pub fn load_config_cache(name: String, path: PathBuf) -> Option<ComponentConfigC
     // If the name doesn't match to a component return None (error)
     let profile = ComponentProfile::for_name(&name)?;
 
+    // A file saved before shared settings existed has no flag and keeps its own
+    let use_shared = profile.syncable
+        && val
+            .get(USE_SHARED_KEY)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(!path.exists());
+
     let mut cache = ComponentConfigCache {
         profile,
         name,
         dirty: false,
+        use_shared,
         enabled,
         sflist,
         audio_params: value_or_default(&val, "audio_params", &mut recovered),
@@ -188,6 +197,9 @@ pub fn save_config_cache(cache: &ComponentConfigCache) -> Result<(), Box<dyn std
         "config_version",
         serde_json::to_value(maestro_core::system_cfg::CONFIG_SCHEMA_VERSION)?,
     );
+    if p.syncable {
+        put(USE_SHARED_KEY, serde_json::to_value(cache.use_shared)?);
+    }
     if p.has_enabled {
         put("enabled", serde_json::to_value(cache.enabled)?);
     }
@@ -229,6 +241,12 @@ pub fn save_config_cache(cache: &ComponentConfigCache) -> Result<(), Box<dyn std
         ConfigComponent::Converter => put("custom", serde_json::to_value(&cache.converter_custom)?),
         ConfigComponent::System => put("custom", serde_json::to_value(&cache.system_custom)?),
         _ => {}
+    }
+
+    if cache.use_shared {
+        for key in SHARED_CONFIG_KEYS {
+            obj.remove(key);
+        }
     }
 
     if let Some(parent) = cache.path.parent() {

@@ -36,7 +36,7 @@ fn probe_audio_devices(data: &mut AppData) {
     let (host, device) = data
         .config_files
         .iter()
-        .find(|c| c.profile.has_realtime)
+        .find(|c| c.profile.has_realtime && !c.use_shared)
         .map(|c| {
             (
                 c.realtime.audio_host.clone(),

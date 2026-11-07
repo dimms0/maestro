@@ -26,6 +26,10 @@ export component RenderQuitModal inherits ModalOverlay {
         vertical-alignment: top;
     }
 
+    Rectangle {
+        vertical-stretch: 1;
+    }
+
     ModalActions {
         // Cancelling is not revocable once requested, so while the workers wind
         // down the only thing left to do is wait: the window closes by itself
@@ -58,6 +62,10 @@ export component UnsavedQuitModal inherits ModalOverlay {
         font-size: 13px;
         wrap: word-wrap;
         vertical-alignment: top;
+    }
+
+    Rectangle {
+        vertical-stretch: 1;
     }
 
     ModalActions {
@@ -93,6 +101,10 @@ export component QuitConfirmModal inherits ModalOverlay {
         font-size: 13px;
         wrap: word-wrap;
         vertical-alignment: top;
+    }
+
+    Rectangle {
+        vertical-stretch: 1;
     }
 
     ModalActions {

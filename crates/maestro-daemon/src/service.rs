@@ -40,7 +40,7 @@ impl Service {
         let config_path = cfg_manager.get_component_config_path(&ConfigComponent::System);
         let (tx, rx) = channel();
 
-        let config: MaestroSystemConfig = match cfg_manager.load_or_default(&config_path) {
+        let config: MaestroSystemConfig = match cfg_manager.load_component(&config_path) {
             Ok(c) => c,
             Err(err) => {
                 log_error!(
@@ -299,7 +299,7 @@ impl Service {
     }
 
     fn reload_config(&mut self) {
-        let new: MaestroSystemConfig = match self.cfg_manager.load_or_default(&self.config_path) {
+        let new: MaestroSystemConfig = match self.cfg_manager.load_component(&self.config_path) {
             Ok(c) => c,
             Err(err) => {
                 log_error!(

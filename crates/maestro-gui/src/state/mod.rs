@@ -110,6 +110,7 @@ pub struct ComponentConfigCache {
     /// Raw JSON preserved so unknown/third-party keys survive a save round-trip
     pub val: serde_json::Value,
 
+    pub use_shared: bool,
     pub enabled: bool,
     pub sflist: String,
     pub audio_params: AudioParameters,
@@ -138,6 +139,17 @@ impl ComponentConfigCache {
                 .to_string(),
             None => self.profile.kind.display_name(),
         }
+    }
+
+    pub fn copy_shared_settings(&mut self, shared: &Self) {
+        self.audio_params = shared.audio_params;
+        self.realtime = shared.realtime.clone();
+        self.renderer = shared.renderer;
+        self.has_event_processor = shared.has_event_processor;
+        self.event_processor = shared.event_processor.clone();
+        self.has_post_processor = shared.has_post_processor;
+        self.post_processor = shared.post_processor;
+        self.remembered.remember_synth(&shared.renderer.synth);
     }
 }
 

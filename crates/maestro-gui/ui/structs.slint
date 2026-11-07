@@ -213,6 +213,7 @@ export struct SlintAudioParameters {
 export struct SlintComponentConfig {
     name: string,
     dirty: bool,
+    use_shared: bool,
     has_enabled: bool,
     enabled: bool,
     has_sflist: bool,
@@ -242,19 +243,16 @@ export struct SlintComponentConfig {
 }
 
 // The parts of a component's configuration the Virtual MIDI Device tab shows
-// inline, so its two cards can be a single reusable component.
+// inline, for its cards and each API application alike.
 export struct SlintComponentSummary {
+    name: string,
+    // The config's name, for SettingsEditorState.open_settings.
+    config: string,
+    use_shared: bool,
     enabled: bool,
     dirty: bool,
     // Index of the assigned list within `SflistState.available`.
     sflist_index: int,
-}
-
-// An application with a Maestro API profile. `config` is the profile's name
-// for SettingsEditorState.open_settings.
-export struct SlintApiApp {
-    name: string,
-    config: string,
 }
 
 // Live statistics of one process using a Maestro component, read from that

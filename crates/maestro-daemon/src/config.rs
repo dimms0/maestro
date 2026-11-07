@@ -4,11 +4,11 @@ use maestro_core::{
     renderer::config::{EventProcessorConfig, PostProcessorConfig, RendererConfig},
     soundfont::DEFAULT_SOUNDFONT_LIST_NAME,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 pub use maestro_core::system_cfg::system::SystemCustomSettings;
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Debug, Clone, PartialEq)]
 #[serde(default)]
 pub struct MaestroSystemConfig {
     pub sflist: String,

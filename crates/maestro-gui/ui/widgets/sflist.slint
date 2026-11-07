@@ -20,9 +20,8 @@ export component SflistPicker inherits HorizontalLayout {
     // Hosts that cannot survive navigating away (transient dialogs) turn the
     // Edit shortcut off.
     in property <bool> editable: true;
-    in property <length> combo_width: 250px;
     // Height of both controls, so the picker can shrink into table rows.
-    in property <length> control_height: 32px;
+    in property <length> control_height: 36px;
     in property <bool> small_text: false;
 
     callback selected(string);
@@ -36,7 +35,7 @@ export component SflistPicker inherits HorizontalLayout {
     spacing: 8px;
 
     MaestroComboBox {
-        width: root.combo_width;
+        horizontal-stretch: 1;
         height: root.control_height;
         model: SflistState.available;
         current_value: root.resolved;
@@ -45,6 +44,7 @@ export component SflistPicker inherits HorizontalLayout {
 
     if (root.editable): MaestroButton {
         height: root.control_height;
+        horizontal-stretch: 0;
         icon: Icons.edit;
         text: root.small_text ? "" : "Edit";
         small_text: root.small_text;

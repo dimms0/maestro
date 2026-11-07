@@ -2,7 +2,7 @@ use std::ffi::OsStr;
 
 use crate::{
     AudioDeviceState, DeviceManagerState, MainWindow, RendererState, SettingsEditorState,
-    SflistState, SlintApiApp, SlintAudioParameters, SlintComponentConfig, SlintComponentSummary,
+    SflistState, SlintAudioParameters, SlintComponentConfig, SlintComponentSummary,
     SlintPortAssignment, SlintRealtimeConfig, SlintRendererConfig, SlintSoundFont,
     SoundfontEditorState, SynthKind,
     slint_conv::{
@@ -252,6 +252,7 @@ pub fn build_slint_component_config(state: &AppData) -> Option<SlintComponentCon
     Some(SlintComponentConfig {
         name: file.display_name().into(),
         dirty: file.dirty,
+        use_shared: file.use_shared,
         has_enabled: p.has_enabled,
         enabled: file.enabled,
         has_sflist: p.has_sflist,
@@ -350,22 +351,30 @@ pub fn sync_device_to_slint(ui: &MainWindow, state: &AppData) {
     if let Some(kd) = state.config(ConfigComponent::KDMAPI) {
         dev.set_kdmapi(summary(state, kd));
     }
-    let apps: Vec<SlintApiApp> = state
+    let apps: Vec<SlintComponentSummary> = state
         .config_files
         .iter()
         .filter(|c| app_id(&c.name).is_some())
-        .map(|c| SlintApiApp {
-            name: c.display_name().into(),
-            config: c.name.as_str().into(),
-        })
+        .map(|c| summary(state, c))
         .collect();
     dev.set_api_apps(ModelRc::new(VecModel::from(apps)));
+
+    let shared_users: Vec<String> = state
+        .config_files
+        .iter()
+        .filter(|c| c.use_shared)
+        .map(|c| c.display_name())
+        .collect();
+    dev.set_shared_users(shared_users.join(", ").into());
 
     sync_available_sflists_to_slint(ui, state);
 }
 
 fn summary(state: &AppData, cfg: &crate::state::ComponentConfigCache) -> SlintComponentSummary {
     SlintComponentSummary {
+        name: cfg.display_name().into(),
+        config: cfg.name.as_str().into(),
+        use_shared: cfg.use_shared,
         enabled: cfg.enabled,
         dirty: cfg.dirty,
         sflist_index: state.available_sflist_index(&cfg.sflist),

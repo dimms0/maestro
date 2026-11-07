@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use maestro_core::system_cfg::MaestroConfigManager;
 use slint::{ComponentHandle, Global, Timer, TimerMode};
 
 mod stats;
@@ -9,7 +10,7 @@ use crate::{
     app::AppContext,
     config, errors,
     slint_conv::slint_to_system_custom,
-    state::{AppData, ConfigComponent, app_id},
+    state::{AppData, ComponentConfigCache, ConfigComponent, app_id},
     sync::sync_device_to_slint,
     views::system_integration::service,
 };
@@ -93,6 +94,32 @@ fn remove_app_config(ui: &MainWindow, data: &mut AppData, name: &str) {
         i => i,
     };
     sync_device_to_slint(ui, data);
+}
+
+fn edit_and_save(
+    ui: &MainWindow,
+    data: &mut AppData,
+    name: &str,
+    error_title: &str,
+    mutate: impl FnOnce(&mut ComponentConfigCache),
+) {
+    if let Some(pos) = data.config_files.iter().position(|c| c.name == name) {
+        actions::edit_config_at(ui, data, pos, mutate);
+        actions::save_config_at(ui, data, pos, error_title);
+    }
+}
+
+fn set_use_shared(ui: &MainWindow, data: &mut AppData, name: &str, use_shared: bool) {
+    let saved_shared = config::load_config_cache(
+        ConfigComponent::Shared.to_filename(),
+        MaestroConfigManager::default().get_component_config_path(&ConfigComponent::Shared),
+    );
+    edit_and_save(ui, data, name, "Shared Settings", |cfg| {
+        cfg.use_shared = use_shared;
+        if let (false, Some(shared)) = (use_shared, &saved_shared) {
+            cfg.copy_shared_settings(shared);
+        }
+    });
 }
 
 thread_local! {
@@ -194,8 +221,24 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
     });
 
     let c = cx.clone();
-    state.on_open_settings(move |component| {
-        c.with(|ui, data| actions::open_component_settings(ui, data, component.into()));
+    state.on_set_use_shared(move |name, use_shared| {
+        c.with(|ui, data| set_use_shared(ui, data, &name, use_shared));
+    });
+
+    let c = cx.clone();
+    state.on_set_app_enabled(move |name, enabled| {
+        c.with(|ui, data| {
+            edit_and_save(ui, data, &name, "Maestro API", |cfg| cfg.enabled = enabled)
+        });
+    });
+
+    let c = cx.clone();
+    state.on_set_app_sflist(move |name, sflist| {
+        c.with(|ui, data| {
+            edit_and_save(ui, data, &name, "Maestro API", |cfg| {
+                cfg.sflist = sflist.as_str().to_string()
+            })
+        });
     });
 
     let c = cx.clone();

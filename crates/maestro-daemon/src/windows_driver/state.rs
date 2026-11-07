@@ -72,7 +72,7 @@ pub(super) fn get_state() -> &'static DriverState {
 fn load_config() -> Result<MaestroSystemConfig, maestro_core::error::ConfigError> {
     let manager = MaestroConfigManager::default();
     let path = manager.get_component_config_path(&ConfigComponent::System);
-    manager.load_or_default(&path)
+    manager.load_component(&path)
 }
 
 fn engine_options(config: &MaestroSystemConfig) -> RealtimeEngineOptions {

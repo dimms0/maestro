@@ -83,6 +83,7 @@ export component GeneralSection inherits SectionCard {
                 : "Assigned SoundFont List";
 
             SflistPicker {
+                width: 300px;
                 current_index: SettingsEditorState.current_config.sflist_index;
                 selected(v) => { SettingsEditorState.update_sflist(v); }
             }

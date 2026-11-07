@@ -73,6 +73,12 @@ component SettingsNavItem inherits Rectangle {
 component GeneralPage inherits VerticalLayout {
     spacing: 16px;
 
+    if (SettingsEditorState.current_config.use_shared): BodyText {
+        text: "This uses Maestro's shared settings, which are edited on the Virtual MIDI Device tab.";
+        wrap: word-wrap;
+        horizontal-alignment: center;
+    }
+
     if (SettingsEditorState.current_config.has_enabled
         || SettingsEditorState.current_config.has_sflist): GeneralSection { }
 
@@ -133,23 +139,27 @@ export component SettingsEditor inherits Rectangle {
     in property <bool> standalone: false;
 
     property <bool> show_advanced: false;
-    property <SettingsPage> page: SettingsPage.general;
+    property <SettingsPage> page: root.first_page;
 
     // A page whose every section is gated off would be a dead entry in the
     // rail, so the rail only offers the ones that can render something. The
-    // MIDI and Audio pages always have content: the event and post processors
-    // are shown for every component, enabled or not.
+    // MIDI and Audio pages have content unless the config follows the shared
+    // settings: the event and post processors are shown for every component,
+    // enabled or not.
+    property <bool> has_own_settings: !SettingsEditorState.current_config.use_shared;
+    property <SettingsPage> first_page: root.can_general ? SettingsPage.general : SettingsPage.midi;
     property <bool> can_general: SettingsEditorState.current_config.has_enabled
         || SettingsEditorState.current_config.has_sflist
         || SettingsEditorState.current_config.has_converter_options
         || SettingsEditorState.current_config.has_device_options;
-    property <bool> can_synth: SettingsEditorState.current_config.has_renderer;
+    property <bool> can_synth: SettingsEditorState.current_config.has_renderer
+        && root.has_own_settings;
 
     // Switching the editor to another component can retire the page in view
-    // (its rail entry disappears), which would leave a blank pane behind. Every
-    // component has a General page, so returning there is always valid.
+    // (its rail entry disappears), which would leave a blank pane behind, so
+    // return to the first page it has.
     property <string> config_name: SettingsEditorState.current_config.name;
-    changed config_name => { root.page = SettingsPage.general; }
+    changed config_name => { root.page = root.first_page; }
 
     background: Theme.bg_main;
 
@@ -212,7 +222,7 @@ export component SettingsEditor inherits Rectangle {
                     clicked => { root.page = SettingsPage.general; }
                 }
 
-                SettingsNavItem {
+                if (root.has_own_settings): SettingsNavItem {
                     text: "MIDI";
                     active: root.page == SettingsPage.midi;
                     clicked => { root.page = SettingsPage.midi; }
@@ -224,7 +234,7 @@ export component SettingsEditor inherits Rectangle {
                     clicked => { root.page = SettingsPage.synth; }
                 }
 
-                SettingsNavItem {
+                if (root.has_own_settings): SettingsNavItem {
                     text: "Audio";
                     active: root.page == SettingsPage.audio;
                     clicked => { root.page = SettingsPage.audio; }

@@ -194,79 +194,95 @@ export component ConverterSection inherits SectionCard {
     }
 }
 
-export component DeviceSection inherits SectionCard {
+// The Virtual Device's own fields, shown on its card and in its settings.
+export component SystemCustomFields inherits VerticalLayout {
+    in property <SlintSystemCustom> custom;
+    in property <length> label_font_size: 12px;
+
+    callback changed_custom(SlintSystemCustom);
+
+    // Scratch copy, refreshed from `custom` before every edit, so a Discard
+    // can't be undone by a later keystroke re-sending stale values.
     property <SlintSystemCustom> edit;
 
-    title: "Virtual MIDI Device";
+    spacing: 12px;
 
-    Field {
-        label: "Device Name";
+    // Field {
+    //     label: "Device Name";
+    //     label_font_size: root.label_font_size;
 
-        MaestroLineEdit {
-            placeholder: "Maestro";
-            text: SettingsEditorState.current_config.system_custom.device_name;
-            edited(v) => {
-                root.edit = SettingsEditorState.current_config.system_custom;
-                root.edit.device_name = v;
-                SettingsEditorState.update_system_custom(root.edit);
-            }
-        }
-    }
+    //     MaestroLineEdit {
+    //         placeholder: "Maestro";
+    //         text: root.custom.device_name;
+    //         edited(v) => {
+    //             root.edit = root.custom;
+    //             root.edit.device_name = v;
+    //             root.changed_custom(root.edit);
+    //         }
+    //     }
+    // }
 
     Field {
         label: "MIDI Mode";
+        label_font_size: root.label_font_size;
 
         // One box, two halves: the port count only applies to the MIDI 1.0
         // half, since a MIDI 2.0 endpoint always carries 16 groups.
         MaestroMidiModeBox {
-            midi2_enabled: SettingsEditorState.current_config.system_custom.midi2_enabled;
-            num_ports: SettingsEditorState.current_config.system_custom.num_ports;
+            midi2_enabled: root.custom.midi2_enabled;
+            num_ports: root.custom.num_ports;
             mode_selected(v) => {
-                root.edit = SettingsEditorState.current_config.system_custom;
+                root.edit = root.custom;
                 root.edit.midi2_enabled = v;
-                SettingsEditorState.update_system_custom(root.edit);
+                root.changed_custom(root.edit);
             }
             ports_edited(v) => {
-                root.edit = SettingsEditorState.current_config.system_custom;
+                root.edit = root.custom;
                 root.edit.num_ports = v;
-                SettingsEditorState.update_system_custom(root.edit);
+                root.changed_custom(root.edit);
             }
         }
     }
 
-    HorizontalLayout {
-        spacing: 12px;
-        cross-axis-alignment: center;
+    Setting {
+        has-switch: true;
+        text: "Unload Maestro after inactivity";
+        subtext: "When unloaded, as soon as an app sends a MIDI message, Maestro will load again. No messages are lost.";
+        checked: root.custom.has_idle_timeout;
+        toggled(v) => {
+            root.edit = root.custom;
+            root.edit.has_idle_timeout = v;
+            root.changed_custom(root.edit);
+        }
 
-        MaestroCheckBox {
-            text: "Unload Maestro after inactivity";
-            checked: SettingsEditorState.current_config.system_custom.has_idle_timeout;
-            toggled(v) => {
-                root.edit = SettingsEditorState.current_config.system_custom;
-                root.edit.has_idle_timeout = v;
-                SettingsEditorState.update_system_custom(root.edit);
+        HorizontalLayout {
+            spacing: 12px;
+
+            MaestroSpinBox {
+                max-width: 130px;
+                minimum: 1;
+                maximum: 1440;
+                value: root.custom.idle_timeout_minutes;
+                enabled: root.custom.has_idle_timeout;
+                edited(v) => {
+                    root.edit = root.custom;
+                    root.edit.idle_timeout_minutes = Math.round(v);
+                    root.changed_custom(root.edit);
+                }
+            }
+
+            LabelText {
+                text: "minutes";
             }
         }
+    }
+}
 
-        Rectangle {
-            horizontal-stretch: 1;
-        }
+export component DeviceSection inherits SectionCard {
+    title: "Virtual MIDI Device";
 
-        MaestroSpinBox {
-            max-width: 130px;
-            minimum: 1;
-            maximum: 1440;
-            value: SettingsEditorState.current_config.system_custom.idle_timeout_minutes;
-            enabled: SettingsEditorState.current_config.system_custom.has_idle_timeout;
-            edited(v) => {
-                root.edit = SettingsEditorState.current_config.system_custom;
-                root.edit.idle_timeout_minutes = Math.round(v);
-                SettingsEditorState.update_system_custom(root.edit);
-            }
-        }
-
-        LabelText {
-            text: "minutes";
-        }
+    SystemCustomFields {
+        custom: SettingsEditorState.current_config.system_custom;
+        changed_custom(custom) => { SettingsEditorState.update_system_custom(custom); }
     }
 }

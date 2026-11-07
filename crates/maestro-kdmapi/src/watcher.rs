@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -116,10 +116,10 @@ fn debounce(rx: &Receiver<WatchEvent>, first: WatchEvent) -> WatchEvent {
 
 fn reload_config(
     cfg_manager: &MaestroConfigManager,
-    config_path: &PathBuf,
+    config_path: &Path,
     config: &mut MaestroKdmapiConfig,
 ) {
-    let new: MaestroKdmapiConfig = match cfg_manager.load_or_default(config_path) {
+    let new: MaestroKdmapiConfig = match cfg_manager.load_component(config_path) {
         Ok(c) => c,
         Err(err) => {
             log_error(format!(

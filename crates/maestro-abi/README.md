@@ -45,7 +45,9 @@ The Windows installer and the `.deb`/`.rpm` packages make the link (via
 ## Settings
 
 The first time an application opens an engine or a render job, it gets its own
-profile under `components/apps/<app id>.json`.
+profile under `components/apps/<app id>.json`, which follows the shared settings
+in `components/shared.json` unless the user unlinks it.
 From then on that profile is the user's: it appears on the Virtual MIDI Device
-tab, and `show_settings` opens it in a standalone editor.
+tab, and `show_settings` opens it in a standalone editor. While it follows the
+shared settings, that editor only offers its enable switch and SoundFont list.
 Edits apply live, and the application is told through its notify callback.
