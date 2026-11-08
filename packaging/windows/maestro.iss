@@ -70,6 +70,8 @@ Compression=lzma2/max
 SolidCompression=yes
 OutputDir=..\..
 OutputBaseFilename={#OutputBaseName}
+CloseApplications=yes
+CloseApplicationsFilter=maestro.exe,maestrod.exe
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -189,6 +191,131 @@ begin
                        mbError, MB_OK, IDOK);
 end;
 
+{ ---- DLLs held by other processes ----
+
+  A DLL that some process has loaded cannot be overwritten or deleted, but it
+  can be renamed: the process keeps its mapping, and the next load through the
+  System32 / SysWOW64 links picks up the new file at the original path. So
+  instead of asking the user to close every app WinMM loaded the driver into,
+  the old DLLs are renamed to <name>.old... and deleted once nothing holds
+  them, at the latest on the next reboot. }
+
+var
+  MovedFrom, MovedTo: TArrayOfString;
+  InstallDone: Boolean;
+
+{ The install folder and its immediate subfolders (the companion builds). }
+function LibDirs(Root: String): TArrayOfString;
+var
+  FindRec: TFindRec;
+  N: Integer;
+begin
+  N := 1;
+  SetArrayLength(Result, 1);
+  Result[0] := Root;
+  if FindFirst(Root + '\*', FindRec) then
+  try
+    repeat
+      if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY <> 0) and
+         (FindRec.Name <> '.') and (FindRec.Name <> '..') then
+      begin
+        SetArrayLength(Result, N + 1);
+        Result[N] := Root + '\' + FindRec.Name;
+        N := N + 1;
+      end;
+    until not FindNext(FindRec);
+  finally
+    FindClose(FindRec);
+  end;
+end;
+
+{ Collected before acting on them, so renames never race the enumeration. }
+function FilesIn(Dir, Pattern: String): TArrayOfString;
+var
+  FindRec: TFindRec;
+  N: Integer;
+begin
+  N := 0;
+  SetArrayLength(Result, 0);
+  if FindFirst(Dir + '\' + Pattern, FindRec) then
+  try
+    repeat
+      if FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY = 0 then
+      begin
+        SetArrayLength(Result, N + 1);
+        Result[N] := Dir + '\' + FindRec.Name;
+        N := N + 1;
+      end;
+    until not FindNext(FindRec);
+  finally
+    FindClose(FindRec);
+  end;
+end;
+
+procedure DeleteOrSchedule(Path: String);
+begin
+  if not DeleteFile(Path) then
+    RestartReplace(Path, '');
+end;
+
+procedure MoveLoadedLibsAside;
+var
+  Dirs, Files: TArrayOfString;
+  D, F, N, Count: Integer;
+  Aside: String;
+begin
+  Count := 0;
+  Dirs := LibDirs(ExpandConstant('{app}'));
+  for D := 0 to GetArrayLength(Dirs) - 1 do
+  begin
+    Files := FilesIn(Dirs[D], '*.dll');
+    for F := 0 to GetArrayLength(Files) - 1 do
+    begin
+      N := 1;
+      while FileExists(Files[F] + '.old-' + IntToStr(N)) do
+        N := N + 1;
+      Aside := Files[F] + '.old-' + IntToStr(N);
+      if RenameFile(Files[F], Aside) then
+      begin
+        SetArrayLength(MovedFrom, Count + 1);
+        SetArrayLength(MovedTo, Count + 1);
+        MovedFrom[Count] := Files[F];
+        MovedTo[Count] := Aside;
+        Count := Count + 1;
+      end
+      else
+        Log('Could not move ' + Files[F] + ' aside');
+    end;
+  end;
+end;
+
+{ Every .old-* file, from this install or an earlier one whose holder has
+  since exited. Ones still loaded go on the next reboot. }
+procedure DiscardStaleLibs;
+var
+  Dirs, Files: TArrayOfString;
+  D, F: Integer;
+begin
+  Dirs := LibDirs(ExpandConstant('{app}'));
+  for D := 0 to GetArrayLength(Dirs) - 1 do
+  begin
+    Files := FilesIn(Dirs[D], '*.old-*');
+    for F := 0 to GetArrayLength(Files) - 1 do
+      DeleteOrSchedule(Files[F]);
+  end;
+end;
+
+{ Setup was cancelled or failed after the DLLs were moved: put back the ones
+  whose original path is still free, so the existing install keeps working. }
+procedure RestoreMovedLibs;
+var
+  I: Integer;
+begin
+  for I := 0 to GetArrayLength(MovedFrom) - 1 do
+    if not FileExists(MovedFrom[I]) then
+      RenameFile(MovedTo[I], MovedFrom[I]);
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   ProductCode: String;
@@ -199,4 +326,47 @@ begin
     Exec(ExpandConstant('{sys}\msiexec.exe'),
          '/x ' + ProductCode + ' /qn /norestart', '', SW_HIDE,
          ewWaitUntilTerminated, ResultCode);
+  MoveLoadedLibsAside;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+  begin
+    InstallDone := True;
+    DiscardStaleLibs;
+  end;
+end;
+
+procedure DeinitializeSetup;
+begin
+  if not InstallDone then
+    RestoreMovedLibs;
+end;
+
+{ The uninstaller leaves behind whatever a running process still holds and
+  would otherwise leave the folder too. Those DLLs, any .old-* files and then
+  the emptied folders go on the next reboot, without asking for one. Only
+  library files are touched, never anything else a user put in the folder. }
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  Dirs, Files: TArrayOfString;
+  D, F: Integer;
+begin
+  if CurUninstallStep <> usPostUninstall then
+    exit;
+  Dirs := LibDirs(ExpandConstant('{app}'));
+  for D := 0 to GetArrayLength(Dirs) - 1 do
+  begin
+    Files := FilesIn(Dirs[D], '*.dll');
+    for F := 0 to GetArrayLength(Files) - 1 do
+      DeleteOrSchedule(Files[F]);
+    Files := FilesIn(Dirs[D], '*.old-*');
+    for F := 0 to GetArrayLength(Files) - 1 do
+      DeleteOrSchedule(Files[F]);
+  end;
+  { Subfolders first: pending deletes run in the order they were scheduled. }
+  for D := GetArrayLength(Dirs) - 1 downto 0 do
+    if DirExists(Dirs[D]) and not RemoveDir(Dirs[D]) then
+      RestartReplace(Dirs[D], '');
 end;
