@@ -9,7 +9,11 @@ pub use global_cfg::*;
 use crate::soundfont::SoundFontList;
 use crate::{error::ConfigError, soundfont::DEFAULT_SOUNDFONT_LIST_NAME};
 use dirs::ConfigDirs;
-use std::{fs, path::PathBuf};
+use serde_json::{Value, json};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConfigComponent {
@@ -17,6 +21,7 @@ pub enum ConfigComponent {
     KDMAPI,
     Converter,
     Api,
+    Shared,
 }
 
 impl ConfigComponent {
@@ -26,6 +31,7 @@ impl ConfigComponent {
             Self::KDMAPI => "kdmapi".to_string(),
             Self::Converter => "converter".to_string(),
             Self::Api => "api".to_string(),
+            Self::Shared => "shared".to_string(),
         }
     }
 
@@ -35,6 +41,7 @@ impl ConfigComponent {
             "kdmapi" => Some(Self::KDMAPI),
             "converter" => Some(Self::Converter),
             "api" => Some(Self::Api),
+            "shared" => Some(Self::Shared),
             _ => None,
         }
     }
@@ -45,6 +52,7 @@ impl ConfigComponent {
             Self::KDMAPI => "KDMAPI".to_string(),
             Self::Converter => "Converter".to_string(),
             Self::Api => "Maestro API".to_string(),
+            Self::Shared => "Shared".to_string(),
         }
     }
 
@@ -57,6 +65,7 @@ impl ConfigComponent {
             Self::KDMAPI => 1,
             Self::Converter => 2,
             Self::Api => 3,
+            Self::Shared => 4,
         }
     }
 
@@ -66,6 +75,7 @@ impl ConfigComponent {
             1 => Some(Self::KDMAPI),
             2 => Some(Self::Converter),
             3 => Some(Self::Api),
+            4 => Some(Self::Shared),
             _ => None,
         }
     }
@@ -74,6 +84,15 @@ impl ConfigComponent {
 pub const CONFIG_SCHEMA_VERSION: u32 = 1;
 
 pub const APP_PROFILE_DIR: &str = "apps";
+
+pub const USE_SHARED_KEY: &str = "use_shared";
+pub const SHARED_CONFIG_KEYS: [&str; 5] = [
+    "audio_params",
+    "realtime",
+    "renderer",
+    "event_processor",
+    "post_processor",
+];
 
 pub fn is_valid_app_id(id: &str) -> bool {
     !id.is_empty()
@@ -213,6 +232,14 @@ impl MaestroConfigManager {
         }
     }
 
+    pub fn load_component<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &Path,
+    ) -> Result<T, ConfigError> {
+        let shared_path = self.get_component_config_path(&ConfigComponent::Shared);
+        Ok(serde_json::from_value(resolve_config(path, &shared_path)?)?)
+    }
+
     pub fn list_components(&self) -> Result<Vec<String>, ConfigError> {
         self.list_json_in_dir(self.dirs.config_components())
     }
@@ -258,4 +285,24 @@ impl MaestroConfigManager {
         }
         Ok(())
     }
+}
+
+fn read_json_or(path: &Path, unreadable: Value) -> Result<Value, ConfigError> {
+    match fs::read_to_string(path) {
+        Ok(content) => Ok(serde_json::from_str(&content)?),
+        Err(_) => Ok(unreadable),
+    }
+}
+
+fn resolve_config(path: &Path, shared_path: &Path) -> Result<Value, ConfigError> {
+    let mut config = read_json_or(path, json!({ USE_SHARED_KEY: true }))?;
+    if config[USE_SHARED_KEY] == true {
+        let shared = read_json_or(shared_path, Value::Null)?;
+        for key in SHARED_CONFIG_KEYS {
+            if let Some(section) = shared.get(key) {
+                config[key] = section.clone();
+            }
+        }
+    }
+    Ok(config)
 }

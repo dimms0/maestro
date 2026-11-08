@@ -23,9 +23,7 @@ maestro-core = { path = "../maestro-core", features = [
 ] }
 midi-parser = { path = "../midi-parser" }
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 
 [target.'cfg(all(target_os = "windows", target_arch = "x86_64"))'.dependencies]
 maestro-core = { path = "../maestro-core", features = ["asio"] }
-
-[dev-dependencies]
-serde_json = "1.0"

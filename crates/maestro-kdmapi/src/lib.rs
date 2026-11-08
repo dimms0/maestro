@@ -38,7 +38,7 @@ fn log_info<T: std::fmt::Display>(msg: T) {
 fn load_config() -> Result<MaestroKdmapiConfig, maestro_core::error::ConfigError> {
     let config_manager = MaestroConfigManager::default();
     let path = config_manager.get_component_config_path(&ConfigComponent::KDMAPI);
-    config_manager.load_or_default(&path)
+    config_manager.load_component(&path)
 }
 
 fn engine_options(config: &MaestroKdmapiConfig) -> RealtimeEngineOptions {

@@ -2,9 +2,12 @@ use crate::state::{ComponentConfigCache, ComponentProfile, ConfigComponent, Reme
 use maestro_core::{
     error::ConfigError,
     soundfont::{DEFAULT_SOUNDFONT_LIST_NAME, SoundFontList},
-    system_cfg::{MaestroConfigManager, MaestroGlobalConfig},
+    system_cfg::{MaestroConfigManager, MaestroGlobalConfig, SHARED_CONFIG_KEYS, USE_SHARED_KEY},
 };
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::SystemTime,
+};
 
 pub fn load_global_config() -> MaestroGlobalConfig {
     MaestroConfigManager::default()
@@ -58,10 +61,11 @@ pub fn get_soundfont_list_files() -> Vec<(String, PathBuf)> {
     lists
 }
 
-const STANDARD_COMPONENTS: [(&str, ConfigComponent); 3] = [
+const STANDARD_COMPONENTS: [(&str, ConfigComponent); 4] = [
     ("system", ConfigComponent::System),
     ("kdmapi", ConfigComponent::KDMAPI),
     ("converter", ConfigComponent::Converter),
+    ("shared", ConfigComponent::Shared),
 ];
 
 pub fn get_component_files() -> Vec<(String, PathBuf)> {
@@ -108,7 +112,30 @@ fn value_or_default<T: serde::de::DeserializeOwned + Default>(
     }
 }
 
+pub fn modified_time(path: &Path) -> Option<SystemTime> {
+    std::fs::metadata(path).and_then(|m| m.modified()).ok()
+}
+
+/// unsaved edits are kept and a half-written file is left for the next call to retry
+pub fn reload_if_changed(cfg: &mut ComponentConfigCache) -> bool {
+    let modified = modified_time(&cfg.path);
+    if cfg.dirty || modified.is_none() || modified == cfg.modified {
+        return false;
+    }
+    let complete = std::fs::read_to_string(&cfg.path)
+        .is_ok_and(|content| serde_json::from_str::<serde_json::Value>(&content).is_ok());
+    if !complete {
+        return false;
+    }
+    let Some(fresh) = load_config_cache(cfg.name.clone(), cfg.path.clone()) else {
+        return false;
+    };
+    *cfg = fresh;
+    true
+}
+
 pub fn load_config_cache(name: String, path: PathBuf) -> Option<ComponentConfigCache> {
+    let modified = modified_time(&path);
     let raw = path.exists().then(|| std::fs::read_to_string(&path).ok());
     let parsed = raw
         .flatten()
@@ -145,10 +172,19 @@ pub fn load_config_cache(name: String, path: PathBuf) -> Option<ComponentConfigC
     // If the name doesn't match to a component return None (error)
     let profile = ComponentProfile::for_name(&name)?;
 
+    // A file saved before shared settings existed has no flag and keeps its own
+    let use_shared = profile.syncable
+        && val
+            .get(USE_SHARED_KEY)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(!path.exists());
+
     let mut cache = ComponentConfigCache {
         profile,
         name,
         dirty: false,
+        modified,
+        use_shared,
         enabled,
         sflist,
         audio_params: value_or_default(&val, "audio_params", &mut recovered),
@@ -188,6 +224,9 @@ pub fn save_config_cache(cache: &ComponentConfigCache) -> Result<(), Box<dyn std
         "config_version",
         serde_json::to_value(maestro_core::system_cfg::CONFIG_SCHEMA_VERSION)?,
     );
+    if p.syncable {
+        put(USE_SHARED_KEY, serde_json::to_value(cache.use_shared)?);
+    }
     if p.has_enabled {
         put("enabled", serde_json::to_value(cache.enabled)?);
     }
@@ -229,6 +268,12 @@ pub fn save_config_cache(cache: &ComponentConfigCache) -> Result<(), Box<dyn std
         ConfigComponent::Converter => put("custom", serde_json::to_value(&cache.converter_custom)?),
         ConfigComponent::System => put("custom", serde_json::to_value(&cache.system_custom)?),
         _ => {}
+    }
+
+    if cache.use_shared {
+        for key in SHARED_CONFIG_KEYS {
+            obj.remove(key);
+        }
     }
 
     if let Some(parent) = cache.path.parent() {

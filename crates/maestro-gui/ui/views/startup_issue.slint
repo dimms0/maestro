@@ -7,7 +7,7 @@ import { Tab } from "../enums.slint";
 export component StartupIssueModal inherits ModalOverlay {
     title: "Maestro needs attention";
     card_width: 420px;
-    card_height: 180px;
+    card_height: 200px;
     content_spacing: 16px;
 
     dismissed => { SystemIntegrationState.startup_issue = false; }
@@ -17,6 +17,10 @@ export component StartupIssueModal inherits ModalOverlay {
         font-size: 13px;
         wrap: word-wrap;
         vertical-alignment: top;
+    }
+
+    Rectangle {
+        vertical-stretch: 1;
     }
 
     ModalActions {

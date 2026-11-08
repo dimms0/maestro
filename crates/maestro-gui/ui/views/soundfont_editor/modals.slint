@@ -33,6 +33,10 @@ export component NameEntryModal inherits ModalOverlay {
         text <=> root.value;
     }
 
+    Rectangle {
+        vertical-stretch: 1;
+    }
+
     ModalActions {
         MaestroButton {
             text: "Discard";
@@ -70,13 +74,20 @@ export component ConfirmModal inherits ModalOverlay {
     content_spacing: 16px;
 
     LabelText {
+        vertical-stretch: 0;
         text: root.message;
         font-size: 13px;
         wrap: word-wrap;
         vertical-alignment: top;
     }
 
+    Rectangle {
+        vertical-stretch: 1;
+    }
+
     ModalActions {
+        vertical-stretch: 0;
+
         MaestroButton {
             text: root.cancel_text;
             clicked => { root.dismissed(); }
@@ -172,6 +183,10 @@ export component SoundFontDetailsModal inherits ModalOverlay {
                 edited(v) => { root.preset = v; }
             }
         }
+    }
+
+    Rectangle {
+        vertical-stretch: 1;
     }
 
     ModalActions {

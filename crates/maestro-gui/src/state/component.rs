@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Debug)]
 pub struct ComponentProfile {
     pub kind: ConfigComponent,
+    pub syncable: bool,
     pub has_enabled: bool,
     pub has_sflist: bool,
     pub has_audio_params: bool,
@@ -24,6 +25,7 @@ impl ComponentProfile {
     pub fn for_kind(kind: ConfigComponent) -> Self {
         let base = ComponentProfile {
             kind,
+            syncable: true,
             has_enabled: true,
             has_sflist: true,
             has_audio_params: false,
@@ -35,6 +37,7 @@ impl ComponentProfile {
         };
         match kind {
             ConfigComponent::Converter => ComponentProfile {
+                syncable: false,
                 has_enabled: false,
                 has_audio_params: true,
                 ..base
@@ -52,6 +55,14 @@ impl ComponentProfile {
                 ..base
             },
             ConfigComponent::Api => ComponentProfile {
+                has_audio_params: true,
+                has_realtime: true,
+                ..base
+            },
+            ConfigComponent::Shared => ComponentProfile {
+                syncable: false,
+                has_enabled: false,
+                has_sflist: false,
                 has_audio_params: true,
                 has_realtime: true,
                 ..base

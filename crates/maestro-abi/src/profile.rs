@@ -4,15 +4,15 @@ use maestro_core::{
     realtime::{RealtimeEngineOptions, config::RealtimeConfig},
     renderer::config::{EventProcessorConfig, PostProcessorConfig, RendererConfig},
     soundfont::DEFAULT_SOUNDFONT_LIST_NAME,
-    system_cfg::MaestroConfigManager,
+    system_cfg::{MaestroConfigManager, USE_SHARED_KEY},
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde_json::json;
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Debug, Clone, PartialEq)]
 #[serde(default)]
 pub struct ApiConfig {
     pub enabled: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub app_name: Option<String>,
     pub sflist: String,
     pub audio_params: AudioParameters,
@@ -59,7 +59,7 @@ impl ApiConfig {
 }
 
 pub fn load_app(manager: &MaestroConfigManager, app_id: &str) -> Result<ApiConfig, ConfigError> {
-    manager.load_json(&manager.get_app_config_path(app_id))
+    manager.load_component(&manager.get_app_config_path(app_id))
 }
 
 pub fn ensure_app(
@@ -72,9 +72,10 @@ pub fn ensure_app(
         return Ok(());
     }
 
-    let config = ApiConfig {
-        app_name: Some(app_name.unwrap_or(app_id).to_string()),
-        ..ApiConfig::default()
-    };
-    manager.save_json(&path, &config)
+    let profile = json!({
+        USE_SHARED_KEY: true,
+        "app_name": app_name.unwrap_or(app_id),
+        "sflist": DEFAULT_SOUNDFONT_LIST_NAME,
+    });
+    manager.save_json(&path, &profile)
 }

@@ -1,6 +1,7 @@
 import { ScrollView } from "std-widgets.slint";
 import {
     Theme,
+    MaestroButton,
     MaestroCheckBox,
     HorizontalSeparator,
     TitleText,
@@ -8,8 +9,9 @@ import {
     EditorActionBar,
     BodyText,
     LabelText,
+    Icons,
 } from "../widgets.slint";
-import { SettingsEditorState } from "../globals.slint";
+import { DeviceManagerState, SettingsEditorState } from "../globals.slint";
 import { SettingsPage } from "../enums.slint";
 import {
     GeneralSection,
@@ -25,6 +27,8 @@ import { SynthSection } from "settings_editor/synth.slint";
 import {
     ConverterSection,
     DeviceSection,
+    LinkConfirmModal,
+    SharedLinkSection,
 } from "settings_editor/component.slint";
 
 // One destination in the editor's left rail. Styled after the top-level
@@ -71,10 +75,18 @@ component SettingsNavItem inherits Rectangle {
 // component-specific card this component owns. Those last two are small enough
 // that giving them a page of their own would be all navigation and no content.
 component GeneralPage inherits VerticalLayout {
+    in property <bool> standalone: false;
+
+    callback link_clicked();
+
     spacing: 16px;
 
     if (SettingsEditorState.current_config.has_enabled
         || SettingsEditorState.current_config.has_sflist): GeneralSection { }
+
+    if (root.standalone && SettingsEditorState.current_config.syncable): SharedLinkSection {
+        link_clicked => { root.link_clicked(); }
+    }
 
     if (SettingsEditorState.current_config.has_converter_options): ConverterSection { }
 
@@ -133,23 +145,31 @@ export component SettingsEditor inherits Rectangle {
     in property <bool> standalone: false;
 
     property <bool> show_advanced: false;
-    property <SettingsPage> page: SettingsPage.general;
+    property <SettingsPage> page: root.first_page;
 
     // A page whose every section is gated off would be a dead entry in the
     // rail, so the rail only offers the ones that can render something. The
-    // MIDI and Audio pages always have content: the event and post processors
-    // are shown for every component, enabled or not.
+    // MIDI and Audio pages have content unless the config follows the shared
+    // settings: the event and post processors are shown for every component,
+    // enabled or not.
+    property <bool> has_own_settings: !SettingsEditorState.current_config.use_shared;
+    property <SettingsPage> first_page: root.can_general ? SettingsPage.general : SettingsPage.midi;
     property <bool> can_general: SettingsEditorState.current_config.has_enabled
         || SettingsEditorState.current_config.has_sflist
         || SettingsEditorState.current_config.has_converter_options
         || SettingsEditorState.current_config.has_device_options;
-    property <bool> can_synth: SettingsEditorState.current_config.has_renderer;
+    property <bool> can_synth: SettingsEditorState.current_config.has_renderer
+        && root.has_own_settings;
 
     // Switching the editor to another component can retire the page in view
-    // (its rail entry disappears), which would leave a blank pane behind. Every
-    // component has a General page, so returning there is always valid.
+    // (its rail entry disappears), which would leave a blank pane behind, so
+    // return to the first page it has.
     property <string> config_name: SettingsEditorState.current_config.name;
-    changed config_name => { root.page = SettingsPage.general; }
+    changed config_name => { root.page = root.first_page; }
+    changed has_own_settings => { root.page = root.first_page; }
+
+    property <bool> viewing_shared: root.standalone && SettingsEditorState.current_config.config == "shared";
+    property <bool> confirm_link: false;
 
     background: Theme.bg_main;
 
@@ -166,8 +186,15 @@ export component SettingsEditor inherits Rectangle {
                 cross-axis-alignment: center;
                 alignment: start;
 
+                if (root.standalone && SettingsEditorState.current_config.config != SettingsEditorState.standalone_config): MaestroButton {
+                    icon: Icons.arrow_left;
+                    text: "Back to Config";
+                    clicked => { SettingsEditorState.open_settings(SettingsEditorState.standalone_config); }
+                }
+
                 TitleText {
-                    text: root.standalone ? "Editing Config File"
+                    text: root.viewing_shared ? "Editing Shared Settings"
+                        : root.standalone ? "Editing Config File"
                         : SettingsEditorState.current_config.name + " Settings";
                     font-size: 20px;
                 }
@@ -192,13 +219,23 @@ export component SettingsEditor inherits Rectangle {
                 standalone: root.standalone;
                 closable: true;
                 save => { SettingsEditorState.save_current(); }
+                save_others => { SettingsEditorState.save_all(); }
                 discard => { SettingsEditorState.discard_current(); }
                 close => { SettingsEditorState.close(); }
                 exit_standalone => { SettingsEditorState.exit_standalone(); }
             }
         }
 
+        if (root.viewing_shared): BodyText {
+            vertical-stretch: 0;
+            text: DeviceManagerState.shared_users == ""
+                ? "Nothing is using the shared settings."
+                : "Used by: " + DeviceManagerState.shared_users;
+            wrap: word-wrap;
+        }
+
         HorizontalLayout {
+            vertical-stretch: 1;
             spacing: 16px;
 
             VerticalLayout {
@@ -212,7 +249,7 @@ export component SettingsEditor inherits Rectangle {
                     clicked => { root.page = SettingsPage.general; }
                 }
 
-                SettingsNavItem {
+                if (root.has_own_settings): SettingsNavItem {
                     text: "MIDI";
                     active: root.page == SettingsPage.midi;
                     clicked => { root.page = SettingsPage.midi; }
@@ -224,7 +261,7 @@ export component SettingsEditor inherits Rectangle {
                     clicked => { root.page = SettingsPage.synth; }
                 }
 
-                SettingsNavItem {
+                if (root.has_own_settings): SettingsNavItem {
                     text: "Audio";
                     active: root.page == SettingsPage.audio;
                     clicked => { root.page = SettingsPage.audio; }
@@ -238,7 +275,10 @@ export component SettingsEditor inherits Rectangle {
                     spacing: 16px;
                     width: Math.clamp(parent.width, 500px, 820px);
 
-                    if (root.page == SettingsPage.general): GeneralPage { }
+                    if (root.page == SettingsPage.general): GeneralPage {
+                        standalone: root.standalone;
+                        link_clicked => { root.confirm_link = true; }
+                    }
 
                     if (root.page == SettingsPage.midi): MidiPage { }
 
@@ -257,6 +297,15 @@ export component SettingsEditor inherits Rectangle {
                     }
                 }
             }
+        }
+    }
+
+    if (root.confirm_link): LinkConfirmModal {
+        name: SettingsEditorState.current_config.name;
+        use_shared: SettingsEditorState.current_config.use_shared;
+        dismissed => { root.confirm_link = false; }
+        confirmed => {
+            DeviceManagerState.set_use_shared(SettingsEditorState.current_config.config, !SettingsEditorState.current_config.use_shared);
         }
     }
 }

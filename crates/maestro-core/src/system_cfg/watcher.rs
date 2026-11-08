@@ -3,6 +3,8 @@ use std::sync::Arc;
 
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 
+use super::{ConfigComponent, MaestroConfigManager};
+
 pub use notify;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,7 +24,11 @@ impl ConfigWatcher {
         on_event: impl Fn(ConfigWatchEvent) + Send + 'static,
         on_warn: impl Fn(String) + Send + Sync + 'static,
     ) -> Result<Self, notify::Error> {
-        let config_file = config_path.clone();
+        let config_files = [
+            config_path,
+            MaestroConfigManager::default().get_component_config_path(&ConfigComponent::Shared),
+        ];
+        let config_files_cln = config_files.clone();
         let sflist_dirs_cln = sflist_dirs.clone();
         let on_warn = Arc::new(on_warn);
         let on_warn_cb = on_warn.clone();
@@ -41,14 +47,17 @@ impl ConfigWatcher {
             }
 
             for path in &event.paths {
-                if let Some(msg) = classify(path, &config_file, &sflist_dirs_cln) {
+                if let Some(msg) = classify(path, &config_files_cln, &sflist_dirs_cln) {
                     on_event(msg);
                     return;
                 }
             }
         })?;
 
-        if let Some(dir) = config_path.parent() {
+        let mut config_dirs: Vec<&Path> = config_files.iter().filter_map(|f| f.parent()).collect();
+        config_dirs.dedup();
+        for dir in config_dirs {
+            let _ = std::fs::create_dir_all(dir);
             watch_dir(&mut watcher, dir, &*on_warn);
         }
         for dir in &sflist_dirs {
@@ -68,8 +77,12 @@ fn watch_dir(watcher: &mut RecommendedWatcher, dir: &Path, on_warn: &dyn Fn(Stri
     }
 }
 
-fn classify(path: &Path, config_file: &Path, sflist_dirs: &[PathBuf]) -> Option<ConfigWatchEvent> {
-    if path == config_file {
+fn classify(
+    path: &Path,
+    config_files: &[PathBuf],
+    sflist_dirs: &[PathBuf],
+) -> Option<ConfigWatchEvent> {
+    if config_files.iter().any(|file| file == path) {
         return Some(ConfigWatchEvent::ConfigChanged);
     }
 

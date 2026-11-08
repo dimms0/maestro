@@ -106,6 +106,8 @@ export component EditorActionBar inherits HorizontalLayout {
     in property <bool> closable: false;
 
     callback save();
+    // Whatever else Save & Exit must save, for an editor holding several files.
+    callback save_others();
     callback discard();
     callback close();
     callback exit_standalone();
@@ -133,6 +135,7 @@ export component EditorActionBar inherits HorizontalLayout {
         primary: true;
         clicked => {
             root.save();
+            root.save_others();
             root.exit_standalone();
         }
     }

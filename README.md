@@ -77,6 +77,10 @@ SoundFont lists and settings are kept in your user folder, as plain JSON:
 | SoundFont lists | `~/.local/share/maestro/soundfont-lists/` | `~/Library/Application Support/gr.dimms.maestro/soundfont-lists/` | `%LOCALAPPDATA%\dimms\maestro\data\soundfont-lists\` |
 | Settings        | `~/.config/maestro/components/`           | `~/Library/Application Support/gr.dimms.maestro/components/`      | `%APPDATA%\dimms\maestro\config\components\`         |
 
+The virtual device, KDMAPI and API applications follow `shared.json` in that
+folder by default. Each keeps its own SoundFont list and can be unlinked to use
+custom settings. The converter always has its own settings.
+
 A saved list or settings file can also be opened on its own, in a single-editor
 window: `maestro edit-list <file>` or `maestro edit-config <file>`.
 
@@ -98,16 +102,17 @@ everything KDMAPI does and more:
 | Event timing  | Plays events when they arrive           | **Timestamped events**, scheduled ahead with exact spacing |
 | MIDI 2.0      | No                                      | **UMP**                                                    |
 | Ports         | One 16-channel stream                   | **Several MIDI 1.0 ports** per engine                      |
-| Settings      | One profile shared by every application | **A profile per application**, applied live                |
+| Settings      | One profile shared by every application | **Shared or per-application settings**, applied live       |
 | Statistics    | Voice count and render time             | Also NPS, events per second, the NPS limit and latency     |
 | Rendering     | No                                      | **MIDI files to audio files**, with the same settings      |
 | Compatibility | Fixed interface                         | Versioned interfaces that never break existing callers     |
 
 ### Settings
 
-The first time an application connects, it gets its own profile, which the user is
-free to configure their liking. Realtime playback and file rendering use the
-same profile (under review, might change).
+The first time an application connects, it gets its own profile, which follows
+the shared settings unless the user unlinks it to configure it to their liking.
+Its SoundFont list and enable switch are always its own. Realtime playback and
+file rendering use the same profile (under review, might change).
 
 ### Using it
 

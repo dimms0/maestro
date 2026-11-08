@@ -21,7 +21,6 @@ import {
     SlintComponentConfig,
     SlintComponentStats,
     SlintComponentSummary,
-    SlintApiApp,
     SlintAudioParameters,
     SlintRealtimeConfig,
     SlintRendererConfig,
@@ -179,6 +178,8 @@ export global SoundfontEditorState {
 export global SettingsEditorState {
     in-out property <bool> open: false;
     in-out property <SlintComponentConfig> current_config;
+    // The config that `edit-config` opened, which its editor returns to.
+    in-out property <string> standalone_config;
 
     // Labels for the converter's bitrate picker, filled from the rate list the
     // encoders accept. `converter_custom.bitrate_index` indexes into it.
@@ -216,6 +217,7 @@ export global SettingsEditorState {
     pure callback output_dir_valid(string) -> bool;
     callback update_system_custom(SlintSystemCustom);
     callback save_current();
+    callback save_all();
     callback discard_current();
     callback close();
     callback exit_standalone();
@@ -256,7 +258,9 @@ export global DeviceManagerState {
     in-out property <SlintComponentSummary> kdmapi;
     // Every application that has connected through the Maestro API, each with
     // its own profile.
-    in-out property <[SlintApiApp]> api_apps;
+    in-out property <[SlintComponentSummary]> api_apps;
+    // Display names of everything following the shared settings, comma-separated.
+    in-out property <string> shared_users;
 
     in-out property <[SlintComponentStats]> stats;
 
@@ -280,7 +284,10 @@ export global DeviceManagerState {
     callback set_sflist(DeviceComponent, string);
     callback save(DeviceComponent);
     callback discard(DeviceComponent);
-    callback open_settings(DeviceComponent);
+    // These take a config's name and save immediately.
+    callback set_use_shared(string, bool);
+    callback set_app_enabled(string, bool);
+    callback set_app_sflist(string, string);
     callback remove_app_config(string);
 }
 

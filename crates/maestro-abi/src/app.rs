@@ -63,8 +63,6 @@ impl App {
         })
     }
 
-    /// The app's profile, created from the defaults on first use, unless the
-    /// user turned the app off.
     pub fn profile(&self, manager: &MaestroConfigManager) -> Result<ApiConfig, Failure> {
         if let Err(e) = profile::ensure_app(manager, &self.id, self.name.as_deref()) {
             self.callbacks.log(

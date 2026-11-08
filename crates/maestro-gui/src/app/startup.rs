@@ -11,7 +11,7 @@ use crate::{
         get_component_files, get_soundfont_list_files, load_config_cache, read_soundfont_list,
     },
     errors,
-    state::{AppData, SoundfontFileCache},
+    state::{AppData, ConfigComponent, SoundfontFileCache},
 };
 
 const EDIT_LIST_ARG: &str = "edit-list";
@@ -36,7 +36,7 @@ fn probe_audio_devices(data: &mut AppData) {
     let (host, device) = data
         .config_files
         .iter()
-        .find(|c| c.profile.has_realtime)
+        .find(|c| c.profile.has_realtime && !c.use_shared)
         .map(|c| {
             (
                 c.realtime.audio_host.clone(),
@@ -84,7 +84,8 @@ fn single_list(path: PathBuf) -> AppData {
     data
 }
 
-/// `edit-config`: a single component config read straight from the given path.
+/// `edit-config`: a component config read straight from the given path, always
+/// at position 0. The others are loaded too, for its link to the shared settings.
 fn single_config(path: PathBuf) -> AppData {
     let stem = stem_or(&path, "config");
     let in_apps = path
@@ -104,8 +105,20 @@ fn single_config(path: PathBuf) -> AppData {
         );
         return combined();
     };
+    let own_name = cache.name.clone();
+    let can_use_shared = cache.profile.kind != ConfigComponent::Converter;
     data.config_files.push(cache);
     data.selected_config_idx = 0;
+    if can_use_shared {
+        let mut others: Vec<_> = get_component_files()
+            .into_iter()
+            .filter(|(name, _)| *name != own_name)
+            .filter_map(|(name, path)| load_config_cache(name, path))
+            .collect();
+        // First, so a linked config probes the shared audio device.
+        others.sort_by_key(|c| c.profile.kind != ConfigComponent::Shared);
+        data.config_files.extend(others);
+    }
     load_sflist_files(&mut data);
     data
 }
