@@ -251,7 +251,9 @@ pub fn build_slint_component_config(state: &AppData) -> Option<SlintComponentCon
 
     Some(SlintComponentConfig {
         name: file.display_name().into(),
+        config: file.name.as_str().into(),
         dirty: file.dirty,
+        syncable: p.syncable,
         use_shared: file.use_shared,
         has_enabled: p.has_enabled,
         enabled: file.enabled,

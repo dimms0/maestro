@@ -13,10 +13,12 @@ import {
     Field,
     LabelText,
     MaestroSwitch,
+    Icons,
 } from "../../widgets.slint";
 import { SettingsEditorState } from "../../globals.slint";
 import { SlintConverterCustom, SlintSystemCustom } from "../../structs.slint";
 import { Setting } from "../../widgets/layout.slint";
+import { ConfirmModal } from "../soundfont_editor/modals.slint";
 
 export component ConverterSection inherits SectionCard {
     property <SlintConverterCustom> edit;
@@ -274,6 +276,47 @@ export component SystemCustomFields inherits VerticalLayout {
             LabelText {
                 text: "minutes";
             }
+        }
+    }
+}
+
+export component LinkConfirmModal inherits ConfirmModal {
+    in property <string> name;
+    in property <bool> use_shared;
+
+    title: root.use_shared ? "Use Custom Settings" : "Use Shared Settings";
+    message: root.use_shared
+        ? "Give '" + root.name + "' its own settings? It starts with a copy of the shared settings and stops following them."
+        : "Use the shared settings for '" + root.name + "'? Its own settings will be deleted.";
+    confirm_text: root.use_shared ? "Unlink" : "Link";
+}
+
+export component SharedLinkSection inherits SectionCard {
+    callback link_clicked();
+
+    title: "Shared Settings";
+
+    BodyText {
+        text: SettingsEditorState.current_config.use_shared
+            ? "MIDI, synth and audio settings come from Maestro's shared settings."
+            : "This has its own MIDI, synth and audio settings.";
+        wrap: word-wrap;
+    }
+
+    HorizontalLayout {
+        spacing: 8px;
+        alignment: start;
+
+        if (SettingsEditorState.current_config.use_shared): MaestroButton {
+            icon: Icons.settings;
+            text: "Edit Shared Settings";
+            clicked => { SettingsEditorState.open_settings("shared"); }
+        }
+
+        MaestroButton {
+            icon: SettingsEditorState.current_config.use_shared ? Icons.unlink : Icons.link;
+            text: SettingsEditorState.current_config.use_shared ? "Use Custom Settings" : "Use Shared Settings";
+            clicked => { root.link_clicked(); }
         }
     }
 }

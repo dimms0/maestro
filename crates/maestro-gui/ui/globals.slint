@@ -178,6 +178,8 @@ export global SoundfontEditorState {
 export global SettingsEditorState {
     in-out property <bool> open: false;
     in-out property <SlintComponentConfig> current_config;
+    // The config that `edit-config` opened, which its editor returns to.
+    in-out property <string> standalone_config;
 
     // Labels for the converter's bitrate picker, filled from the rate list the
     // encoders accept. `converter_custom.bitrate_index` indexes into it.
@@ -215,6 +217,7 @@ export global SettingsEditorState {
     pure callback output_dir_valid(string) -> bool;
     callback update_system_custom(SlintSystemCustom);
     callback save_current();
+    callback save_all();
     callback discard_current();
     callback close();
     callback exit_standalone();

@@ -82,8 +82,11 @@ pub fn run(args: &[String]) {
         );
         // `edit-config` opens on the config; `open` then decides which of the
         // two editors that window shows (see app.slint).
-        crate::SettingsEditorState::get(&ui)
-            .set_open(data.standalone_mode == crate::StandaloneMode::EditConfig);
+        let settings = crate::SettingsEditorState::get(&ui);
+        settings.set_open(data.standalone_mode == crate::StandaloneMode::EditConfig);
+        if let Some(cfg) = data.selected_config() {
+            settings.set_standalone_config(cfg.name.as_str().into());
+        }
         sync::sync_all(&ui, &data);
     }
 

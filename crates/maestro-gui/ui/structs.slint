@@ -212,7 +212,10 @@ export struct SlintAudioParameters {
 
 export struct SlintComponentConfig {
     name: string,
+    // The config's name, for SettingsEditorState.open_settings.
+    config: string,
     dirty: bool,
+    syncable: bool,
     use_shared: bool,
     has_enabled: bool,
     enabled: bool,

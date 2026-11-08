@@ -5,6 +5,8 @@ pub use component::{
     is_valid_output_dir,
 };
 
+use std::time::SystemTime;
+
 use maestro_core::{
     audio_params::AudioParameters,
     realtime::config::RealtimeConfig,
@@ -106,6 +108,7 @@ pub struct ComponentConfigCache {
     pub path: PathBuf,
     pub name: String,
     pub dirty: bool,
+    pub modified: Option<SystemTime>,
     pub profile: ComponentProfile,
     /// Raw JSON preserved so unknown/third-party keys survive a save round-trip
     pub val: serde_json::Value,

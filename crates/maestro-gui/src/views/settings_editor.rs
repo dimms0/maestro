@@ -255,6 +255,15 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
     });
 
     let c = cx.clone();
+    state.on_save_all(move || {
+        c.with(|ui, data| {
+            for pos in data.unsaved_indices().1 {
+                actions::save_config_at(ui, data, pos, ERROR_TITLE);
+            }
+        });
+    });
+
+    let c = cx.clone();
     state.on_discard_current(move || {
         c.with(|ui, data| {
             if let Some(pos) = index_of(data.selected_config_idx, data.config_files.len()) {

@@ -2,7 +2,7 @@
 
 use crate::{
     AppState, MainWindow, SettingsEditorState, SoundfontEditorState, Tab,
-    config::{load_config_cache, save_config_cache},
+    config::{load_config_cache, modified_time, reload_if_changed, save_config_cache},
     errors,
     state::{AppData, ComponentConfigCache, ConfigComponent, index_of},
     sync::{
@@ -98,7 +98,9 @@ pub fn save_config_at(ui: &MainWindow, data: &mut AppData, pos: usize, error_tit
     };
     match save_config_cache(cfg) {
         Ok(()) => {
-            data.config_files[pos].dirty = false;
+            let cfg = &mut data.config_files[pos];
+            cfg.dirty = false;
+            cfg.modified = modified_time(&cfg.path);
             sync_config_to_slint(ui, data);
             sync_device_to_slint(ui, data);
             true
@@ -124,6 +126,17 @@ pub fn discard_config_at(ui: &MainWindow, data: &mut AppData, pos: usize) {
     data.config_files[pos] = load_config_cache(name, path).unwrap();
     sync_config_to_slint(ui, data);
     sync_device_to_slint(ui, data);
+}
+
+pub fn reload_changed_configs(ui: &MainWindow, data: &mut AppData) {
+    let mut changed = false;
+    for cfg in &mut data.config_files {
+        changed |= reload_if_changed(cfg);
+    }
+    if changed {
+        sync_config_to_slint(ui, data);
+        sync_device_to_slint(ui, data);
+    }
 }
 
 // SoundFont list references

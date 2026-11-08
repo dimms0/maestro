@@ -29,7 +29,7 @@ import {
     SlintComponentSummary,
 } from "../structs.slint";
 import { MaestroSwitch } from "../widgets/inputs.slint";
-import { SystemCustomFields } from "settings_editor/component.slint";
+import { LinkConfirmModal, SystemCustomFields } from "settings_editor/component.slint";
 import { ConfirmModal } from "soundfont_editor/modals.slint";
 
 // One row of the live statistics card: whatever every component reports while
@@ -542,12 +542,9 @@ export component DeviceManagerView inherits Rectangle {
         confirmed => { DeviceManagerState.remove_app_config(root.remove_app_config); }
     }
 
-    if (root.link_target.config != ""): ConfirmModal {
-        title: root.link_target.use_shared ? "Use Custom Settings" : "Use Shared Settings";
-        message: root.link_target.use_shared
-            ? "Give '" + root.link_target.name + "' its own settings? It starts with a copy of the shared settings and stops following them."
-            : "Use the shared settings for '" + root.link_target.name + "'? Its own settings will be deleted.";
-        confirm_text: root.link_target.use_shared ? "Unlink" : "Link";
+    if (root.link_target.config != ""): LinkConfirmModal {
+        name: root.link_target.name;
+        use_shared: root.link_target.use_shared;
         dismissed => { root.link_target.config = ""; }
         confirmed => {
             DeviceManagerState.set_use_shared(root.link_target.config, !root.link_target.use_shared);

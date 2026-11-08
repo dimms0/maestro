@@ -395,7 +395,7 @@ pub fn elevate(exe: &Path, args: &[&str]) -> Result<(), String> {
 }
 
 // osascript always exits 1 and prints "0:97: execution error: <stderr> (<code>)".
-#[cfg(any(target_os = "macos", test))]
+#[cfg(target_os = "macos")]
 fn osascript_error(stderr: &str) -> String {
     const STEP: &str = "Requesting administrator rights through osascript";
 

@@ -123,7 +123,7 @@ fn set_use_shared(ui: &MainWindow, data: &mut AppData, name: &str, use_shared: b
 }
 
 thread_local! {
-    static APP_WATCH: Timer = Timer::default();
+    static CONFIG_WATCH: Timer = Timer::default();
 }
 
 fn pick_up_new_apps(ui: &MainWindow, data: &mut AppData) {
@@ -248,11 +248,14 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
 
     stats::spawn(ui);
 
-    if cx.with(|_, data| data.standalone_mode == StandaloneMode::Combined) == Some(true) {
+    if cx.with(|_, data| data.standalone_mode != StandaloneMode::EditList) == Some(true) {
         let c = cx.clone();
-        APP_WATCH.with(|timer| {
+        CONFIG_WATCH.with(|timer| {
             timer.start(TimerMode::Repeated, Duration::from_secs(2), move || {
-                c.with(pick_up_new_apps);
+                c.with(|ui, data| {
+                    pick_up_new_apps(ui, data);
+                    actions::reload_changed_configs(ui, data);
+                });
             })
         });
     }

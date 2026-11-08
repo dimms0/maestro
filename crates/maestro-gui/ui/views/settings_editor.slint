@@ -1,6 +1,7 @@
 import { ScrollView } from "std-widgets.slint";
 import {
     Theme,
+    MaestroButton,
     MaestroCheckBox,
     HorizontalSeparator,
     TitleText,
@@ -8,8 +9,9 @@ import {
     EditorActionBar,
     BodyText,
     LabelText,
+    Icons,
 } from "../widgets.slint";
-import { SettingsEditorState } from "../globals.slint";
+import { DeviceManagerState, SettingsEditorState } from "../globals.slint";
 import { SettingsPage } from "../enums.slint";
 import {
     GeneralSection,
@@ -25,6 +27,8 @@ import { SynthSection } from "settings_editor/synth.slint";
 import {
     ConverterSection,
     DeviceSection,
+    LinkConfirmModal,
+    SharedLinkSection,
 } from "settings_editor/component.slint";
 
 // One destination in the editor's left rail. Styled after the top-level
@@ -71,16 +75,18 @@ component SettingsNavItem inherits Rectangle {
 // component-specific card this component owns. Those last two are small enough
 // that giving them a page of their own would be all navigation and no content.
 component GeneralPage inherits VerticalLayout {
-    spacing: 16px;
+    in property <bool> standalone: false;
 
-    if (SettingsEditorState.current_config.use_shared): BodyText {
-        text: "This uses Maestro's shared settings, which are edited on the Virtual MIDI Device tab.";
-        wrap: word-wrap;
-        horizontal-alignment: center;
-    }
+    callback link_clicked();
+
+    spacing: 16px;
 
     if (SettingsEditorState.current_config.has_enabled
         || SettingsEditorState.current_config.has_sflist): GeneralSection { }
+
+    if (root.standalone && SettingsEditorState.current_config.syncable): SharedLinkSection {
+        link_clicked => { root.link_clicked(); }
+    }
 
     if (SettingsEditorState.current_config.has_converter_options): ConverterSection { }
 
@@ -160,6 +166,10 @@ export component SettingsEditor inherits Rectangle {
     // return to the first page it has.
     property <string> config_name: SettingsEditorState.current_config.name;
     changed config_name => { root.page = root.first_page; }
+    changed has_own_settings => { root.page = root.first_page; }
+
+    property <bool> viewing_shared: root.standalone && SettingsEditorState.current_config.config == "shared";
+    property <bool> confirm_link: false;
 
     background: Theme.bg_main;
 
@@ -176,8 +186,15 @@ export component SettingsEditor inherits Rectangle {
                 cross-axis-alignment: center;
                 alignment: start;
 
+                if (root.standalone && SettingsEditorState.current_config.config != SettingsEditorState.standalone_config): MaestroButton {
+                    icon: Icons.arrow_left;
+                    text: "Back to Config";
+                    clicked => { SettingsEditorState.open_settings(SettingsEditorState.standalone_config); }
+                }
+
                 TitleText {
-                    text: root.standalone ? "Editing Config File"
+                    text: root.viewing_shared ? "Editing Shared Settings"
+                        : root.standalone ? "Editing Config File"
                         : SettingsEditorState.current_config.name + " Settings";
                     font-size: 20px;
                 }
@@ -202,13 +219,23 @@ export component SettingsEditor inherits Rectangle {
                 standalone: root.standalone;
                 closable: true;
                 save => { SettingsEditorState.save_current(); }
+                save_others => { SettingsEditorState.save_all(); }
                 discard => { SettingsEditorState.discard_current(); }
                 close => { SettingsEditorState.close(); }
                 exit_standalone => { SettingsEditorState.exit_standalone(); }
             }
         }
 
+        if (root.viewing_shared): BodyText {
+            vertical-stretch: 0;
+            text: DeviceManagerState.shared_users == ""
+                ? "Nothing is using the shared settings."
+                : "Used by: " + DeviceManagerState.shared_users;
+            wrap: word-wrap;
+        }
+
         HorizontalLayout {
+            vertical-stretch: 1;
             spacing: 16px;
 
             VerticalLayout {
@@ -248,7 +275,10 @@ export component SettingsEditor inherits Rectangle {
                     spacing: 16px;
                     width: Math.clamp(parent.width, 500px, 820px);
 
-                    if (root.page == SettingsPage.general): GeneralPage { }
+                    if (root.page == SettingsPage.general): GeneralPage {
+                        standalone: root.standalone;
+                        link_clicked => { root.confirm_link = true; }
+                    }
 
                     if (root.page == SettingsPage.midi): MidiPage { }
 
@@ -267,6 +297,15 @@ export component SettingsEditor inherits Rectangle {
                     }
                 }
             }
+        }
+    }
+
+    if (root.confirm_link): LinkConfirmModal {
+        name: SettingsEditorState.current_config.name;
+        use_shared: SettingsEditorState.current_config.use_shared;
+        dismissed => { root.confirm_link = false; }
+        confirmed => {
+            DeviceManagerState.set_use_shared(SettingsEditorState.current_config.config, !SettingsEditorState.current_config.use_shared);
         }
     }
 }

@@ -4,7 +4,10 @@ use maestro_core::{
     soundfont::{DEFAULT_SOUNDFONT_LIST_NAME, SoundFontList},
     system_cfg::{MaestroConfigManager, MaestroGlobalConfig, SHARED_CONFIG_KEYS, USE_SHARED_KEY},
 };
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::SystemTime,
+};
 
 pub fn load_global_config() -> MaestroGlobalConfig {
     MaestroConfigManager::default()
@@ -109,7 +112,30 @@ fn value_or_default<T: serde::de::DeserializeOwned + Default>(
     }
 }
 
+pub fn modified_time(path: &Path) -> Option<SystemTime> {
+    std::fs::metadata(path).and_then(|m| m.modified()).ok()
+}
+
+/// unsaved edits are kept and a half-written file is left for the next call to retry
+pub fn reload_if_changed(cfg: &mut ComponentConfigCache) -> bool {
+    let modified = modified_time(&cfg.path);
+    if cfg.dirty || modified.is_none() || modified == cfg.modified {
+        return false;
+    }
+    let complete = std::fs::read_to_string(&cfg.path)
+        .is_ok_and(|content| serde_json::from_str::<serde_json::Value>(&content).is_ok());
+    if !complete {
+        return false;
+    }
+    let Some(fresh) = load_config_cache(cfg.name.clone(), cfg.path.clone()) else {
+        return false;
+    };
+    *cfg = fresh;
+    true
+}
+
 pub fn load_config_cache(name: String, path: PathBuf) -> Option<ComponentConfigCache> {
+    let modified = modified_time(&path);
     let raw = path.exists().then(|| std::fs::read_to_string(&path).ok());
     let parsed = raw
         .flatten()
@@ -157,6 +183,7 @@ pub fn load_config_cache(name: String, path: PathBuf) -> Option<ComponentConfigC
         profile,
         name,
         dirty: false,
+        modified,
         use_shared,
         enabled,
         sflist,
