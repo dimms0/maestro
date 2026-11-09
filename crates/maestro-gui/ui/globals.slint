@@ -289,6 +289,8 @@ export global DeviceManagerState {
     callback set_app_enabled(string, bool);
     callback set_app_sflist(string, string);
     callback remove_app_config(string);
+    // Resets the realtime engine of the process with this pid and component code.
+    callback panic(int, int);
 }
 
 // System Integration tab. Everything here is derived from the machine, never

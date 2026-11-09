@@ -108,16 +108,7 @@ unsafe extern "C" fn send_ump(
 }
 
 unsafe extern "C" fn reset(rt: *mut MaestroRealtime) -> MaestroResult {
-    err_guard(|| {
-        let shared = unsafe { shared(rt) }?;
-        let mut engine = shared.engine.write().unwrap();
-        let live = engine.as_mut().ok_or_else(Failure::not_running)?;
-        live.engine.reset();
-        if let Some(sender) = shared.sender() {
-            sender.reset();
-        }
-        Ok(())
-    })
+    err_guard(|| unsafe { shared(rt) }?.reset())
 }
 
 unsafe extern "C" fn notes_off(rt: *mut MaestroRealtime) -> MaestroResult {

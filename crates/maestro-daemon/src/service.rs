@@ -219,6 +219,7 @@ impl Service {
         };
 
         let shutdown_tx = self.tx.clone();
+        let reset_tx = self.tx.clone();
         if let Err(err) = maestro_core::ipc::publish(
             maestro_core::ipc::DAEMON_LABEL,
             self.engine.shared_stats(),
@@ -227,6 +228,9 @@ impl Service {
                 state: Some(self.engine.gate().state_cell()),
                 on_shutdown: Some(Box::new(move || {
                     let _ = shutdown_tx.send(ServiceEvent::Shutdown);
+                })),
+                on_reset: Some(Box::new(move || {
+                    let _ = reset_tx.send(ServiceEvent::Reset);
                 })),
             },
         ) {
@@ -250,6 +254,7 @@ impl Service {
             match event {
                 Some(ServiceEvent::Shutdown) => break,
                 Some(ServiceEvent::WakeEngine) => {}
+                Some(ServiceEvent::Reset) => self.engine.reset(),
                 Some(event @ (ServiceEvent::ConfigChanged | ServiceEvent::SoundfontsChanged)) => {
                     match self.debounce(event) {
                         ServiceEvent::Shutdown => break,
@@ -272,7 +277,7 @@ impl Service {
         Ok(())
     }
 
-    fn debounce(&self, first: ServiceEvent) -> ServiceEvent {
+    fn debounce(&mut self, first: ServiceEvent) -> ServiceEvent {
         if first == ServiceEvent::Shutdown {
             return first;
         }
@@ -289,6 +294,7 @@ impl Service {
                 // Safe to swallow: the control loop re-derives the start
                 // decision from the gate on every iteration.
                 Ok(ServiceEvent::WakeEngine) => {}
+                Ok(ServiceEvent::Reset) => self.engine.reset(),
                 Err(RecvTimeoutError::Timeout) => return result,
                 Err(RecvTimeoutError::Disconnected) => return result,
             }

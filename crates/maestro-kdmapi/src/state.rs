@@ -1,7 +1,7 @@
 use std::sync::{Mutex, OnceLock, atomic::AtomicPtr};
 
 use maestro_core::{
-    ipc::{SharedStats, process_name, publish},
+    ipc::{PublishOptions, SharedStats, process_name, publish},
     realtime::{MaestroRealtimeEngine, RealtimeEventSender},
     system_cfg::ConfigComponent,
 };
@@ -28,7 +28,10 @@ pub(super) fn get_state() -> &'static State {
             &format!("KDMAPI — {}", process_name()),
             statistics.clone(),
             &ConfigComponent::KDMAPI,
-            Default::default(),
+            PublishOptions {
+                on_reset: Some(Box::new(|| crate::ResetKDMAPIStream())),
+                ..Default::default()
+            },
         ) {
             crate::log_info(format!("Statistics are unavailable: {err}"));
         }

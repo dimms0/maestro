@@ -90,6 +90,7 @@ impl Realtime {
             callbacks: app.callbacks,
         });
         shared.start(&manager, &config)?;
+        stats::register(Arc::downgrade(&shared));
 
         let (tx, rx) = channel();
         let watchers = [(
@@ -275,6 +276,16 @@ impl Shared {
                 false
             }
         }
+    }
+
+    pub fn reset(&self) -> Result<(), Failure> {
+        let mut engine = self.engine.write().unwrap();
+        let live = engine.as_mut().ok_or_else(Failure::not_running)?;
+        live.engine.reset();
+        if let Some(sender) = self.sender() {
+            sender.reset();
+        }
+        Ok(())
     }
 
     pub fn sender(&self) -> Option<&RealtimeEventSender> {

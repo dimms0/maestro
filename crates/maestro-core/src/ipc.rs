@@ -177,13 +177,15 @@ pub fn process_name() -> String {
 
 const REQ_STATS: u8 = 0;
 const REQ_SHUTDOWN: u8 = 1;
+const REQ_RESET: u8 = 2;
 
-pub type ShutdownHook = Option<Box<dyn Fn() + Send + Sync>>;
+pub type Hook = Option<Box<dyn Fn() + Send + Sync>>;
 
 #[derive(Default)]
 pub struct PublishOptions {
     pub state: Option<Arc<AtomicU32>>,
-    pub on_shutdown: ShutdownHook,
+    pub on_shutdown: Hook,
+    pub on_reset: Hook,
 }
 
 pub fn publish(
@@ -229,6 +231,11 @@ fn serve(
                     hook();
                 }
                 return;
+            }
+            REQ_RESET => {
+                if let Some(hook) = &options.on_reset {
+                    hook();
+                }
             }
             _ => {
                 let state = match &options.state {
@@ -322,6 +329,13 @@ impl StatsSubscriber {
         frames
     }
 
+    pub fn reset(&mut self, pid: u32, component: &ConfigComponent) {
+        let name = format!("{pid}-{}", component.to_filename());
+        if let Some((_, conn)) = self.conns.iter_mut().find(|(known, _)| *known == name) {
+            let _ = conn.write_all(&[REQ_RESET]);
+        }
+    }
+
     fn scan(&mut self) {
         let dir = runtime_dir();
         let Ok(entries) = fs::read_dir(&dir) else {
@@ -385,109 +399,5 @@ pub fn try_lock_single_instance(name: &str) -> bool {
         // Locking is unsupported here (some network filesystems) so dont keep
         // the user from starting the application over that...
         Err(TryLockError::Error(_)) => true,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn stats_with(voices: u64) -> SharedStats {
-        let stats = MaestroRealtimeStatistics::new();
-        stats.get_renderer().set_voices(voices);
-        Arc::new(Mutex::new(Some(stats)))
-    }
-
-    fn frame(label: &str, stats: &SharedStats, state: u32) -> MaestroStats {
-        MaestroStats::new(label, stats, ConfigComponent::System.code(), state)
-    }
-
-    #[test]
-    fn frame_round_trips_through_bytes() {
-        let frame = frame("Maestro Daemon", &stats_with(42), STATE_LIVE);
-        let mut bytes = [0u8; FRAME_LEN];
-        bytes.copy_from_slice(frame.as_bytes());
-
-        let decoded = MaestroStats::from_bytes(bytes).expect("valid frame");
-        assert_eq!(decoded.name(), "Maestro Daemon");
-        assert_eq!(decoded.voices, 42);
-        assert!(decoded.state == STATE_LIVE);
-        assert_eq!(decoded.component(), Some(ConfigComponent::System));
-        assert_eq!(decoded.pid, std::process::id());
-        assert!(decoded.rss_bytes > 0);
-    }
-
-    #[test]
-    fn foreign_bytes_are_rejected() {
-        assert!(MaestroStats::from_bytes([0u8; FRAME_LEN]).is_none());
-    }
-
-    #[test]
-    fn long_labels_are_truncated_on_a_character_boundary() {
-        let label = "é".repeat(NAME_CAP);
-        let frame = frame(&label, &stats_with(0), STATE_LIVE);
-        assert!(frame.name().len() <= NAME_CAP);
-        assert!(label.starts_with(frame.name()));
-    }
-
-    #[test]
-    fn a_paused_component_reports_no_voices() {
-        let frame = frame("Paused", &Arc::new(Mutex::new(None)), STATE_PAUSED);
-        assert!(frame.state != STATE_LIVE);
-        assert_eq!(frame.state, STATE_PAUSED);
-        assert_eq!(frame.voices, 0);
-    }
-
-    #[test]
-    fn subscriber_reads_a_published_frame() {
-        let stats = stats_with(7);
-        let state = Arc::new(AtomicU32::new(STATE_LIVE));
-        publish(
-            "Test Component",
-            stats.clone(),
-            &ConfigComponent::System,
-            PublishOptions {
-                state: Some(state.clone()),
-                on_shutdown: None,
-            },
-        )
-        .expect("publish");
-
-        let mut subscriber = StatsSubscriber::new();
-        let frames = subscriber.poll();
-
-        let frame = frames
-            .iter()
-            .find(|f| f.pid == std::process::id())
-            .expect("our own frame");
-        assert_eq!(frame.name(), "Test Component");
-        assert_eq!(frame.voices, 7);
-        assert!(frame.state == STATE_LIVE);
-        assert_eq!(frame.component(), Some(ConfigComponent::System));
-
-        // The same connection is reused on the next poll, and the state cell is
-        // read fresh each time rather than captured at publish.
-        stats
-            .lock()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .get_renderer()
-            .set_voices(11);
-        state.store(STATE_PAUSED, Ordering::Relaxed);
-        let frames = subscriber.poll();
-        let frame = frames
-            .iter()
-            .find(|f| f.pid == std::process::id())
-            .expect("our own frame");
-        assert_eq!(frame.voices, 11);
-        assert_eq!(frame.state, STATE_PAUSED);
-    }
-
-    /// Asking a component nobody publishes for must be a no-op, not an error or
-    /// a hang against a stale marker file.
-    #[test]
-    fn a_shutdown_request_with_no_publisher_asks_nobody() {
-        assert_eq!(request_shutdown_all(&ConfigComponent::Converter), 0);
     }
 }

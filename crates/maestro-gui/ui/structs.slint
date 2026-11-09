@@ -265,6 +265,8 @@ export struct SlintComponentSummary {
 // can be loaded with no engine behind it, either because it is still building
 // one or because it released the memory after a quiet spell.
 export struct SlintComponentStats {
+    pid: int,
+    component: int,
     name: string,
     state: int,
     state_text: string,

@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use arc_swap::ArcSwapOption;
 use maestro_core::{
-    ipc::{SharedStats, process_name, publish},
+    ipc::{PublishOptions, SharedStats, process_name, publish},
     realtime::{MaestroRealtimeEngine, RealtimeEngineOptions, RealtimeEventSender},
     system_cfg::{ConfigComponent, MaestroConfigManager},
 };
@@ -53,7 +53,10 @@ pub(super) fn get_state() -> &'static DriverState {
             &format!("WinMM — {}", process_name()),
             stats.clone(),
             &ConfigComponent::System,
-            Default::default(),
+            PublishOptions {
+                on_reset: Some(Box::new(|| get_state().reset_engine())),
+                ..Default::default()
+            },
         ) {
             log_driver_warn("statistics are unavailable", err);
         }
@@ -201,6 +204,12 @@ impl DriverState {
         *self.stats.lock().unwrap() = Some(engine.get_statistics());
         *self.engine.lock().unwrap() = Some(engine);
         Ok(())
+    }
+
+    fn reset_engine(&self) {
+        if let Some(engine) = self.engine.lock().unwrap().as_mut() {
+            engine.reset();
+        }
     }
 
     // Returns false when the engine isn't running or has to be restarted

@@ -29,7 +29,10 @@ import {
     SlintComponentSummary,
 } from "../structs.slint";
 import { MaestroSwitch } from "../widgets/inputs.slint";
-import { LinkConfirmModal, SystemCustomFields } from "settings_editor/component.slint";
+import {
+    LinkConfirmModal,
+    SystemCustomFields,
+} from "settings_editor/component.slint";
 import { ConfirmModal } from "soundfont_editor/modals.slint";
 
 // One row of the live statistics card: whatever every component reports while
@@ -67,24 +70,38 @@ component StatsRow inherits MaestroCard {
             }
         }
 
-        BodyText {
-            text: root.stats.state == 2 ? "Voice Count: " + root.stats.voices
-                : root.stats.state_text;
-            overflow: elide;
-            horizontal-stretch: 1;
-        }
+        HorizontalLayout {
+            spacing: 12px;
+            cross-axis-alignment: center;
 
-        if (root.stats.state == 2): VerticalLayout {
-            spacing: 8px;
+            VerticalLayout {
+                spacing: 8px;
 
-            BodyText {
-                text: "Notes/s: " + root.stats.nps;
-                horizontal-stretch: 1;
+                BodyText {
+                    text: root.stats.state == 2 ? "Voice Count: " + root.stats.voices
+                        : root.stats.state_text;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+
+                if (root.stats.state == 2): BodyText {
+                    text: "Notes/s: " + root.stats.nps;
+                    horizontal-stretch: 1;
+                }
+
+                if (root.stats.state == 2): BodyText {
+                    text: "Events/s: " + root.stats.eps;
+                    horizontal-stretch: 1;
+                }
             }
 
-            BodyText {
-                text: "Events/s: " + root.stats.eps;
-                horizontal-stretch: 1;
+            MaestroButton {
+                text: "Panic";
+                danger: true;
+                small-text: true;
+                horizontal-stretch: 0;
+                disabled: root.stats.state != 2;
+                clicked => { DeviceManagerState.panic(root.stats.pid, root.stats.component); }
             }
         }
 

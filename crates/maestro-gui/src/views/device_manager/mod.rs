@@ -246,7 +246,12 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
         c.with(|ui, data| remove_app_config(ui, data, &name));
     });
 
-    stats::spawn(ui);
+    let resets = stats::spawn(ui);
+    state.on_panic(move |pid, component| {
+        if let Some(component) = ConfigComponent::from_code(component as u32) {
+            let _ = resets.send((pid as u32, component));
+        }
+    });
 
     if cx.with(|_, data| data.standalone_mode != StandaloneMode::EditList) == Some(true) {
         let c = cx.clone();

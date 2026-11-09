@@ -11,6 +11,7 @@ pub enum ServiceEvent {
     SoundfontsChanged,
 
     WakeEngine,
+    Reset,
 
     Shutdown,
 }

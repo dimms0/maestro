@@ -1,9 +1,13 @@
-use std::{thread, time::Duration};
+use std::{
+    sync::mpsc::{Sender, channel},
+    thread,
+    time::Duration,
+};
 
 use maestro_core::ipc::{
     MaestroStats, STATE_LIVE, STATE_OFF, STATE_PAUSED, STATE_STARTING, StatsSubscriber,
 };
-use maestro_core::notify::format_bytes;
+use maestro_core::{notify::format_bytes, system_cfg::ConfigComponent};
 use slint::{ComponentHandle, Global, Model, ModelRc, VecModel};
 
 use crate::{DeviceManagerState, MainWindow, SlintComponentStats, utils::fmt_count};
@@ -17,8 +21,9 @@ struct DaemonStatus {
     memory: String,
 }
 
-pub fn spawn(ui: &MainWindow) {
+pub fn spawn(ui: &MainWindow) -> Sender<(u32, ConfigComponent)> {
     let ui = ui.as_weak();
+    let (resets_tx, resets) = channel();
 
     thread::Builder::new()
         .name("maestro-gui-stats".to_string())
@@ -27,6 +32,10 @@ pub fn spawn(ui: &MainWindow) {
             let mut previous: Vec<MaestroStats> = Vec::new();
 
             loop {
+                for (pid, component) in resets.try_iter() {
+                    subscriber.reset(pid, &component);
+                }
+
                 let mut frames = subscriber.poll();
                 frames.retain(MaestroStats::is_active);
 
@@ -56,6 +65,8 @@ pub fn spawn(ui: &MainWindow) {
             }
         })
         .ok();
+
+    resets_tx
 }
 
 fn daemon_status(frames: &[MaestroStats]) -> DaemonStatus {
@@ -112,6 +123,8 @@ fn state_text(state: u32) -> &'static str {
 
 fn to_slint(stats: &MaestroStats) -> SlintComponentStats {
     SlintComponentStats {
+        pid: stats.pid as i32,
+        component: stats.component as i32,
         name: stats.name().into(),
         state: stats.state as i32,
         state_text: state_text(stats.state).into(),

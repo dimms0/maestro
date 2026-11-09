@@ -107,6 +107,12 @@ impl EngineController {
         }
     }
 
+    pub fn reset(&mut self) {
+        if let Some(engine) = &mut self.engine {
+            engine.reset();
+        }
+    }
+
     /// Returns false when the engine isn't running or has to be restarted for the change.
     pub fn reload_config(&mut self, config: &MaestroSystemConfig) -> bool {
         let Some(engine) = &mut self.engine else {
