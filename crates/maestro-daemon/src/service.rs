@@ -146,28 +146,27 @@ impl Service {
     }
 
     fn service_idle_state(&mut self) {
-        let devices_connected = self
-            .backend
-            .as_deref()
-            .is_none_or(MidiBackend::has_devices_connected);
-
-        if !devices_connected {
-            if self.engine.is_running() {
-                log_info!("No MIDI devices connected; unloading the realtime engine");
-                self.engine.stop(GateMode::Idle);
-                notify::send(
-                    "Maestro has been paused",
-                    "No MIDI devices are connected. Playing anything will load it again.",
-                );
-            }
-            return;
-        }
-
         if !self.engine.is_running() {
             if self.engine.gate().wants_start() {
                 log_info!("MIDI arrived while paused; restarting the realtime engine");
                 self.start_engine();
             }
+            return;
+        }
+
+        let devices_connected = self
+            .backend
+            .as_deref()
+            .is_none_or(MidiBackend::has_devices_connected)
+            || self.last_activity.elapsed() < ACTIVITY_TICK;
+
+        if !devices_connected {
+            log_info!("No MIDI devices connected; unloading the realtime engine");
+            self.engine.stop(GateMode::Idle);
+            notify::send(
+                "Maestro has been paused",
+                "No MIDI devices are connected. Playing anything will load it again.",
+            );
             return;
         }
 
