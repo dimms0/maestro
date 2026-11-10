@@ -28,7 +28,10 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
     state.on_cancel_quit(move || {
         RENDER_WATCH.with(Timer::stop);
         DISCARD_UNSAVED.store(false, Ordering::SeqCst);
-        c.with_ui(|ui| AppState::get(ui).set_quit_stage(QuitStage::Idle));
+        c.with_ui(|ui| {
+            AppState::get(ui).set_quit_dont_ask(false);
+            AppState::get(ui).set_quit_stage(QuitStage::Idle);
+        });
     });
 
     // Render stage
@@ -66,7 +69,16 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
 
     let c = cx.clone();
     state.on_quit_keep_running(move || {
-        c.with_ui(finish);
+        c.with_ui(|ui| {
+            if AppState::get(ui).get_quit_dont_ask() {
+                let mut cfg = crate::config::load_global_config();
+                cfg.close_leaves_daemon_running = true;
+                if let Err(e) = crate::config::save_global_config(&cfg) {
+                    errors::report("Settings", e.to_string());
+                }
+            }
+            finish(ui);
+        });
     });
 
     let c = cx.clone();
@@ -127,7 +139,7 @@ fn advance(cx: &AppContext, ui: &MainWindow, data: &AppData) -> bool {
     }
 
     let device = DeviceManagerState::get(ui);
-    if device.get_daemon_running() {
+    if device.get_daemon_running() && !crate::config::load_global_config().close_leaves_daemon_running {
         app.set_quit_prompt_detail(daemon_detail(&device.get_daemon_memory()).into());
         app.set_quit_stage(QuitStage::Daemon);
         return false;
@@ -197,6 +209,7 @@ fn finish(ui: &MainWindow) {
     DISCARD_UNSAVED.store(false, Ordering::SeqCst);
     let app = AppState::get(ui);
     app.set_quit_busy(false);
+    app.set_quit_dont_ask(false);
     app.set_quit_stage(QuitStage::Idle);
     let _ = ui.hide();
 }

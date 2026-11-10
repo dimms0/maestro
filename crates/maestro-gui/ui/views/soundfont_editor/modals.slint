@@ -26,15 +26,10 @@ export component NameEntryModal inherits ModalOverlay {
     callback confirmed(string);
 
     card_width: 360px;
-    card_height: 200px;
 
     MaestroLineEdit {
         placeholder: root.placeholder;
         text <=> root.value;
-    }
-
-    Rectangle {
-        vertical-stretch: 1;
     }
 
     ModalActions {
@@ -70,7 +65,6 @@ export component ConfirmModal inherits ModalOverlay {
     callback confirmed();
 
     card_width: 400px;
-    card_height: 200px;
     content_spacing: 16px;
 
     LabelText {
@@ -79,10 +73,6 @@ export component ConfirmModal inherits ModalOverlay {
         font-size: 13px;
         wrap: word-wrap;
         vertical-alignment: top;
-    }
-
-    Rectangle {
-        vertical-stretch: 1;
     }
 
     ModalActions {
@@ -124,7 +114,6 @@ export component SoundFontDetailsModal inherits ModalOverlay {
 
     title: root.editing ? "Edit SoundFont" : "Add SoundFont";
     card_width: 480px;
-    card_height: 290px;
     content_spacing: 16px;
 
     // The file is picked through the file dialog, so it is shown for context.
@@ -183,10 +172,6 @@ export component SoundFontDetailsModal inherits ModalOverlay {
                 edited(v) => { root.preset = v; }
             }
         }
-    }
-
-    Rectangle {
-        vertical-stretch: 1;
     }
 
     ModalActions {

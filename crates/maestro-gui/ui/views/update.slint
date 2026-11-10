@@ -7,7 +7,6 @@ import { MaestroIcon, Icons } from "../widgets/icons.slint";
 export component UpdateAvailableModal inherits ModalOverlay {
     title: "Update available";
     card_width: 400px;
-    card_height: 220px;
     content_spacing: 16px;
 
     dismissed => { AppState.update_available = ""; }
@@ -36,10 +35,6 @@ export component UpdateAvailableModal inherits ModalOverlay {
         BodyText {
             text: AppState.update_available;
         }
-    }
-
-    Rectangle {
-        vertical-stretch: 1;
     }
 
     ModalActions {

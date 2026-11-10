@@ -1,5 +1,6 @@
 import { ModalOverlay, ModalActions } from "../widgets/layout.slint";
 import { LabelText } from "../widgets/text.slint";
+import { MaestroCheckBox } from "../widgets/inputs.slint";
 import { MaestroButton } from "../widgets/controls.slint";
 import { AppState, RendererState } from "../globals.slint";
 
@@ -15,7 +16,6 @@ import { AppState, RendererState } from "../globals.slint";
 export component RenderQuitModal inherits ModalOverlay {
     title: "Rendering in progress";
     card_width: 460px;
-    card_height: 220px;
     content_spacing: 16px;
     dismissable: false;
 
@@ -24,10 +24,6 @@ export component RenderQuitModal inherits ModalOverlay {
         font-size: 13px;
         wrap: word-wrap;
         vertical-alignment: top;
-    }
-
-    Rectangle {
-        vertical-stretch: 1;
     }
 
     ModalActions {
@@ -53,8 +49,7 @@ export component RenderQuitModal inherits ModalOverlay {
 export component UnsavedQuitModal inherits ModalOverlay {
     title: "Unsaved changes";
     card_width: 480px;
-    card_height: 260px;
-    content_spacing: 16px;
+    content_spacing: 12px;
     dismissable: false;
 
     LabelText {
@@ -62,10 +57,6 @@ export component UnsavedQuitModal inherits ModalOverlay {
         font-size: 13px;
         wrap: word-wrap;
         vertical-alignment: top;
-    }
-
-    Rectangle {
-        vertical-stretch: 1;
     }
 
     ModalActions {
@@ -92,8 +83,7 @@ export component UnsavedQuitModal inherits ModalOverlay {
 export component QuitConfirmModal inherits ModalOverlay {
     title: "Maestro is still running";
     card_width: 460px;
-    card_height: 220px;
-    content_spacing: 16px;
+    content_spacing: 12px;
     dismissable: false;
 
     LabelText {
@@ -103,8 +93,10 @@ export component QuitConfirmModal inherits ModalOverlay {
         vertical-alignment: top;
     }
 
-    Rectangle {
-        vertical-stretch: 1;
+    MaestroCheckBox {
+        text: "Do not show again, always keep running";
+        checked <=> AppState.quit_dont_ask;
+        enabled: !AppState.quit_busy;
     }
 
     ModalActions {

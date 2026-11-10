@@ -75,6 +75,8 @@ export global AppState {
     // takes a moment), so the prompt stops taking a second answer on top of the
     // one already running.
     in-out property <bool> quit_busy: false;
+    // The "Do not show again" box on the daemon prompt.
+    in-out property <bool> quit_dont_ask: false;
 
     // Back out of the whole close attempt, at any stage.
     callback cancel_quit();

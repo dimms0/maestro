@@ -45,7 +45,8 @@ export component Field inherits VerticalLayout {
 export component ModalOverlay inherits Rectangle {
     in property <string> title;
     in property <length> card_width: 360px;
-    in property <length> card_height: 200px;
+    // 0 sizes the card to its content.
+    in property <length> card_height: 0px;
     in property <length> content_padding: 24px;
     in property <length> content_spacing: 20px;
     in property <bool> dismissable: true;
@@ -66,7 +67,7 @@ export component ModalOverlay inherits Rectangle {
 
     Rectangle {
         width: root.card_width;
-        height: root.card_height;
+        height: root.card_height > 0 ? root.card_height : content.preferred-height;
         x: (root.width - self.width) / 2;
         y: (root.height - self.height) / 2;
         border-radius: 10px;
@@ -77,7 +78,7 @@ export component ModalOverlay inherits Rectangle {
         // Absorb clicks so they don't reach the dismiss TouchArea behind.
         TouchArea { }
 
-        VerticalLayout {
+        content := VerticalLayout {
             padding: root.content_padding;
             spacing: root.content_spacing;
 

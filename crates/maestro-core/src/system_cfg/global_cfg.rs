@@ -9,6 +9,7 @@ pub struct MaestroGlobalConfig {
     pub default_soundfont_list: Option<String>,
     pub start_virtual_device_on_launch: bool,
     pub remember_last_tab: bool,
+    pub close_leaves_daemon_running: bool,
     pub last_tab: String,
     pub last_sflist: String,
 }
@@ -20,6 +21,7 @@ impl Default for MaestroGlobalConfig {
             default_soundfont_list: Some(DEFAULT_SOUNDFONT_LIST_NAME.into()),
             start_virtual_device_on_launch: true,
             remember_last_tab: false,
+            close_leaves_daemon_running: false,
             last_tab: String::new(),
             last_sflist: String::new(),
         }
