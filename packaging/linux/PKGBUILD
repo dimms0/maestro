@@ -1,5 +1,5 @@
 # Maintainer: dimms
-pkgname=maestro
+pkgname=maestro-midi
 pkgver=0.2.4
 pkgrel=1
 pkgdesc="A MIDI synthesizer host"
