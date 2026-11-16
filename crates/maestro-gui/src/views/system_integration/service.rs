@@ -486,7 +486,7 @@ mod imp {
     }
 
     fn entry(function: &str) -> Option<String> {
-        let dll = maestro_core::paths::resolve_lib("maestrodrv.dll")?;
+        let dll = maestro_core::paths::resolve_program_lib("maestrodrv.dll")?;
         Some(format!("{},{function}", dll.display()))
     }
 

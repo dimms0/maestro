@@ -206,7 +206,7 @@ impl MaestroConfigManager {
         if let Some(obj) = value.as_object_mut() {
             obj.insert("config_version".into(), CONFIG_SCHEMA_VERSION.into());
         }
-        fs::write(path, serde_json::to_string_pretty(&value)?)?;
+        write_atomic(path, &serde_json::to_string_pretty(&value)?)?;
         Ok(())
     }
 
@@ -285,6 +285,14 @@ impl MaestroConfigManager {
         }
         Ok(())
     }
+}
+
+pub fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
+    let tmp = path.with_extension("json.tmp");
+    let mut file = fs::File::create(&tmp)?;
+    std::io::Write::write_all(&mut file, contents.as_bytes())?;
+    file.sync_all()?;
+    fs::rename(&tmp, path)
 }
 
 fn read_json_or(path: &Path, unreadable: Value) -> Result<Value, ConfigError> {

@@ -259,9 +259,18 @@ pub fn resolve_lib(filename: &str) -> Option<PathBuf> {
         .find(|p| p.exists())
 }
 
-pub fn resolve_lib_for_arch(arch: &str, filename: &str) -> Option<PathBuf> {
-    std::iter::once(user_lib_dir())
-        .chain(program_lib_dirs())
+// used by installers so they don't link from user paths
+pub fn resolve_program_lib(filename: &str) -> Option<PathBuf> {
+    lib_dirs()
+        .into_iter()
+        .filter(|dir| lib_source(dir) == LibSource::Program)
+        .map(|dir| dir.join(filename))
+        .find(|p| p.exists())
+}
+
+pub fn resolve_program_lib_for_arch(arch: &str, filename: &str) -> Option<PathBuf> {
+    program_lib_dirs()
+        .into_iter()
         .map(|dir| dir.join(arch).join(filename))
         .find(|p| p.exists())
 }

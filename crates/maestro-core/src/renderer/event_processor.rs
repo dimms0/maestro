@@ -157,6 +157,7 @@ impl PortEventProcessor {
 
     pub fn process(&mut self, event: MaestroTimedEvent) -> Option<MaestroTimedEvent> {
         if self.ignored {
+            sysex::release(&event.event);
             return None;
         }
         if self.bypassed {

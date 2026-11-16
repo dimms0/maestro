@@ -225,7 +225,7 @@ fn patch_sflist_on_disk(path: &std::path::Path, new_name: &str) {
         serde_json::Value::String(new_name.to_string()),
     );
     if let Ok(content) = serde_json::to_string_pretty(&val) {
-        let _ = std::fs::write(path, content);
+        let _ = maestro_core::system_cfg::write_atomic(path, &content);
     }
 }
 

@@ -11,6 +11,7 @@ use crate::watcher::WatcherHandle;
 pub struct State {
     pub realtime: Mutex<Option<MaestroRealtimeEngine>>,
     pub sender: AtomicPtr<RealtimeEventSender>,
+    pub senders: Mutex<[Option<Box<RealtimeEventSender>>; 2]>,
     pub statistics: SharedStats,
     pub watcher: Mutex<Option<WatcherHandle>>,
 }
@@ -39,6 +40,7 @@ pub(super) fn get_state() -> &'static State {
         State {
             realtime: Mutex::new(None),
             sender: AtomicPtr::new(std::ptr::null_mut()),
+            senders: Mutex::default(),
             statistics,
             watcher: Mutex::new(None),
         }
