@@ -182,6 +182,10 @@ impl RealtimeClock {
 
         let mut offset = self.offset.load(Ordering::Relaxed);
         let target = TARGET_LEAD_BLOCKS as i64 * frames;
+        // the timeline runs a whole block past target before the next sync, so long
+        // blocks under the floor would read as desynced and behind forever
+        let floor = self.min_lookahead.max(target + frames);
+        lookahead = lookahead.max(floor);
         let lead = offset + now - committed;
 
         let desynced = lead < 0 || lead > lookahead;
@@ -204,7 +208,7 @@ impl RealtimeClock {
                 self.window_max.store(window_max, Ordering::Relaxed);
             } else {
                 offset += target - window_min;
-                lookahead = (2 * (window_max - window_min) + target).max(self.min_lookahead);
+                lookahead = (2 * (window_max - window_min) + target).max(floor);
                 self.max_lookahead.store(lookahead, Ordering::Relaxed);
                 self.clear_measurements();
                 self.window_end
