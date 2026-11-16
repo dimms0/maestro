@@ -865,6 +865,81 @@ component SVMSPanel inherits SynthPanel {
     }
 }
 
+// Kasaria builds one instance per port, and any change to its settings
+// rebuilds it.
+component KasariaPanel inherits SynthPanel {
+    in property <bool> show_advanced: false;
+
+    edit: SettingsEditorState.current_config.synth;
+
+    SectionCard {
+        title: "General";
+
+        Setting {
+            text: "Voice Limit";
+            subtext: "The maximum number of voices Kasaria plays at once.";
+
+            MaestroSpinBox {
+                width: 150px;
+                minimum: 1;
+                maximum: 9024;
+                value: SettingsEditorState.current_config.synth.kasaria_voice_limit;
+                edited(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kasaria_voice_limit = v;
+                    root.commit();
+                }
+            }
+        }
+    }
+
+    SectionCard {
+        title: "Quality";
+
+        Setting {
+            text: "Fast Decay";
+            subtext: "Shortens the release of notes so that voices are freed sooner.";
+
+            MaestroSwitch {
+                checked: SettingsEditorState.current_config.synth.kasaria_fast_decay;
+                toggled(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kasaria_fast_decay = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Antialiasing";
+            subtext: "Filters samples that are played back above their original pitch.";
+
+            MaestroSwitch {
+                checked: SettingsEditorState.current_config.synth.kasaria_antialiasing;
+                toggled(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kasaria_antialiasing = v;
+                    root.commit();
+                }
+            }
+        }
+
+        Setting {
+            text: "Pre-resample";
+            subtext: "Resamples instruments to the output rate when they are loaded.";
+
+            MaestroSwitch {
+                checked: SettingsEditorState.current_config.synth.kasaria_pre_resample;
+                toggled(v) => {
+                    root.edit = SettingsEditorState.current_config.synth;
+                    root.edit.kasaria_pre_resample = v;
+                    root.commit();
+                }
+            }
+        }
+    }
+}
+
 component GpuRow inherits Rectangle {
     in property <string> name;
     in property <string> detail;
@@ -1460,6 +1535,9 @@ export component SynthSection inherits MaestroCard {
             show_advanced: root.show_advanced;
         }
         if (root.kind == SynthKind.kestrel): KestrelPanel {
+            show_advanced: root.show_advanced;
+        }
+        if (root.kind == SynthKind.kasaria): KasariaPanel {
             show_advanced: root.show_advanced;
         }
     }

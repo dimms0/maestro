@@ -1,5 +1,6 @@
 pub mod bassmidi;
 pub mod fluidsynth;
+pub mod kasaria;
 pub mod kestrel;
 pub mod svms;
 
@@ -9,6 +10,7 @@ pub enum SynthConfig {
     FluidSynth(fluidsynth::FluidSynthConfig),
     SVMS(svms::SVMSConfig),
     Kestrel(kestrel::KestrelConfig),
+    Kasaria(kasaria::KasariaConfig),
 }
 
 impl Default for SynthConfig {

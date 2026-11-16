@@ -9,7 +9,7 @@ use crate::{
         sender::PortEventSender,
         synth::{
             SoundFontHandle, SynthModule, bassmidi::BASSMIDISynth, fluidsynth::FluidSynthSynth,
-            kestrel::KestrelSynth, svms::SVMSSynth,
+            kasaria::KasariaSynth, kestrel::KestrelSynth, svms::SVMSSynth,
         },
     },
 };
@@ -20,6 +20,7 @@ pub(super) enum PortRenderer {
     FluidSynth(PortSynthManager<FluidSynthSynth>),
     SVMS(PortSynthManager<SVMSSynth>),
     Kestrel(PortSynthManager<KestrelSynth>),
+    Kasaria(PortSynthManager<KasariaSynth>),
 }
 
 macro_rules! dispatch {
@@ -29,6 +30,7 @@ macro_rules! dispatch {
             PortRenderer::FluidSynth($mgr) => $body,
             PortRenderer::SVMS($mgr) => $body,
             PortRenderer::Kestrel($mgr) => $body,
+            PortRenderer::Kasaria($mgr) => $body,
         }
     };
 }
@@ -52,6 +54,7 @@ impl PortRenderer {
             (Self::FluidSynth(mgr), SynthConfig::FluidSynth(cfg)) => mgr.synth.reload_config(cfg),
             (Self::SVMS(mgr), SynthConfig::SVMS(cfg)) => mgr.synth.reload_config(cfg),
             (Self::Kestrel(mgr), SynthConfig::Kestrel(cfg)) => mgr.synth.reload_config(cfg),
+            (Self::Kasaria(mgr), SynthConfig::Kasaria(cfg)) => mgr.synth.reload_config(cfg),
             _ => false,
         }
     }

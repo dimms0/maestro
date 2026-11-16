@@ -16,6 +16,7 @@ use crate::{
             SoundFontHandle, SynthLibrary,
             bassmidi::{BASSMIDILib, BASSMIDISynth},
             fluidsynth::{FluidSynthLib, FluidSynthSynth},
+            kasaria::{KasariaLib, KasariaSynth},
             kestrel::{KestrelLib, KestrelSynth},
             svms::{SVMSLib, SVMSSynth},
         },
@@ -127,6 +128,22 @@ impl MaestroRenderer {
                         audio_params,
                     );
                     ports.push(PortRenderer::Kestrel(port));
+                }
+
+                library
+            }
+            SynthConfig::Kasaria(cfg) => {
+                let library = KasariaLib::load()?;
+
+                for i in 0..port_count {
+                    let newsynth = KasariaSynth::new(library.clone(), &cfg, audio_params)?;
+                    let port = PortSynthManager::<KasariaSynth>::new(
+                        i,
+                        newsynth,
+                        evproc.clone(),
+                        audio_params,
+                    );
+                    ports.push(PortRenderer::Kasaria(port));
                 }
 
                 library

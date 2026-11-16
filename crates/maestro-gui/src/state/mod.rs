@@ -15,6 +15,7 @@ use maestro_core::{
         RendererConfig, ReverbConfig, SynthConfig,
         bassmidi::{BASSMIDIConfig, BASSMIDIThreading},
         fluidsynth::FluidSynthConfig,
+        kasaria::KasariaConfig,
         kestrel::KestrelConfig,
         svms::SVMSConfig,
     },
@@ -66,6 +67,7 @@ pub struct RememberedSettings {
     pub bassmidi: BASSMIDIConfig,
     pub svms: SVMSConfig,
     pub kestrel: KestrelConfig,
+    pub kasaria: KasariaConfig,
 }
 
 impl RememberedSettings {
@@ -75,6 +77,7 @@ impl RememberedSettings {
             SynthConfig::BASSMIDI(c) => self.bassmidi = c,
             SynthConfig::SVMS(c) => self.svms = c,
             SynthConfig::Kestrel(c) => self.kestrel = c,
+            SynthConfig::Kasaria(c) => self.kasaria = c,
         }
     }
 }
@@ -99,6 +102,7 @@ impl Default for RememberedSettings {
             bassmidi: BASSMIDIConfig::default(),
             svms: SVMSConfig::default(),
             kestrel: KestrelConfig::default(),
+            kasaria: KasariaConfig::default(),
         }
     }
 }

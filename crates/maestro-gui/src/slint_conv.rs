@@ -9,6 +9,7 @@ use maestro_core::{
             FluidSynthBankSelect, FluidSynthConfig, FluidSynthInterpolation,
             FluidSynthPortamentoTime, FluidSynthReverbEngine,
         },
+        kasaria::KasariaConfig,
         kestrel::{
             KestrelAdmitRule, KestrelConfig, KestrelEnvelopeCurve, KestrelInterpolation,
             KestrelStealRule,
@@ -194,7 +195,7 @@ struct SynthEntry {
     optional: bool,
 }
 
-const SYNTHS: [SynthEntry; 4] = [
+const SYNTHS: [SynthEntry; 5] = [
     SynthEntry {
         kind: SynthKind::Fluidsynth,
         name: "FluidSynth",
@@ -219,6 +220,12 @@ const SYNTHS: [SynthEntry; 4] = [
         badges: ["SF2", "SFZ", ""],
         optional: false,
     },
+    SynthEntry {
+        kind: SynthKind::Kasaria,
+        name: "Kasaria",
+        badges: ["SF2", "", ""],
+        optional: true,
+    },
 ];
 
 pub fn synth_options(current: SynthKind) -> (Vec<SlintComboItem>, Vec<SynthKind>) {
@@ -232,6 +239,7 @@ pub fn synth_options(current: SynthKind) -> (Vec<SlintComboItem>, Vec<SynthKind>
                 SynthKind::Bassmidi => available.bassmidi,
                 SynthKind::Svms => available.svms,
                 SynthKind::Kestrel => available.kestrel,
+                SynthKind::Kasaria => available.kasaria,
             };
             let text = match installed {
                 true => synth.name.into(),
@@ -307,6 +315,10 @@ pub fn synth_to_slint(synth: &SynthConfig, rem: &RememberedSettings) -> SlintSyn
             out.kind = SynthKind::Kestrel;
             kestrel_to_slint(c, &mut out);
         }
+        SynthConfig::Kasaria(c) => {
+            out.kind = SynthKind::Kasaria;
+            kasaria_to_slint(c, &mut out);
+        }
     }
 
     out
@@ -369,7 +381,15 @@ fn defaults_slint_synth(rem: &RememberedSettings) -> SlintSynthConfig {
     threading_to_slint(b.multithreading, rem, &mut out);
     svms_to_slint(&rem.svms, &mut out);
     kestrel_to_slint(&rem.kestrel, &mut out);
+    kasaria_to_slint(&rem.kasaria, &mut out);
     out
+}
+
+fn kasaria_to_slint(c: &KasariaConfig, out: &mut SlintSynthConfig) {
+    out.kasaria_voice_limit = c.voice_limit as i32;
+    out.kasaria_fast_decay = c.fast_decay;
+    out.kasaria_antialiasing = c.antialiasing;
+    out.kasaria_pre_resample = c.pre_resample;
 }
 
 fn svms_to_slint(c: &SVMSConfig, out: &mut SlintSynthConfig) {
@@ -564,6 +584,12 @@ pub fn slint_to_synth(sl: &SlintSynthConfig, rem: &mut RememberedSettings) -> Sy
             .clamped(),
         ),
         SynthKind::Kestrel => SynthConfig::Kestrel(slint_to_kestrel(sl)),
+        SynthKind::Kasaria => SynthConfig::Kasaria(KasariaConfig {
+            voice_limit: sl.kasaria_voice_limit.max(1) as u32,
+            fast_decay: sl.kasaria_fast_decay,
+            antialiasing: sl.kasaria_antialiasing,
+            pre_resample: sl.kasaria_pre_resample,
+        }),
     };
     rem.remember_synth(&synth);
     synth

@@ -8,6 +8,7 @@ use super::bassmidi::library::{
     BASSSharedLib,
 };
 use super::fluidsynth::library::{FLUIDSYNTH_LIB_CANDIDATES, FluidSynthSharedLib};
+use super::kasaria::library::{KASARIA_LIB_FILENAME, KasariaSharedLib};
 use super::svms::library::{SVMS_LIB_FILENAME, SVMSSharedLib};
 
 pub struct LibraryStatus {
@@ -65,6 +66,7 @@ pub struct SynthAvailability {
     pub fluidsynth: bool,
     pub svms: bool,
     pub kestrel: bool,
+    pub kasaria: bool,
 }
 
 impl SynthAvailability {
@@ -81,6 +83,7 @@ impl SynthAvailability {
             fluidsynth: usable("FluidSynth"),
             svms: usable("SuperVirtualMIDISynth"),
             kestrel: true,
+            kasaria: usable("Kasaria"),
         }
     }
 
@@ -120,6 +123,7 @@ pub fn probe_libraries() -> Vec<LibraryStatus> {
         probe_bassflac(),
         probe_fluidsynth(),
         probe_svms(),
+        probe_kasaria(),
     ];
 
     drop(bass);
@@ -191,6 +195,18 @@ fn probe_svms() -> LibraryStatus {
             },
         },
         Err(e) => LibraryStatus::missing(NAME, SVMS_LIB_FILENAME, e.to_string()),
+    };
+
+    LibraryStatus {
+        optional: true,
+        ..status
+    }
+}
+
+fn probe_kasaria() -> LibraryStatus {
+    let status = match unsafe { KasariaSharedLib::new(KASARIA_LIB_FILENAME) } {
+        Ok(lib) => LibraryStatus::found("Kasaria", KASARIA_LIB_FILENAME, lib.path.clone(), None),
+        Err(e) => LibraryStatus::missing("Kasaria", KASARIA_LIB_FILENAME, e),
     };
 
     LibraryStatus {
