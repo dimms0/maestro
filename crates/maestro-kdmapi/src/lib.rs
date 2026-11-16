@@ -99,15 +99,12 @@ fn start_engine(config: &MaestroKdmapiConfig) -> bool {
     *state.statistics.lock().unwrap() = Some(engine.get_statistics());
 
     {
-        let sender = engine.get_event_sender();
-        let boxed = Box::new(sender);
-        let ptr = Box::into_raw(boxed);
-        let old = state.sender.swap(ptr, Ordering::AcqRel);
-        if !old.is_null() {
-            unsafe {
-                let _ = Box::from_raw(old);
-            }
-        }
+        let sender = Box::new(engine.get_event_sender());
+        state
+            .sender
+            .store(std::ptr::from_ref(&*sender).cast_mut(), Ordering::Release);
+        let mut senders = state.senders.lock().unwrap();
+        senders[0] = senders[1].replace(sender);
     }
 
     *state.realtime.lock().unwrap() = Some(engine);
@@ -118,12 +115,8 @@ fn start_engine(config: &MaestroKdmapiConfig) -> bool {
 fn stop_engine() {
     let state = get_state();
     *state.realtime.lock().unwrap() = None;
-    let old = state.sender.swap(std::ptr::null_mut(), Ordering::AcqRel);
-    if !old.is_null() {
-        unsafe {
-            let _ = Box::from_raw(old);
-        }
-    }
+    // Not freed here, start_engine keeps the last two so a racing send stays valid
+    state.sender.store(std::ptr::null_mut(), Ordering::Release);
     *state.statistics.lock().unwrap() = None;
 }
 

@@ -127,11 +127,11 @@ pub fn system_dir(name: &str) -> PathBuf {
 pub fn driver_links() -> [(Option<PathBuf>, PathBuf); 2] {
     [
         (
-            paths::resolve_lib("maestrodrv.dll"),
+            paths::resolve_program_lib("maestrodrv.dll"),
             system_dir("System32").join("maestrodrv.dll"),
         ),
         (
-            paths::resolve_lib_for_arch("x86", "maestrodrv.dll"),
+            paths::resolve_program_lib_for_arch("x86", "maestrodrv.dll"),
             system_dir("SysWOW64").join("maestrodrv.dll"),
         ),
     ]
@@ -160,11 +160,11 @@ pub fn kdmapi_links() -> Vec<(Option<PathBuf>, PathBuf)> {
     {
         let [native, x86] = kdmapi_subdirs();
         links.push((
-            paths::resolve_lib(KDMAPI_FILENAME),
+            paths::resolve_program_lib(KDMAPI_FILENAME),
             native.join(KDMAPI_FILENAME),
         ));
         links.push((
-            paths::resolve_lib_for_arch("x86", KDMAPI_FILENAME),
+            paths::resolve_program_lib_for_arch("x86", KDMAPI_FILENAME),
             x86.join(KDMAPI_FILENAME),
         ));
     }
@@ -183,10 +183,10 @@ pub fn api_links() -> Vec<(Option<PathBuf>, PathBuf)> {
 // The native library, plus the 32-bit companion build for 32-bit hosts
 #[allow(unused_mut, unused_variables)]
 fn links(filename: &str, target: PathBuf, link_name: &str) -> Vec<(Option<PathBuf>, PathBuf)> {
-    let mut links = vec![(paths::resolve_lib(filename), target)];
+    let mut links = vec![(paths::resolve_program_lib(filename), target)];
     #[cfg(target_os = "windows")]
     links.push((
-        paths::resolve_lib_for_arch("x86", filename),
+        paths::resolve_program_lib_for_arch("x86", filename),
         system_dir("SysWOW64").join(link_name),
     ));
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
@@ -195,7 +195,7 @@ fn links(filename: &str, target: PathBuf, link_name: &str) -> Vec<(Option<PathBu
         .find(|d| Path::new(d).is_dir())
     {
         links.push((
-            paths::resolve_lib_for_arch("x86", filename),
+            paths::resolve_program_lib_for_arch("x86", filename),
             PathBuf::from(dir).join(link_name),
         ));
     }

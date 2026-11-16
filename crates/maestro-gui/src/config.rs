@@ -279,6 +279,6 @@ pub fn save_config_cache(cache: &ComponentConfigCache) -> Result<(), Box<dyn std
     if let Some(parent) = cache.path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(&cache.path, serde_json::to_string_pretty(&val)?)?;
+    maestro_core::system_cfg::write_atomic(&cache.path, &serde_json::to_string_pretty(&val)?)?;
     Ok(())
 }

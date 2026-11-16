@@ -11,9 +11,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use interprocess::local_socket::{
-    GenericNamespaced, ListenerOptions, Stream, ToNsName, prelude::*,
-};
+#[cfg(target_os = "linux")]
+use interprocess::local_socket::{GenericFilePath, ToFsName};
+#[cfg(not(target_os = "linux"))]
+use interprocess::local_socket::{GenericNamespaced, ToNsName};
+use interprocess::local_socket::{ListenerOptions, Name, Stream, prelude::*};
 
 use crate::{realtime::MaestroRealtimeStatistics, system_cfg::ConfigComponent};
 
@@ -161,8 +163,17 @@ fn darwin_user_temp_dir() -> Option<PathBuf> {
     Some(PathBuf::from(OsString::from_vec(buf)))
 }
 
-fn socket_name(pid: u32, component: &ConfigComponent) -> String {
+fn socket_file(pid: u32, component: &ConfigComponent) -> String {
     format!("maestro-stats-{pid}-{}.sock", component.to_filename())
+}
+
+fn socket_name(pid: u32, component: &ConfigComponent) -> io::Result<Name<'static>> {
+    let name = socket_file(pid, component);
+    // Abstract sockets skip file permissions, so any local user could connect
+    #[cfg(target_os = "linux")]
+    return runtime_dir().join(name).to_fs_name::<GenericFilePath>();
+    #[cfg(not(target_os = "linux"))]
+    name.to_ns_name::<GenericNamespaced>()
 }
 
 pub fn process_name() -> String {
@@ -195,11 +206,14 @@ pub fn publish(
     options: PublishOptions,
 ) -> io::Result<()> {
     let pid = std::process::id();
-    let name = socket_name(pid, component).to_ns_name::<GenericNamespaced>()?;
-    let listener = ListenerOptions::new().name(name).create_sync()?;
-
     let dir = runtime_dir();
     fs::create_dir_all(&dir)?;
+
+    // A crashed process with this pid may have left its socket file behind
+    #[cfg(target_os = "linux")]
+    let _ = fs::remove_file(dir.join(socket_file(pid, component)));
+    let listener = ListenerOptions::new().name(socket_name(pid, component)?).create_sync()?;
+
     File::create(dir.join(format!("{pid}-{}", component.to_filename())))?;
 
     let label = label.to_string();
@@ -273,7 +287,6 @@ pub fn request_shutdown_all(component: &ConfigComponent) -> usize {
         };
 
         let sent = socket_name(pid, component)
-            .to_ns_name::<GenericNamespaced>()
             .and_then(Stream::connect)
             .and_then(|mut conn| conn.write_all(&[REQ_SHUTDOWN]));
 
@@ -359,9 +372,7 @@ impl StatsSubscriber {
                 continue;
             }
 
-            match socket_name(pid, &component)
-                .to_ns_name::<GenericNamespaced>()
-                .and_then(Stream::connect)
+            match socket_name(pid, &component).and_then(Stream::connect)
             {
                 Ok(conn) => self.conns.push((filename, conn)),
                 Err(_) => {

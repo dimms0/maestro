@@ -27,7 +27,8 @@ fn write_list(path: &Path, list: &SoundFontList) -> Result<(), String> {
     }
     let content = serde_json::to_string_pretty(list)
         .map_err(|e| format!("Failed to serialize SoundFont list: {e}"))?;
-    std::fs::write(path, content).map_err(|e| format!("Failed to write SoundFont list file: {e}"))
+    maestro_core::system_cfg::write_atomic(path, &content)
+        .map_err(|e| format!("Failed to write SoundFont list file: {e}"))
 }
 
 pub fn setup(ui: &MainWindow, cx: &AppContext) {
