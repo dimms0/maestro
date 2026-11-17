@@ -15,7 +15,7 @@ import {
     MaestroSwitch,
     Icons,
 } from "../../widgets.slint";
-import { SettingsEditorState } from "../../globals.slint";
+import { DeviceManagerState, SettingsEditorState } from "../../globals.slint";
 import { SlintConverterCustom, SlintSystemCustom } from "../../structs.slint";
 import { Setting } from "../../widgets/layout.slint";
 import { ConfirmModal } from "../soundfont_editor/modals.slint";
@@ -244,6 +244,13 @@ export component SystemCustomFields inherits VerticalLayout {
                 root.changed_custom(root.edit);
             }
         }
+    }
+
+    if (root.custom.topology_changed && DeviceManagerState.daemon_running): BodyText {
+        text: "Saving will recreate the virtual device. Apps using it must be restarted.";
+        color: Theme.accent_amber;
+        horizontal-alignment: center;
+        wrap: word-wrap;
     }
 
     Setting {

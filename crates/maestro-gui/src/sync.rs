@@ -307,7 +307,7 @@ pub fn build_slint_component_config(state: &AppData) -> Option<SlintComponentCon
         has_converter_options: p.has_converter_options(),
         has_device_options: p.has_device_options(),
         converter_custom: converter_custom_to_slint(&file.converter_custom),
-        system_custom: system_custom_to_slint(&file.system_custom, rem),
+        system_custom: system_custom_with_topology(file),
     })
 }
 
@@ -343,11 +343,23 @@ pub fn sync_renderer_to_slint(ui: &MainWindow, state: &AppData) {
 
 // Virtual MIDI device
 
+fn system_custom_with_topology(cfg: &crate::state::ComponentConfigCache) -> crate::SlintSystemCustom {
+    let mut custom = system_custom_to_slint(&cfg.system_custom, &cfg.remembered);
+    if cfg.dirty
+        && let Some(saved) = crate::config::load_config_cache(cfg.name.clone(), cfg.path.clone())
+    {
+        let (a, b) = (&saved.system_custom, &cfg.system_custom);
+        custom.topology_changed =
+            a.midi2_enabled != b.midi2_enabled || (!b.midi2_enabled && a.num_ports != b.num_ports);
+    }
+    custom
+}
+
 pub fn sync_device_to_slint(ui: &MainWindow, state: &AppData) {
     let dev = DeviceManagerState::get(ui);
 
     if let Some(sys) = state.config(ConfigComponent::System) {
-        dev.set_system_custom(system_custom_to_slint(&sys.system_custom, &sys.remembered));
+        dev.set_system_custom(system_custom_with_topology(sys));
         dev.set_system(summary(state, sys));
     }
     if let Some(kd) = state.config(ConfigComponent::KDMAPI) {
