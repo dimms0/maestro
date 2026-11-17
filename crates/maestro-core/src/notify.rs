@@ -21,8 +21,27 @@ pub fn format_bytes(bytes: u64) -> String {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 static REGISTER: std::sync::Once = std::sync::Once::new();
+
+#[cfg(target_os = "windows")]
+fn register_app_id() {
+    use windows_sys::Win32::System::Registry::{HKEY_CURRENT_USER, REG_SZ, RegSetKeyValueW};
+
+    let wide = |s: &str| s.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
+    let key = wide(&format!(r"Software\Classes\AppUserModelId\{APP_ID}"));
+    let name = wide("Maestro");
+    unsafe {
+        RegSetKeyValueW(
+            HKEY_CURRENT_USER,
+            key.as_ptr(),
+            wide("DisplayName").as_ptr(),
+            REG_SZ,
+            name.as_ptr().cast(),
+            (name.len() * 2) as u32,
+        );
+    }
+}
 
 pub fn send(title: &str, body: &str) {
     let mut notification = notify_rust::Notification::new();
@@ -34,7 +53,10 @@ pub fn send(title: &str, body: &str) {
     });
 
     #[cfg(target_os = "windows")]
-    notification.app_id(APP_ID);
+    {
+        REGISTER.call_once(register_app_id);
+        notification.app_id(APP_ID);
+    }
 
     #[cfg(target_os = "linux")]
     notification.appname("Maestro").icon(APP_ID);

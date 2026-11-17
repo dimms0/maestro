@@ -80,12 +80,19 @@ impl Service {
     fn apply_current_config(&mut self) {
         self.recreate_backend();
 
-        if self.idle_timeout().is_some() {
+        let no_devices = !self
+            .backend
+            .as_deref()
+            .is_none_or(MidiBackend::has_devices_connected);
+
+        if self.idle_timeout().is_some() || no_devices {
             self.last_activity = Instant::now();
             self.reminded = false;
             self.engine.stop(GateMode::Idle);
-            log_info!(
-                "Idle on startup enabled; the realtime engine will start on the first MIDI event"
+            log_info!("Starting idle; the realtime engine will start on the first MIDI event");
+            notify::send(
+                "Maestro is available",
+                "Maestro is now visible in your apps and will load when activity is detected.",
             );
         } else {
             self.start_engine();
@@ -112,7 +119,7 @@ impl Service {
             Ok(sf) => match self.engine.start(&self.config, sf) {
                 Ok(()) => {
                     let txt = if self.config.custom.idle_timeout_minutes > 0 {
-                        "Maestro will start when activity is detected."
+                        "Maestro detected activity and is now loaded and running."
                     } else {
                         "Maestro is loaded and running."
                     };
@@ -165,7 +172,7 @@ impl Service {
             self.engine.stop(GateMode::Idle);
             notify::send(
                 "Maestro has been paused",
-                "No MIDI devices are connected. Playing anything will load it again.",
+                "No MIDI apps are connected. Playing anything will start Maestro again.",
             );
             return;
         }
@@ -179,7 +186,7 @@ impl Service {
                 self.engine.stop(GateMode::Idle);
                 notify::send(
                     "Maestro has been paused due to inactivity",
-                    "The soundfonts have been unloaded. Playing anything will load them again.",
+                    "The soundfonts have been unloaded. Playing anything will start Maestro again.",
                 );
             }
             None if !self.reminded && self.last_activity.elapsed() >= IDLE_REMINDER => {
@@ -332,7 +339,11 @@ impl Service {
             self.recreate_backend();
         }
 
-        if diff.engine && !self.engine.reload_config(&self.config) {
+        // a sleeping engine picks up the new config when it wakes
+        if diff.engine
+            && !self.engine.reload_config(&self.config)
+            && self.engine.gate().mode() != GateMode::Idle
+        {
             self.start_engine();
             return;
         }

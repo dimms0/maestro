@@ -2,9 +2,16 @@
 
 <img src="assets/logo/maestro-icon.svg" width="96" alt="">
 
-# Maestro
+<h1>Maestro</h1>
 
 **A professional MIDI synthesizer host for Linux, macOS and Windows.**
+
+<div>
+<img alt="GitHub License" src="https://img.shields.io/github/license/dimms0/maestro">
+<img alt="GitHub last commit (branch)" src="https://img.shields.io/github/last-commit/dimms0/maestro/master">
+<img alt="GitHub Downloads (all assets, all releases)" src="https://img.shields.io/github/downloads/dimms0/maestro/total">
+<img alt="GitHub Release" src="https://img.shields.io/github/v/release/dimms0/maestro">
+</div>
 
 </div>
 

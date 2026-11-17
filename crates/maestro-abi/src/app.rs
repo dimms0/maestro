@@ -35,7 +35,7 @@ impl Callbacks {
 /// The application behind an object, from its `MaestroAppInfo`.
 pub struct App {
     pub id: String,
-    name: Option<String>,
+    pub name: Option<String>,
     pub callbacks: Callbacks,
 }
 

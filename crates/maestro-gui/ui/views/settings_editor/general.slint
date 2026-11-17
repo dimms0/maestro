@@ -163,11 +163,11 @@ export component AudioSection inherits SectionCard {
 
                 has-switch: true;
                 enabled: !AudioDeviceState.fixed_by_host;
-                checked: !SettingsEditorState.current_config.realtime.has_buffer_size;
+                checked: SettingsEditorState.current_config.realtime.has_buffer_size;
 
                 toggled(v) => {
                     root.realtime_edit = SettingsEditorState.current_config.realtime;
-                    root.realtime_edit.has_buffer_size = !v;
+                    root.realtime_edit.has_buffer_size = v;
                     SettingsEditorState.update_realtime(root.realtime_edit);
                 }
 

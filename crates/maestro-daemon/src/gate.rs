@@ -394,8 +394,7 @@ impl MidiGate {
         self.state.clone()
     }
 
-    #[cfg(test)]
-    fn mode(&self) -> GateMode {
+    pub fn mode(&self) -> GateMode {
         self.slow.lock().unwrap().mode
     }
 

@@ -89,8 +89,8 @@ impl Realtime {
             config: Mutex::new(config.clone()),
             callbacks: app.callbacks,
         });
+        stats::register(Arc::downgrade(&shared), app.name.as_deref());
         shared.start(&manager, &config)?;
-        stats::register(Arc::downgrade(&shared));
 
         let (tx, rx) = channel();
         let watchers = [(

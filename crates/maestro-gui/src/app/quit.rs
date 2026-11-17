@@ -139,7 +139,9 @@ fn advance(cx: &AppContext, ui: &MainWindow, data: &AppData) -> bool {
     }
 
     let device = DeviceManagerState::get(ui);
-    if device.get_daemon_running() && !crate::config::load_global_config().close_leaves_daemon_running {
+    if device.get_daemon_running()
+        && !crate::config::load_global_config().close_leaves_daemon_running
+    {
         app.set_quit_prompt_detail(daemon_detail(&device.get_daemon_memory()).into());
         app.set_quit_stage(QuitStage::Daemon);
         return false;

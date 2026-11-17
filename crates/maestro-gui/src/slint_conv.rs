@@ -764,6 +764,7 @@ pub fn system_custom_to_slint(
         device_name: s.device_name.as_str().into(),
         num_ports: s.num_ports as i32,
         midi2_enabled: s.midi2_enabled,
+        topology_changed: false,
         has_idle_timeout: s.idle_timeout_minutes != 0,
         idle_timeout_minutes: match s.idle_timeout_minutes {
             0 => rem.idle_timeout_minutes,

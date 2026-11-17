@@ -4,6 +4,8 @@ use std::thread;
 use slint::{ComponentHandle, Global, ModelRc, VecModel};
 
 mod api;
+#[cfg(windows)]
+mod driver;
 mod kdmapi;
 mod libraries;
 pub mod service;
@@ -16,6 +18,8 @@ struct Snapshot {
     service: SlintIntegrationItem,
     service_installed: bool,
     autostart: bool,
+    driver: SlintIntegrationItem,
+    driver_installed: bool,
     kdmapi: SlintIntegrationItem,
     kdmapi_blocked: bool,
     api: SlintIntegrationItem,
@@ -25,11 +29,17 @@ struct Snapshot {
 fn probe() -> Snapshot {
     let service = service::probe();
     let kdmapi = kdmapi::probe();
+    #[cfg(windows)]
+    let (driver, driver_installed) = driver::probe();
+    #[cfg(not(windows))]
+    let (driver, driver_installed) = (SlintIntegrationItem::default(), true);
 
     Snapshot {
         service: service.item,
         service_installed: service.installed,
         autostart: service.autostart,
+        driver,
+        driver_installed,
         kdmapi: kdmapi.item,
         kdmapi_blocked: kdmapi.blocked,
         api: api::probe(),
@@ -40,6 +50,7 @@ fn probe() -> Snapshot {
 fn publish(ui: &MainWindow, snapshot: Snapshot) {
     let state = SystemIntegrationState::get(ui);
     let issue = !snapshot.service_installed
+        || !snapshot.driver_installed
         || snapshot
             .libraries
             .iter()
@@ -47,6 +58,8 @@ fn publish(ui: &MainWindow, snapshot: Snapshot) {
     state.set_service(snapshot.service);
     state.set_service_installed(snapshot.service_installed);
     state.set_autostart(snapshot.autostart);
+    state.set_driver(snapshot.driver);
+    state.set_driver_installed(snapshot.driver_installed);
     state.set_kdmapi(snapshot.kdmapi);
     state.set_kdmapi_blocked(snapshot.kdmapi_blocked);
     state.set_api(snapshot.api);
@@ -98,23 +111,15 @@ pub fn open_path(target: &str) -> Result<(), String> {
 pub fn setup(ui: &MainWindow) {
     let state = SystemIntegrationState::get(ui);
     state.set_windows(cfg!(windows));
-    state.set_lib_dir(
-        maestro_core::paths::user_lib_dir()
-            .display()
-            .to_string()
-            .into(),
-    );
     state.set_lib_arch_hint(
         format!(
-            "Libraries for applications of another architecture go in a subfolder named after it, \
-             such as {}.",
-            maestro_core::paths::user_lib_dir()
-                .join(if cfg!(target_pointer_width = "64") {
-                    "x86"
-                } else {
-                    "x86_64"
-                })
-                .display()
+            "Place missing libraries in this folder. Libraries for applications of another architecture go in a subfolder named after it, \
+             such as \"{}\".",
+            if cfg!(target_pointer_width = "64") {
+                "x86"
+            } else {
+                "x86_64"
+            }
         )
         .into(),
     );
@@ -128,6 +133,12 @@ pub fn setup(ui: &MainWindow) {
     state.on_service_action({
         let weak = weak.clone();
         move |action| run(&weak, move || service::act(action))
+    });
+
+    #[cfg(windows)]
+    state.on_driver_action({
+        let weak = weak.clone();
+        move |action| run(&weak, move || driver::act(action))
     });
 
     state.on_set_autostart({
