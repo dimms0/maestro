@@ -37,7 +37,7 @@ fn to_slint(status: &LibraryStatus) -> SlintLibraryItem {
 fn listed_libraries() -> Vec<LibraryStatus> {
     probe_libraries()
         .into_iter()
-        .filter(|l| !l.optional)
+        .filter(|l| !l.optional || l.source.is_some())
         .collect()
 }
 

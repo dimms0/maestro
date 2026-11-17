@@ -196,7 +196,7 @@ impl MaestroConfigManager {
 
     pub fn save_json<T: serde::Serialize>(
         &self,
-        path: &PathBuf,
+        path: &Path,
         config: &T,
     ) -> Result<(), ConfigError> {
         if let Some(parent) = path.parent() {
