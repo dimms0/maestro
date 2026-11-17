@@ -111,23 +111,15 @@ pub fn open_path(target: &str) -> Result<(), String> {
 pub fn setup(ui: &MainWindow) {
     let state = SystemIntegrationState::get(ui);
     state.set_windows(cfg!(windows));
-    state.set_lib_dir(
-        maestro_core::paths::user_lib_dir()
-            .display()
-            .to_string()
-            .into(),
-    );
     state.set_lib_arch_hint(
         format!(
-            "Libraries for applications of another architecture go in a subfolder named after it, \
-             such as {}.",
-            maestro_core::paths::user_lib_dir()
-                .join(if cfg!(target_pointer_width = "64") {
-                    "x86"
-                } else {
-                    "x86_64"
-                })
-                .display()
+            "Place missing libraries in this folder. Libraries for applications of another architecture go in a subfolder named after it, \
+             such as \"{}\".",
+            if cfg!(target_pointer_width = "64") {
+                "x86"
+            } else {
+                "x86_64"
+            }
         )
         .into(),
     );

@@ -333,27 +333,11 @@ export component SystemIntegrationView inherits Rectangle {
                             cross-axis-alignment: center;
                             spacing: 12px;
 
-                            VerticalLayout {
-                                spacing: 12px;
-
-                                LabelText {
-                                    text: "Place missing libraries in:";
-                                    font-size: 12px;
-                                }
-
-                                LabelText {
-                                    text: SystemIntegrationState.lib_dir;
-                                    font-size: 12px;
-                                    wrap: word-wrap;
-                                    vertical-alignment: top;
-                                }
-
-                                LabelText {
-                                    text: SystemIntegrationState.lib_arch_hint;
-                                    font-size: 12px;
-                                    wrap: word-wrap;
-                                    vertical-alignment: top;
-                                }
+                            LabelText {
+                                text: SystemIntegrationState.lib_arch_hint;
+                                font-size: 12px;
+                                wrap: word-wrap;
+                                vertical-alignment: top;
                             }
 
                             MaestroButton {

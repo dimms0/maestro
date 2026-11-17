@@ -284,6 +284,7 @@ component DeviceComponentCard inherits MaestroCard {
         if (!root.enabled): BodyText {
             text: root.disabled_text;
             wrap: word-wrap;
+            vertical-alignment: top;
         }
 
         Rectangle {
@@ -512,7 +513,8 @@ export component DeviceManagerView inherits Rectangle {
                     DeviceComponentCard {
                         width: Math.min(root.width, 1000px) * 0.6 - 32px;
 
-                        enabled: SystemIntegrationState.api.status == IntegrationStatus.ok;
+                        // enabled: SystemIntegrationState.api.status == IntegrationStatus.ok;
+                        enabled: false;
                         disabled_text: "The Maestro API is not installed. Go to the System Integration tab to install it.";
                         title: "Maestro API Applications";
                         settings_text: "";
