@@ -72,7 +72,12 @@ pub fn act(action: ServiceAction) -> Result<(), String> {
     task(&name, imp::act(action))
 }
 
-fn item(name: &str, detail: &str, hint: String, status: IntegrationStatus) -> SlintIntegrationItem {
+pub(super) fn item(
+    name: &str,
+    detail: &str,
+    hint: String,
+    status: IntegrationStatus,
+) -> SlintIntegrationItem {
     SlintIntegrationItem {
         name: name.into(),
         detail: detail.into(),
@@ -378,7 +383,6 @@ mod imp {
 #[cfg(windows)]
 mod imp {
     use std::io;
-    use std::path::PathBuf;
     use std::process::Command;
     use std::ptr::{null, null_mut};
 
@@ -388,14 +392,13 @@ mod imp {
         RegCreateKeyExA, RegDeleteValueA, RegQueryValueExA, RegSetValueExA,
     };
 
-    use super::{IntegrationStatus, ServiceAction, ServiceState, find_maestrod, item, step};
-    use crate::privileged::{self, INSTALL_DRIVER, UNINSTALL_DRIVER};
+    use super::{
+        IntegrationStatus, ServiceAction, ServiceState, find_maestrod, item, maestrod_path, step,
+    };
 
-    pub const NAME: &str = "WinMM Driver";
-    const MISSING_FILES: u32 = 8 | 16;
-    const MISSING_REG: u32 = 1 | 2 | 4;
+    pub const NAME: &str = "Maestro Service";
 
-    // HKCU, so this needs no elevation, unlike the driver registration below.
+    // HKCU, so this needs no elevation
     const RUN_KEY: &[u8] = b"Software\\Microsoft\\Windows\\CurrentVersion\\Run\0";
     const RUN_KEY_NAME: &str = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
     const RUN_VALUE: &[u8] = b"Maestro\0";
@@ -481,99 +484,6 @@ mod imp {
         }
     }
 
-    fn rundll32() -> PathBuf {
-        privileged::system_dir("System32").join("rundll32.exe")
-    }
-
-    fn entry(function: &str) -> Option<String> {
-        let dll = maestro_core::paths::resolve_program_lib("maestrodrv.dll")?;
-        Some(format!("{},{function}", dll.display()))
-    }
-
-    fn missing_driver() -> String {
-        step(
-            "Finding maestrodrv.dll",
-            "It is missing from the Maestro program folder. Reinstall Maestro.",
-        )
-    }
-
-    fn check() -> Result<u32, String> {
-        let arg = entry("Maestro_CheckReg").ok_or_else(missing_driver)?;
-        let report = privileged::report_path();
-        let status = Command::new(rundll32())
-            .arg(arg)
-            .arg(&report)
-            .status()
-            .map_err(|e| step("Starting rundll32 to check the driver", e))?;
-        let detail = privileged::take_report(&report);
-
-        match status.code().map(|c| c as u32) {
-            Some(code) if code != 255 => Ok(code),
-            _ => Err(detail.unwrap_or_else(|| {
-                step(
-                    "Checking the driver registration",
-                    "The check stopped without giving a reason.",
-                )
-            })),
-        }
-    }
-
-    fn elevated(function: &str) -> Result<(), String> {
-        let arg = entry(function).ok_or_else(missing_driver)?;
-        privileged::elevate(&rundll32(), &[&arg])
-    }
-
-    pub fn probe() -> ServiceState {
-        let item = match check() {
-            Err(reason) => item(NAME, "Unknown", reason, IntegrationStatus::Unknown),
-            Ok(0) => item(
-                NAME,
-                "Registered",
-                "Applications can use Maestro through WinMM.".to_string(),
-                IntegrationStatus::Ok,
-            ),
-            Ok(status) => item(
-                NAME,
-                "Not registered",
-                format!("{}. Repair fixes this.", describe(status)),
-                IntegrationStatus::Missing,
-            ),
-        };
-
-        // TODO check for wms service when it's official
-
-        let installed = item.status == IntegrationStatus::Ok;
-        ServiceState {
-            item,
-            installed,
-            autostart: autostart_enabled(),
-        }
-    }
-
-    fn describe(status: u32) -> String {
-        let reasons = [
-            (1, "the 64-bit registry entry is missing"),
-            (2, "the 32-bit registry entry is missing"),
-            (4, "the device is not registered"),
-            (8, "maestrodrv.dll is missing from System32"),
-            (16, "maestrodrv.dll is missing from SysWOW64"),
-        ];
-
-        let listed: Vec<&str> = reasons
-            .iter()
-            .filter(|(bit, _)| status & bit != 0)
-            .map(|(_, text)| *text)
-            .collect();
-
-        if listed.is_empty() {
-            "The driver is not registered".to_string()
-        } else {
-            let mut text = listed.join(", ");
-            text[..1].make_ascii_uppercase();
-            text
-        }
-    }
-
     pub fn start() -> Result<(), String> {
         use std::os::windows::process::CommandExt;
 
@@ -591,8 +501,8 @@ mod imp {
     }
 
     pub fn stop() -> Result<(), String> {
-        match maestro_core::ipc::request_shutdown_all(
-            &maestro_core::system_cfg::ConfigComponent::System,
+        match crate::views::device_manager::stats::shutdown_all(
+            maestro_core::system_cfg::ConfigComponent::System,
         ) {
             0 => Err(step(
                 "Asking the running Maestro service to shut down",
@@ -602,24 +512,36 @@ mod imp {
         }
     }
 
+    pub fn probe() -> ServiceState {
+        let has_exe = maestrod_path().is_some();
+        let item = if has_exe {
+            item(
+                NAME,
+                "Installed",
+                "Maestro is switched on and off from the Virtual MIDI Device tab.".to_string(),
+                IntegrationStatus::Ok,
+            )
+        } else {
+            item(
+                NAME,
+                "Broken",
+                "The maestrod executable could not be found. Reinstall Maestro.".to_string(),
+                IntegrationStatus::Warning,
+            )
+        };
+
+        ServiceState {
+            item,
+            installed: has_exe,
+            autostart: autostart_enabled(),
+        }
+    }
+
     pub fn act(action: ServiceAction) -> Result<(), String> {
         match action {
-            ServiceAction::Repair => {
-                let status = check().unwrap_or(255);
-                if status & MISSING_FILES != 0 {
-                    privileged::elevate_self(INSTALL_DRIVER)?;
-                }
-                if status & MISSING_REG != 0 {
-                    elevated("Maestro_Register")?;
-                }
-                Ok(())
-            }
-            ServiceAction::Start | ServiceAction::Stop => Ok(()),
-            ServiceAction::InstallFiles => privileged::elevate_self(INSTALL_DRIVER),
-            ServiceAction::UninstallFiles => {
-                elevated("Maestro_Unregister")?;
-                privileged::elevate_self(UNINSTALL_DRIVER)
-            }
+            ServiceAction::Repair if autostart_enabled() => set_autostart(true),
+            ServiceAction::Repair => find_maestrod().map(|_| ()),
+            _ => Ok(()),
         }
     }
 }

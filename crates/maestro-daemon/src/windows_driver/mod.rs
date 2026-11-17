@@ -7,7 +7,7 @@ mod state;
 use ffi::*;
 use state::get_state;
 
-use crate::{log_error, log_warn};
+use crate::{log_warn, ring};
 
 fn callback_flags(open_flags: u32) -> u32 {
     open_flags >> 16
@@ -37,20 +37,13 @@ pub extern "system" fn modMessage(
     dwParam1: usize,
     dwParam2: usize,
 ) -> u32 {
-    let state = get_state();
-
     match uMsg {
         MODM_DATA => {
             if dwUser == 0 {
                 return MMSYSERR_INVALHANDLE;
             }
             let client = unsafe { &*(dwUser as *const state::OutClient) };
-            let short = dwParam1 as u32;
-
-            let guard = state.sender.load();
-            if let Some(snd) = guard.as_ref() {
-                snd.process_short(client.port, short, 0);
-            }
+            client.ring.push_short(dwParam1 as u32);
             MMSYSERR_NOERROR
         }
 
@@ -72,11 +65,10 @@ pub extern "system" fn modMessage(
                     (*header).lpData as *const u8,
                     (*header).dwBufferLength as usize,
                 );
-
-                let guard = state.sender.load();
-                if let Some(snd) = guard.as_ref() {
-                    snd.process_long(client.port, data, 0);
+                if data.len() > ring::MAX_LONG {
+                    return MMSYSERR_INVALPARAM;
                 }
+                client.ring.push_long(data);
 
                 (*header).dwFlags |= MHDR_DONE;
                 (*header).dwFlags &= !MHDR_INQUEUE;
@@ -95,13 +87,13 @@ pub extern "system" fn modMessage(
 
         MODM_INIT | DRVM_EXIT => MMSYSERR_NOERROR,
 
-        MODM_GETNUMDEVS => state.num_output_devices(),
+        MODM_GETNUMDEVS => get_state().num_output_devices(),
 
         MODM_GETDEVCAPS => {
             if dwParam1 == 0 {
                 return MMSYSERR_INVALPARAM;
             }
-            let caps = state.output_caps(uDeviceID);
+            let caps = get_state().output_caps(uDeviceID);
             let Some(caps) = caps else {
                 return MMSYSERR_BADDEVICEID;
             };
@@ -118,7 +110,7 @@ pub extern "system" fn modMessage(
             }
             let desc = unsafe { &*desc };
 
-            let client = match state.open_output(uDeviceID, desc, dwParam2 as u32) {
+            let client = match get_state().open_output(uDeviceID, desc, dwParam2 as u32) {
                 Ok(c) => c,
                 Err(code) => return code,
             };
@@ -145,7 +137,7 @@ pub extern "system" fn modMessage(
                 return MMSYSERR_INVALHANDLE;
             }
             let client = unsafe { Box::from_raw(dwUser as *mut state::OutClient) };
-            state.close_output();
+            get_state().close_output(&client);
             unsafe {
                 DriverCallback(
                     client.callback,
@@ -165,10 +157,7 @@ pub extern "system" fn modMessage(
                 return MMSYSERR_INVALHANDLE;
             }
             let client = unsafe { &*(dwUser as *const state::OutClient) };
-            let guard = state.sender.load();
-            if let Some(snd) = guard.as_ref() {
-                snd.process_short(client.port, 0xFF, 0);
-            }
+            client.ring.push_reset();
             MMSYSERR_NOERROR
         }
 
@@ -190,10 +179,6 @@ unsafe fn copy_caps<T>(caps: &T, dst: *mut u8, dst_size: usize) {
     unsafe {
         std::ptr::copy_nonoverlapping(caps as *const T as *const u8, dst, size);
     }
-}
-
-pub(crate) fn log_driver_error(context: &str, err: impl std::fmt::Display) {
-    log_error!("[driver] {context}: {err}");
 }
 
 pub(crate) fn log_driver_warn(context: &str, err: impl std::fmt::Display) {

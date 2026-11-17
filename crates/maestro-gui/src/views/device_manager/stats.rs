@@ -1,5 +1,8 @@
 use std::{
-    sync::mpsc::{Sender, channel},
+    sync::{
+        OnceLock,
+        mpsc::{Sender, channel},
+    },
     thread,
     time::Duration,
 };
@@ -21,9 +24,31 @@ struct DaemonStatus {
     memory: String,
 }
 
-pub fn spawn(ui: &MainWindow) -> Sender<(u32, ConfigComponent)> {
+enum Request {
+    Reset(u32, ConfigComponent),
+    Shutdown(ConfigComponent, Sender<usize>),
+}
+
+static REQUESTS: OnceLock<Sender<Request>> = OnceLock::new();
+
+pub fn reset(pid: u32, component: ConfigComponent) {
+    if let Some(tx) = REQUESTS.get() {
+        let _ = tx.send(Request::Reset(pid, component));
+    }
+}
+
+pub fn shutdown_all(component: ConfigComponent) -> usize {
+    let (tx, rx) = channel();
+    if let Some(requests) = REQUESTS.get() {
+        let _ = requests.send(Request::Shutdown(component, tx));
+    }
+    rx.recv_timeout(Duration::from_secs(5)).unwrap_or(0)
+}
+
+pub fn spawn(ui: &MainWindow) {
     let ui = ui.as_weak();
-    let (resets_tx, resets) = channel();
+    let (requests_tx, requests) = channel();
+    let _ = REQUESTS.set(requests_tx);
 
     thread::Builder::new()
         .name("maestro-gui-stats".to_string())
@@ -32,8 +57,13 @@ pub fn spawn(ui: &MainWindow) -> Sender<(u32, ConfigComponent)> {
             let mut previous: Vec<MaestroStats> = Vec::new();
 
             loop {
-                for (pid, component) in resets.try_iter() {
-                    subscriber.reset(pid, &component);
+                for request in requests.try_iter() {
+                    match request {
+                        Request::Reset(pid, component) => subscriber.reset(pid, &component),
+                        Request::Shutdown(component, reply) => {
+                            let _ = reply.send(subscriber.shutdown_all(&component));
+                        }
+                    }
                 }
 
                 let mut frames = subscriber.poll();
@@ -65,8 +95,6 @@ pub fn spawn(ui: &MainWindow) -> Sender<(u32, ConfigComponent)> {
             }
         })
         .ok();
-
-    resets_tx
 }
 
 fn daemon_status(frames: &[MaestroStats]) -> DaemonStatus {

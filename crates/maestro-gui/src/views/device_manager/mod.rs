@@ -3,7 +3,7 @@ use std::time::Duration;
 use maestro_core::system_cfg::MaestroConfigManager;
 use slint::{ComponentHandle, Global, Timer, TimerMode};
 
-mod stats;
+pub mod stats;
 
 use crate::{
     DeviceComponent, DeviceManagerState, MainWindow, SlintSystemCustom, StandaloneMode, actions,
@@ -246,10 +246,10 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
         c.with(|ui, data| remove_app_config(ui, data, &name));
     });
 
-    let resets = stats::spawn(ui);
+    stats::spawn(ui);
     state.on_panic(move |pid, component| {
         if let Some(component) = ConfigComponent::from_code(component as u32) {
-            let _ = resets.send((pid as u32, component));
+            stats::reset(pid as u32, component);
         }
     });
 

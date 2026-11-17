@@ -5,6 +5,8 @@ use crate::gate::SharedGate;
 mod alsa;
 #[cfg(target_os = "macos")]
 mod coremidi;
+#[cfg(windows)]
+mod winmm;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceSpec {
@@ -47,14 +49,20 @@ pub fn create_backend(
     Ok(Box::new(coremidi::CoreMidiBackend::new(spec, gate)?))
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[cfg(windows)]
+pub fn create_backend(
+    spec: &DeviceSpec,
+    gate: SharedGate,
+) -> Result<Box<dyn MidiBackend>, DaemonError> {
+    Ok(Box::new(winmm::WinmmBackend::new(spec, gate)?))
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
 pub fn create_backend(
     _spec: &DeviceSpec,
     _gate: SharedGate,
 ) -> Result<Box<dyn MidiBackend>, DaemonError> {
     Err(DaemonError::Backend(
-        "The daemon service backend is only available on Linux and macOS; \
-         on Windows the driver DLL is loaded by the system instead"
-            .to_string(),
+        "The daemon service backend is only available on Linux, macOS and Windows".to_string(),
     ))
 }
