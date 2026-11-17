@@ -357,180 +357,180 @@ pub mod proto {
     }
 }
 
-// /// A heap region for tests and benches
-// pub struct HeapRegion(Box<[Line]>);
+/// A heap region for tests and benches
+pub struct HeapRegion(Box<[Line]>);
 
-// impl Default for HeapRegion {
-//     fn default() -> Self {
-//         Self((0..SIZE / 64).map(|_| Line(AtomicU32::new(0))).collect())
-//     }
-// }
+impl Default for HeapRegion {
+    fn default() -> Self {
+        Self((0..SIZE / 64).map(|_| Line(AtomicU32::new(0))).collect())
+    }
+}
 
-// unsafe impl Region for HeapRegion {
-//     fn base(&self) -> *mut u8 {
-//         self.0.as_ptr() as *mut u8
-//     }
-// }
+unsafe impl Region for HeapRegion {
+    fn base(&self) -> *mut u8 {
+        self.0.as_ptr() as *mut u8
+    }
+}
 
-// unsafe impl<R: Region> Region for std::sync::Arc<R> {
-//     fn base(&self) -> *mut u8 {
-//         (**self).base()
-//     }
-// }
+unsafe impl<R: Region> Region for std::sync::Arc<R> {
+    fn base(&self) -> *mut u8 {
+        (**self).base()
+    }
+}
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use std::sync::Arc;
-//     use std::sync::atomic::AtomicBool;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
 
-//     struct TestLink(Arc<AtomicBool>);
+    struct TestLink(Arc<AtomicBool>);
 
-//     impl Link for TestLink {
-//         fn wake(&self) {}
-//         fn alive(&self) -> bool {
-//             self.0.load(Relaxed)
-//         }
-//     }
+    impl Link for TestLink {
+        fn wake(&self) {}
+        fn alive(&self) -> bool {
+            self.0.load(Relaxed)
+        }
+    }
 
-//     type Pair = (
-//         Producer<Arc<HeapRegion>, TestLink>,
-//         Consumer<Arc<HeapRegion>>,
-//         Arc<AtomicBool>,
-//     );
+    type Pair = (
+        Producer<Arc<HeapRegion>, TestLink>,
+        Consumer<Arc<HeapRegion>>,
+        Arc<AtomicBool>,
+    );
 
-//     fn pair() -> Pair {
-//         let region = Arc::new(HeapRegion::default());
-//         let alive = Arc::new(AtomicBool::new(true));
-//         (
-//             Producer::new(region.clone(), TestLink(alive.clone())),
-//             Consumer::new(region),
-//             alive,
-//         )
-//     }
+    fn pair() -> Pair {
+        let region = Arc::new(HeapRegion::default());
+        let alive = Arc::new(AtomicBool::new(true));
+        (
+            Producer::new(region.clone(), TestLink(alive.clone())),
+            Consumer::new(region),
+            alive,
+        )
+    }
 
-//     fn collect(c: &Consumer<Arc<HeapRegion>>) -> Vec<String> {
-//         let mut out = Vec::new();
-//         c.drain(usize::MAX, &mut Vec::new(), |r| out.push(format!("{r:?}")))
-//             .unwrap();
-//         out
-//     }
+    fn collect(c: &Consumer<Arc<HeapRegion>>) -> Vec<String> {
+        let mut out = Vec::new();
+        c.drain(usize::MAX, &mut Vec::new(), |r| out.push(format!("{r:?}")))
+            .unwrap();
+        out
+    }
 
-//     #[test]
-//     fn records_round_trip() {
-//         let (p, c, _) = pair();
-//         assert!(p.push_short(0x7F_3C_90));
-//         assert!(p.push_long(&[0xF0, 1, 2, 3, 4, 5, 6, 7, 8, 0xF7]));
-//         assert!(p.push_reset());
-//         assert_eq!(
-//             collect(&c),
-//             [
-//                 "Short(8338576)",
-//                 "Long([240, 1, 2, 3, 4, 5, 6, 7, 8, 247])",
-//                 "Reset"
-//             ]
-//         );
-//         assert!(!c.pending());
-//     }
+    #[test]
+    fn records_round_trip() {
+        let (p, c, _) = pair();
+        assert!(p.push_short(0x7F_3C_90));
+        assert!(p.push_long(&[0xF0, 1, 2, 3, 4, 5, 6, 7, 8, 0xF7]));
+        assert!(p.push_reset());
+        assert_eq!(
+            collect(&c),
+            [
+                "Short(8338576)",
+                "Long([240, 1, 2, 3, 4, 5, 6, 7, 8, 247])",
+                "Reset"
+            ]
+        );
+        assert!(!c.pending());
+    }
 
-//     #[test]
-//     fn long_message_wraps() {
-//         let (p, c, _) = pair();
-//         for _ in 0..CAP - 2 {
-//             p.push_short(1);
-//         }
-//         c.drain(usize::MAX, &mut Vec::new(), |_| {}).unwrap();
+    #[test]
+    fn long_message_wraps() {
+        let (p, c, _) = pair();
+        for _ in 0..CAP - 2 {
+            p.push_short(1);
+        }
+        c.drain(usize::MAX, &mut Vec::new(), |_| {}).unwrap();
 
-//         let data: Vec<u8> = (0..40).collect();
-//         assert!(p.push_long(&data));
-//         let mut got = Vec::new();
-//         c.drain(usize::MAX, &mut Vec::new(), |r| {
-//             if let Record::Long(d) = r {
-//                 got = d.to_vec();
-//             }
-//         })
-//         .unwrap();
-//         assert_eq!(got, data);
-//     }
+        let data: Vec<u8> = (0..40).collect();
+        assert!(p.push_long(&data));
+        let mut got = Vec::new();
+        c.drain(usize::MAX, &mut Vec::new(), |r| {
+            if let Record::Long(d) = r {
+                got = d.to_vec();
+            }
+        })
+        .unwrap();
+        assert_eq!(got, data);
+    }
 
-//     #[test]
-//     fn full_ring_waits_for_consumer() {
-//         let (p, c, _) = pair();
-//         for i in 0..CAP {
-//             assert!(p.push_short(i));
-//         }
-//         let consumer = std::thread::spawn(move || {
-//             std::thread::sleep(std::time::Duration::from_millis(20));
-//             let mut first = None;
-//             c.drain(1, &mut Vec::new(), |r| first = Some(format!("{r:?}")))
-//                 .unwrap();
-//             (c, first)
-//         });
-//         assert!(p.push_short(u32::MAX));
-//         let (c, first) = consumer.join().unwrap();
-//         assert_eq!(first.as_deref(), Some("Short(0)"));
-//         let mut last = 0;
-//         c.drain(usize::MAX, &mut Vec::new(), |r| {
-//             if let Record::Short(m) = r {
-//                 last = m;
-//             }
-//         })
-//         .unwrap();
-//         assert_eq!(last, u32::MAX);
-//     }
+    #[test]
+    fn full_ring_waits_for_consumer() {
+        let (p, c, _) = pair();
+        for i in 0..CAP {
+            assert!(p.push_short(i));
+        }
+        let consumer = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            let mut first = None;
+            c.drain(1, &mut Vec::new(), |r| first = Some(format!("{r:?}")))
+                .unwrap();
+            (c, first)
+        });
+        assert!(p.push_short(u32::MAX));
+        let (c, first) = consumer.join().unwrap();
+        assert_eq!(first.as_deref(), Some("Short(0)"));
+        let mut last = 0;
+        c.drain(usize::MAX, &mut Vec::new(), |r| {
+            if let Record::Short(m) = r {
+                last = m;
+            }
+        })
+        .unwrap();
+        assert_eq!(last, u32::MAX);
+    }
 
-//     #[test]
-//     fn closed_ring_releases_a_waiting_producer() {
-//         let (p, c, _) = pair();
-//         for _ in 0..CAP {
-//             p.push_short(0);
-//         }
-//         let closer = std::thread::spawn(move || {
-//             std::thread::sleep(std::time::Duration::from_millis(20));
-//             c.close();
-//         });
-//         assert!(!p.push_short(0));
-//         closer.join().unwrap();
-//     }
+    #[test]
+    fn closed_ring_releases_a_waiting_producer() {
+        let (p, c, _) = pair();
+        for _ in 0..CAP {
+            p.push_short(0);
+        }
+        let closer = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            c.close();
+        });
+        assert!(!p.push_short(0));
+        closer.join().unwrap();
+    }
 
-//     #[test]
-//     fn dead_consumer_releases_a_waiting_producer() {
-//         let (p, c, alive) = pair();
-//         for _ in 0..CAP {
-//             p.push_short(0);
-//         }
-//         alive.store(false, Relaxed);
-//         assert!(!p.push_short(0));
-//         assert!(c.is_closed());
-//     }
+    #[test]
+    fn dead_consumer_releases_a_waiting_producer() {
+        let (p, c, alive) = pair();
+        for _ in 0..CAP {
+            p.push_short(0);
+        }
+        alive.store(false, Relaxed);
+        assert!(!p.push_short(0));
+        assert!(c.is_closed());
+    }
 
-//     #[test]
-//     fn corrupt_rings_are_rejected() {
-//         let (p, c, _) = pair();
-//         p.push_short(0);
-//         unsafe { p.ring.slots().write(u64::from(0x7Fu32) << 32) };
-//         assert_eq!(c.drain(usize::MAX, &mut Vec::new(), |_| {}), Err(Corrupt));
+    #[test]
+    fn corrupt_rings_are_rejected() {
+        let (p, c, _) = pair();
+        p.push_short(0);
+        unsafe { p.ring.slots().write(u64::from(0x7Fu32) << 32) };
+        assert_eq!(c.drain(usize::MAX, &mut Vec::new(), |_| {}), Err(Corrupt));
 
-//         let (p, c, _) = pair();
-//         p.push_short(0);
-//         unsafe { p.ring.slots().write(u64::from(LONG | 4096 << 8) << 32) };
-//         assert_eq!(c.drain(usize::MAX, &mut Vec::new(), |_| {}), Err(Corrupt));
+        let (p, c, _) = pair();
+        p.push_short(0);
+        unsafe { p.ring.slots().write(u64::from(LONG | 4096 << 8) << 32) };
+        assert_eq!(c.drain(usize::MAX, &mut Vec::new(), |_| {}), Err(Corrupt));
 
-//         let (p, c, _) = pair();
-//         p.ring.hdr().tail.0.store(CAP + 1, Release);
-//         assert_eq!(c.drain(usize::MAX, &mut Vec::new(), |_| {}), Err(Corrupt));
-//     }
+        let (p, c, _) = pair();
+        p.ring.hdr().tail.0.store(CAP + 1, Release);
+        assert_eq!(c.drain(usize::MAX, &mut Vec::new(), |_| {}), Err(Corrupt));
+    }
 
-//     #[test]
-//     fn requests_parse() {
-//         use proto::*;
-//         assert_eq!(parse(&open(3)), Ok(Some((Request::Open { port: 3 }, 2))));
-//         assert_eq!(
-//             parse(&close(0xDEAD_BEEF)),
-//             Ok(Some((Request::Close { id: 0xDEAD_BEEF }, 5)))
-//         );
-//         assert_eq!(parse(&close(1)[..3]), Ok(None));
-//         assert_eq!(parse(&[]), Ok(None));
-//         assert_eq!(parse(b"x"), Err(Corrupt));
-//     }
-// }
+    #[test]
+    fn requests_parse() {
+        use proto::*;
+        assert_eq!(parse(&open(3)), Ok(Some((Request::Open { port: 3 }, 2))));
+        assert_eq!(
+            parse(&close(0xDEAD_BEEF)),
+            Ok(Some((Request::Close { id: 0xDEAD_BEEF }, 5)))
+        );
+        assert_eq!(parse(&close(1)[..3]), Ok(None));
+        assert_eq!(parse(&[]), Ok(None));
+        assert_eq!(parse(b"x"), Err(Corrupt));
+    }
+}

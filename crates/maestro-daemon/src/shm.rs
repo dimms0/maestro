@@ -83,9 +83,20 @@ pub fn connect_pipe(name: &str) -> io::Result<File> {
 pub fn pipe_available(pipe: &File) -> io::Result<usize> {
     let mut avail = 0u32;
     let ok = unsafe {
-        PeekNamedPipe(pipe.as_raw_handle(), null_mut(), 0, null_mut(), &mut avail, null_mut())
+        PeekNamedPipe(
+            pipe.as_raw_handle(),
+            null_mut(),
+            0,
+            null_mut(),
+            &mut avail,
+            null_mut(),
+        )
     };
-    if ok == 0 { Err(io::Error::last_os_error()) } else { Ok(avail as usize) }
+    if ok == 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(avail as usize)
+    }
 }
 
 // All names live in the session's Local\ namespace so each user has their own

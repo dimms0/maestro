@@ -44,7 +44,13 @@ struct Shared {
 
 impl Shared {
     fn remove(&self, id: u32) {
-        self.rings.rcu(|rings| rings.iter().filter(|r| r.id != id).cloned().collect::<Vec<_>>());
+        self.rings.rcu(|rings| {
+            rings
+                .iter()
+                .filter(|r| r.id != id)
+                .cloned()
+                .collect::<Vec<_>>()
+        });
     }
 }
 
@@ -67,7 +73,8 @@ impl WinmmBackend {
         let shared = Arc::new(Shared {
             stop: AtomicBool::new(false),
             rings: ArcSwap::from_pointee(Vec::new()),
-            wake: Event::create(&shm::wake_name(pid)).map_err(backend_err("creating the wake event"))?,
+            wake: Event::create(&shm::wake_name(pid))
+                .map_err(backend_err("creating the wake event"))?,
         });
 
         let hello = proto::hello(spec.num_ports, pid, &spec.device_name);
@@ -162,7 +169,11 @@ fn control_loop(shared: &Shared, rx: Receiver<File>, hello: &[u8], ports: u8) {
     while !shared.stop.load(Relaxed) {
         for mut pipe in rx.try_iter() {
             if pipe.write_all(hello).is_ok() {
-                conns.push(Conn { pipe, buf: Vec::new(), rings: Vec::new() });
+                conns.push(Conn {
+                    pipe,
+                    buf: Vec::new(),
+                    rings: Vec::new(),
+                });
             }
         }
 
@@ -237,7 +248,11 @@ fn open_ring(shared: &Shared, port: u8, ports: u8) -> std::io::Result<u32> {
     let id = NEXT_ID.fetch_add(1, Relaxed);
 
     let section = Section::create(&shm::ring_name(std::process::id(), id))?;
-    let ring = Arc::new(Ring { id, port, consumer: Consumer::new(section) });
+    let ring = Arc::new(Ring {
+        id,
+        port,
+        consumer: Consumer::new(section),
+    });
     shared.rings.rcu(|rings| {
         let mut rings = Vec::clone(rings);
         rings.push(ring.clone());

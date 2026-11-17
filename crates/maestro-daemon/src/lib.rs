@@ -9,6 +9,7 @@ pub mod engine;
 pub mod gate;
 pub mod logging;
 pub mod platform;
+#[cfg(any(windows, all(test, target_os = "linux")))]
 pub mod ring;
 pub mod service;
 pub mod watcher;

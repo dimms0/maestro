@@ -212,7 +212,9 @@ pub fn publish(
     // A crashed process with this pid may have left its socket file behind
     #[cfg(target_os = "linux")]
     let _ = fs::remove_file(dir.join(socket_file(pid, component)));
-    let listener = ListenerOptions::new().name(socket_name(pid, component)?).create_sync()?;
+    let listener = ListenerOptions::new()
+        .name(socket_name(pid, component)?)
+        .create_sync()?;
 
     File::create(dir.join(format!("{pid}-{}", component.to_filename())))?;
 
@@ -346,8 +348,7 @@ impl StatsSubscriber {
                 continue;
             }
 
-            match socket_name(pid, &component).and_then(Stream::connect)
-            {
+            match socket_name(pid, &component).and_then(Stream::connect) {
                 Ok(conn) => self.conns.push((filename, conn)),
                 Err(_) => {
                     let _ = fs::remove_file(entry.path());
