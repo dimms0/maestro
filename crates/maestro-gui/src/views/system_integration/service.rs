@@ -49,7 +49,17 @@ pub fn start() -> Result<(), String> {
 }
 
 pub fn stop() -> Result<(), String> {
-    task("Stopping the Maestro service", imp::stop())
+    let stopped = imp::stop();
+    // use IPC to stop in case it was started without the service manager
+    #[cfg(not(windows))]
+    if stopped.is_err()
+        && crate::views::device_manager::stats::shutdown_all(
+            maestro_core::system_cfg::ConfigComponent::System,
+        ) > 0
+    {
+        return Ok(());
+    }
+    task("Stopping the Maestro service", stopped)
 }
 
 pub fn set_autostart(on: bool) -> Result<(), String> {
