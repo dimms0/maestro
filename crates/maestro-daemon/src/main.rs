@@ -1,7 +1,8 @@
-#[cfg(unix)]
-fn main() {
-    use maestrodrv::{log_error, log_warn, logging, service::Service, watcher::ServiceEvent};
+#![cfg_attr(windows, windows_subsystem = "windows")]
 
+use maestrodrv::{log_error, logging, service::Service};
+
+fn main() {
     if !maestro_core::ipc::try_lock_single_instance("maestrod") {
         return;
     }
@@ -16,9 +17,19 @@ fn main() {
         }
     };
 
-    // Translate SIGTERM/SIGINT/SIGHUP into an orderly shutdown so devices and
-    // the audio stream are torn down cleanly.
-    let tx = service.event_sender();
+    #[cfg(unix)]
+    handle_signals(service.event_sender());
+
+    if let Err(err) = service.run() {
+        log_error!("Fatal: {err}");
+        std::process::exit(1);
+    }
+}
+
+// Translate SIGTERM/SIGINT/SIGHUP into an orderly shutdown so devices and
+// the audio stream are torn down cleanly.
+#[cfg(unix)]
+fn handle_signals(tx: std::sync::mpsc::Sender<maestrodrv::watcher::ServiceEvent>) {
     let signals = [
         signal_hook::consts::SIGTERM,
         signal_hook::consts::SIGINT,
@@ -28,26 +39,10 @@ fn main() {
         Ok(mut signals) => {
             std::thread::spawn(move || {
                 if signals.forever().next().is_some() {
-                    let _ = tx.send(ServiceEvent::Shutdown);
+                    let _ = tx.send(maestrodrv::watcher::ServiceEvent::Shutdown);
                 }
             });
         }
-        Err(err) => log_warn!("Failed to install signal handlers: {err}"),
+        Err(err) => maestrodrv::log_warn!("Failed to install signal handlers: {err}"),
     }
-
-    if let Err(err) = service.run() {
-        log_error!("Fatal: {err}");
-        std::process::exit(1);
-    }
-}
-
-#[cfg(windows)]
-fn main() {
-    use maestrodrv::log_error;
-
-    log_error!(
-        "maestrod is not used on Windows. Install maestrodrv.dll as a WinMM \
-         MIDI driver instead (see the maestro-daemon documentation)."
-    );
-    std::process::exit(1);
 }

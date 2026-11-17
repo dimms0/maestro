@@ -22,13 +22,13 @@ and the realtime engine. Three rules shape everything below:
 
 ### Files
 
-| File | Location |
-|---|---|
-| `maestrod` | `/usr/bin/maestrod` |
-| `maestro` (GUI) | `/usr/bin/maestro` |
+| File                       | Location                                 |
+| -------------------------- | ---------------------------------------- |
+| `maestrod`                 | `/usr/bin/maestrod`                      |
+| `maestro` (GUI)            | `/usr/bin/maestro`                       |
 | `service/maestrod.service` | `/usr/lib/systemd/user/maestrod.service` |
-| `gr.dimms.maestro.desktop` | `/usr/share/applications/` |
-| `icons/hicolor/` | `/usr/share/icons/hicolor/` |
+| `gr.dimms.maestro.desktop` | `/usr/share/applications/`               |
+| `icons/hicolor/`           | `/usr/share/icons/hicolor/`              |
 
 A manual or unpackaged install puts the unit in
 `~/.config/systemd/user/maestrod.service` instead. That is also where the GUI's
@@ -113,20 +113,23 @@ to start, `launchctl bootout` to stop.
 Windows has **no service**. Per-user services require administrator rights, so
 the GUI spawns `maestrod.exe` detached (`DETACHED_PROCESS |
 CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW`) and stops it by asking over the
-statistics socket. Nothing needs installing for the on/off switch to work beyond
-placing the executable.
+statistics socket. "Start on login" adds a value under
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
 
-> `maestrod.exe` currently refuses to run on Windows — the daemon backend is
-> Linux and macOS only until Windows MIDI Services is officially released. Until
-> then the WinMM driver below is the whole Windows story, and the switch is hidden.
+The WinMM driver is a thin client of `maestrod`: it lists no ports while
+`maestrod` is not running. Each open port gets a shared-memory ring that the
+application writes into without system calls, and `maestrod` drains every ring
+into one shared engine. The control channel is the named pipe
+`\\.\pipe\maestro-winmm-<session id>`; the rings and the wake event live in
+the session's `Local\` namespace.
 
 ### Files
 
-| File | Location |
-|---|---|
-| `maestro.exe`, `maestrod.exe` | `%ProgramFiles%\Maestro\` |
-| `maestrodrv.dll` | `%ProgramFiles%\Maestro\`, linked into `%SYSTEMROOT%\System32\` |
-| 32-bit `maestrodrv.dll` | `%ProgramFiles%\Maestro\x86\`, linked into `SysWOW64\` |
+| File                          | Location                                                        |
+| ----------------------------- | --------------------------------------------------------------- |
+| `maestro.exe`, `maestrod.exe` | `%ProgramFiles%\Maestro\`                                       |
+| `maestrodrv.dll`              | `%ProgramFiles%\Maestro\`, linked into `%SYSTEMROOT%\System32\` |
+| 32-bit `maestrodrv.dll`       | `%ProgramFiles%\Maestro\x86\`, linked into `SysWOW64\`          |
 
 The installer links both and enters the driver in `Drivers32` itself, by
 running `maestro.exe install-driver` and `rundll32
@@ -135,8 +138,7 @@ both. The System Integration tab does the same on demand if either step was
 refused.
 
 The 32-bit copy exists because a 32-bit application loads the `SysWOW64` driver
-into its own process, where only 32-bit BASS is loadable — which is why the
-program folder carries an `x86\` subfolder of synth libraries beside it.
+into its own process.
 
 ### Start Menu shortcut — required, not optional
 

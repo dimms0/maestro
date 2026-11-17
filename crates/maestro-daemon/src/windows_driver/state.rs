@@ -1,92 +1,97 @@
-use std::sync::mpsc::{Receiver, channel};
+use std::fs::File;
+use std::io::{self, Read, Write};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
-
-use arc_swap::ArcSwapOption;
-use maestro_core::{
-    ipc::{PublishOptions, SharedStats, process_name, publish},
-    realtime::{MaestroRealtimeEngine, RealtimeEngineOptions, RealtimeEventSender},
-    system_cfg::{ConfigComponent, MaestroConfigManager},
-};
 
 use super::ffi::*;
-use super::{log_driver_error, log_driver_warn};
-use crate::{
-    config::MaestroSystemConfig,
-    service::diff_configs,
-    watcher::{ConfigWatcher, ServiceEvent},
-};
+use super::log_driver_warn;
+use crate::ring::{Link, Producer, proto};
+use crate::shm::{self, Event, Process, Section};
+
+pub struct DaemonLink {
+    wake: Arc<Event>,
+    daemon: Arc<Process>,
+}
+
+impl Link for DaemonLink {
+    fn wake(&self) {
+        self.wake.set();
+    }
+
+    fn alive(&self) -> bool {
+        self.daemon.alive()
+    }
+}
 
 // Boxed and handed to winmm through `dwUser`,
 // so every open/close pair owns exactly one allocation
 pub struct OutClient {
-    pub port: u8,
+    pub ring: Producer<Section, DaemonLink>,
+    id: u32,
+    pid: u32,
     pub callback: usize,
     pub instance: usize,
     pub hmidi: usize,
     pub flags: u32,
 }
 
-pub struct DriverState {
-    config: Mutex<MaestroSystemConfig>,
-    engine: Mutex<Option<MaestroRealtimeEngine>>,
-    pub sender: ArcSwapOption<RealtimeEventSender>,
-    stats: SharedStats,
-    engine_users: Mutex<usize>,
-    watcher_started: Mutex<bool>,
+// shortcut: reads have no timeout, so a hung maestrod stalls midiOutOpen
+struct Connection {
+    stream: File,
+    pid: u32,
+    ports: u8,
+    name: String,
+    wake: Arc<Event>,
+    daemon: Arc<Process>,
 }
 
-unsafe impl Send for DriverState {}
-unsafe impl Sync for DriverState {}
+impl Connection {
+    fn connect() -> io::Result<Self> {
+        let mut stream = shm::connect_pipe(&shm::pipe_name())?;
+
+        let mut head = [0u8; 6];
+        stream.read_exact(&mut head)?;
+        let ports = head[0];
+        let pid = u32::from_le_bytes([head[1], head[2], head[3], head[4]]);
+        let mut name = vec![0; head[5] as usize];
+        stream.read_exact(&mut name)?;
+
+        Ok(Self {
+            wake: Arc::new(Event::open(&shm::wake_name(pid))?),
+            daemon: Arc::new(Process::open(pid)?),
+            stream,
+            pid,
+            ports,
+            name: String::from_utf8_lossy(&name).into_owned(),
+        })
+    }
+
+    /// maestrod never sends unprompted, so pending bytes mean a stale reply
+    fn alive(&mut self) -> bool {
+        matches!(shm::pipe_available(&self.stream), Ok(0))
+    }
+
+    fn open(&mut self, port: u8) -> io::Result<u32> {
+        self.stream.write_all(&proto::open(port))?;
+        let mut reply = [0u8; 1];
+        self.stream.read_exact(&mut reply)?;
+        if reply[0] != proto::OPENED {
+            return Err(io::Error::other("maestrod refused the port"));
+        }
+        let mut id = [0u8; 4];
+        self.stream.read_exact(&mut id)?;
+        Ok(u32::from_le_bytes(id))
+    }
+}
+
+pub struct DriverState {
+    conn: Mutex<Option<Connection>>,
+}
 
 pub(super) fn get_state() -> &'static DriverState {
     static STATE: OnceLock<DriverState> = OnceLock::new();
-    STATE.get_or_init(|| {
-        let config = load_config().unwrap_or_else(|err| {
-            log_driver_error("failed to load config, using defaults", err);
-            MaestroSystemConfig::default()
-        });
-
-        let stats = SharedStats::default();
-
-        if let Err(err) = publish(
-            &format!("WinMM — {}", process_name()),
-            stats.clone(),
-            &ConfigComponent::System,
-            PublishOptions {
-                on_reset: Some(Box::new(|| get_state().reset_engine())),
-                ..Default::default()
-            },
-        ) {
-            log_driver_warn("statistics are unavailable", err);
-        }
-
-        DriverState {
-            config: Mutex::new(config),
-            engine: Mutex::new(None),
-            sender: ArcSwapOption::empty(),
-            stats,
-            engine_users: Mutex::new(0),
-            watcher_started: Mutex::new(false),
-        }
+    STATE.get_or_init(|| DriverState {
+        conn: Mutex::new(None),
     })
-}
-
-fn load_config() -> Result<MaestroSystemConfig, maestro_core::error::ConfigError> {
-    let manager = MaestroConfigManager::default();
-    let path = manager.get_component_config_path(&ConfigComponent::System);
-    manager.load_component(&path)
-}
-
-fn engine_options(config: &MaestroSystemConfig) -> RealtimeEngineOptions {
-    RealtimeEngineOptions {
-        ports: Some(config.custom.num_ports.max(1)),
-        config: config.realtime.clone(),
-        renderer: config.renderer,
-        audio_params: config.audio_params,
-        event_processor: config.event_processor.clone(),
-        post_processor: config.post_processor,
-    }
 }
 
 fn utf16_name(name: &str) -> [u16; 32] {
@@ -98,23 +103,31 @@ fn utf16_name(name: &str) -> [u16; 32] {
 }
 
 impl DriverState {
-    fn config(&self) -> MaestroSystemConfig {
-        self.config.lock().unwrap().clone()
+    fn with_conn<T>(&self, f: impl FnOnce(&mut Connection) -> io::Result<T>) -> io::Result<T> {
+        let mut conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        if conn.as_mut().is_some_and(|c| !c.alive()) {
+            *conn = None;
+        }
+        if conn.is_none() {
+            *conn = Some(Connection::connect()?);
+        }
+        let result = f(conn.as_mut().unwrap());
+        if result.is_err() {
+            *conn = None;
+        }
+        result
     }
 
-    // Device tables
-
     pub fn num_output_devices(&self) -> u32 {
-        self.config().custom.num_ports.max(1) as u32
+        self.with_conn(|c| Ok(c.ports as u32)).unwrap_or(0)
     }
 
     pub fn output_caps(&self, device: u32) -> Option<MIDIOUTCAPSW> {
-        if device >= self.num_output_devices() {
-            return None;
-        }
-        let config = self.config();
-
-        let name = format!("{} - Port {}", config.custom.device_name, device + 1);
+        let name = self
+            .with_conn(|c| {
+                Ok((device < c.ports as u32).then(|| format!("{} - Port {}", c.name, device + 1)))
+            })
+            .ok()??;
 
         Some(MIDIOUTCAPSW {
             wMid: 0,
@@ -129,227 +142,49 @@ impl DriverState {
         })
     }
 
-    // Output devices
-
     pub fn open_output(
         &self,
         device: u32,
         desc: &MIDIOPENDESC,
         flags: u32,
     ) -> Result<Box<OutClient>, u32> {
-        if device >= self.num_output_devices() {
-            return Err(MMSYSERR_BADDEVICEID);
-        }
+        let opened = self.with_conn(|c| {
+            if device >= c.ports as u32 {
+                return Ok(None);
+            }
+            let id = c.open(device as u8)?;
+            let section = Section::open(&shm::ring_name(c.pid, id))?;
+            let link = DaemonLink {
+                wake: c.wake.clone(),
+                daemon: c.daemon.clone(),
+            };
+            Ok(Some((Producer::new(section, link), id, c.pid)))
+        });
 
-        self.retain_engine()?;
-        self.ensure_watcher();
-
-        Ok(Box::new(OutClient {
-            port: device as u8,
-            callback: desc.dwCallback,
-            instance: desc.dwInstance,
-            hmidi: desc.hMidi,
-            flags,
-        }))
-    }
-
-    pub fn close_output(&self) {
-        self.release_engine();
-    }
-
-    // Engine lifecycle
-
-    fn retain_engine(&self) -> Result<(), u32> {
-        let mut users = self.engine_users.lock().unwrap();
-        if *users == 0 {
-            let config = self.refresh_config();
-            self.start_engine(&config)?;
-        }
-        *users += 1;
-        Ok(())
-    }
-
-    fn release_engine(&self) {
-        let mut users = self.engine_users.lock().unwrap();
-        *users = users.saturating_sub(1);
-        if *users == 0 {
-            self.sender.store(None);
-            *self.stats.lock().unwrap() = None;
-            *self.engine.lock().unwrap() = None;
-        }
-    }
-
-    fn start_engine(&self, config: &MaestroSystemConfig) -> Result<(), u32> {
-        let manager = MaestroConfigManager::default();
-        let soundfonts = match manager.get_soundfont_list(&config.sflist) {
-            Ok(s) => s,
+        match opened {
+            Ok(Some((ring, id, pid))) => Ok(Box::new(OutClient {
+                ring,
+                id,
+                pid,
+                callback: desc.dwCallback,
+                instance: desc.dwInstance,
+                hmidi: desc.hMidi,
+                flags,
+            })),
+            Ok(None) => Err(MMSYSERR_BADDEVICEID),
             Err(err) => {
-                log_driver_error("failed to load soundfont list", err);
-                return Err(MMSYSERR_ERROR_CODE);
-            }
-        };
-
-        let engine = match MaestroRealtimeEngine::new(engine_options(config)) {
-            Ok(e) => e,
-            Err(err) => {
-                log_driver_error("failed to start engine", err);
-                return Err(MMSYSERR_NOMEM);
-            }
-        };
-        if let Err(err) = engine.set_soundfonts(soundfonts) {
-            log_driver_error("failed to load soundfonts", err);
-        }
-
-        self.sender.store(Some(Arc::new(engine.get_event_sender())));
-        *self.stats.lock().unwrap() = Some(engine.get_statistics());
-        *self.engine.lock().unwrap() = Some(engine);
-        Ok(())
-    }
-
-    fn reset_engine(&self) {
-        if let Some(engine) = self.engine.lock().unwrap().as_mut() {
-            engine.reset();
-        }
-    }
-
-    // Returns false when the engine isn't running or has to be restarted
-    fn reload_engine(&self, config: &MaestroSystemConfig) -> bool {
-        let mut engine = self.engine.lock().unwrap();
-        let Some(engine) = engine.as_mut() else {
-            return false;
-        };
-
-        engine
-            .reload_config(engine_options(config))
-            .unwrap_or_else(|err| {
-                log_driver_warn("failed to reload engine config", err);
-                false
-            })
-    }
-
-    fn restart_engine_if_running(&self, config: &MaestroSystemConfig) {
-        let users = self.engine_users.lock().unwrap();
-        if *users == 0 {
-            return;
-        }
-
-        self.sender.store(None);
-        *self.stats.lock().unwrap() = None;
-        *self.engine.lock().unwrap() = None;
-        let _ = self.start_engine(config);
-    }
-
-    // Config watching
-
-    fn ensure_watcher(&self) {
-        let mut started = self.watcher_started.lock().unwrap();
-        if *started {
-            return;
-        }
-        *started = true;
-
-        std::thread::Builder::new()
-            .name("maestro-drv-watch".to_string())
-            .spawn(move || watcher_loop(get_state()))
-            .ok();
-    }
-
-    fn refresh_config(&self) -> MaestroSystemConfig {
-        match load_config() {
-            Ok(new) => {
-                *self.config.lock().unwrap() = new.clone();
-                new
-            }
-            Err(err) => {
-                log_driver_warn("failed to reload config, keeping previous settings", err);
-                self.config()
+                log_driver_warn("failed to open the port through maestrod", err);
+                Err(MMSYSERR_NODRIVER)
             }
         }
     }
 
-    fn apply_config_change(&self) -> bool {
-        let new = match load_config() {
-            Ok(c) => c,
-            Err(err) => {
-                log_driver_warn("config changed but failed to load", err);
-                return false;
-            }
-        };
-        let old = std::mem::replace(&mut *self.config.lock().unwrap(), new.clone());
-        let diff = diff_configs(&old, &new);
-
-        if diff.engine && !self.reload_engine(&new) {
-            self.restart_engine_if_running(&new);
-            true
-        } else if diff.soundfonts {
-            self.reload_soundfonts(&new);
-            true
-        } else {
-            false
+    pub fn close_output(&self, client: &OutClient) {
+        let mut conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(c) = conn.as_mut().filter(|c| c.pid == client.pid)
+            && c.stream.write_all(&proto::close(client.id)).is_err()
+        {
+            *conn = None;
         }
     }
-
-    fn reload_soundfonts(&self, config: &MaestroSystemConfig) {
-        let engine = self.engine.lock().unwrap();
-        if let Some(engine) = engine.as_ref() {
-            let manager = MaestroConfigManager::default();
-            match manager.get_soundfont_list(&config.sflist) {
-                Ok(soundfonts) => {
-                    if let Err(err) = engine.set_soundfonts(soundfonts) {
-                        log_driver_error("failed to reload soundfonts", err);
-                    }
-                }
-                Err(err) => log_driver_error("failed to load soundfont list", err),
-            }
-        }
-    }
-}
-
-const MMSYSERR_ERROR_CODE: u32 = 1; // MMSYSERR_ERROR
-const DEBOUNCE: Duration = Duration::from_millis(300);
-
-fn watcher_loop(state: &'static DriverState) {
-    let manager = MaestroConfigManager::default();
-    let config_path = manager.get_component_config_path(&ConfigComponent::System);
-
-    let sflist_dirs = manager.sflist_dirs();
-
-    let (tx, rx) = channel();
-    let _watcher = match ConfigWatcher::spawn(config_path, sflist_dirs, tx) {
-        Ok(w) => w,
-        Err(err) => {
-            log_driver_warn("config watcher unavailable", err);
-            return;
-        }
-    };
-
-    loop {
-        let (config_changed, soundfonts_changed) = match rx.recv() {
-            Ok(ServiceEvent::ConfigChanged) => debounce(&rx, true, false),
-            Ok(ServiceEvent::SoundfontsChanged) => debounce(&rx, false, true),
-            Ok(ServiceEvent::Shutdown) | Err(_) => return,
-            Ok(_) => continue,
-        };
-
-        let reloaded = config_changed && state.apply_config_change();
-        if soundfonts_changed && !reloaded {
-            let config = state.config();
-            state.reload_soundfonts(&config);
-        }
-    }
-}
-
-fn debounce(
-    rx: &Receiver<ServiceEvent>,
-    mut config_changed: bool,
-    mut soundfonts_changed: bool,
-) -> (bool, bool) {
-    while let Ok(event) = rx.recv_timeout(DEBOUNCE) {
-        match event {
-            ServiceEvent::ConfigChanged => config_changed = true,
-            ServiceEvent::SoundfontsChanged => soundfonts_changed = true,
-            _ => {}
-        }
-    }
-    (config_changed, soundfonts_changed)
 }

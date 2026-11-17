@@ -162,15 +162,14 @@ export component SystemIntegrationView inherits Rectangle {
 
                             VerticalLayout {
                                 spacing: 4px;
-                                // TODO remove check when WMS is implemented
-                                if (!SystemIntegrationState.windows): MaestroSwitch {
+                                MaestroSwitch {
                                     text: "Start on login";
                                     checked: SystemIntegrationState.autostart;
                                     enabled: !SystemIntegrationState.busy;
                                     toggled(v) => { SystemIntegrationState.set_autostart(v); }
                                 }
 
-                                if (!SystemIntegrationState.windows): LabelText {
+                                LabelText {
                                     text: "Maestro starts automatically when you log in, so its virtual devices are already there when other apps open.";
                                     font-size: 12px;
                                     wrap: TextWrap.word-wrap;
@@ -186,23 +185,52 @@ export component SystemIntegrationView inherits Rectangle {
                                 spacing: 12px;
                                 cross-axis-alignment: end;
 
-                                if (SystemIntegrationState.windows): MaestroButton {
-                                    text: "Install Driver Files";
-                                    disabled: SystemIntegrationState.busy && !SystemIntegrationState.service_installed;
-                                    clicked => { SystemIntegrationState.service_action(ServiceAction.install_files); }
-                                }
-
-                                if (SystemIntegrationState.windows): MaestroButton {
-                                    text: "Unregister";
-                                    danger: true;
-                                    disabled: SystemIntegrationState.busy && SystemIntegrationState.service_installed;
-                                    clicked => { SystemIntegrationState.service_action(ServiceAction.uninstall_files); }
-                                }
                                 MaestroButton {
                                     text: "Reinstall / Repair";
                                     primary: true;
                                     disabled: SystemIntegrationState.busy;
                                     clicked => { SystemIntegrationState.service_action(ServiceAction.repair); }
+                                }
+                            }
+                        }
+                    }
+
+                    if (SystemIntegrationState.windows): MaestroCard {
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 20px;
+
+                            ItemHeader {
+                                item: SystemIntegrationState.driver;
+                            }
+
+                            Rectangle {
+                                vertical-stretch: 1;
+                            }
+
+                            HorizontalLayout {
+                                alignment: end;
+                                spacing: 12px;
+                                cross-axis-alignment: end;
+
+                                MaestroButton {
+                                    text: "Install Driver Files";
+                                    disabled: SystemIntegrationState.busy && !SystemIntegrationState.driver_installed;
+                                    clicked => { SystemIntegrationState.driver_action(ServiceAction.install_files); }
+                                }
+
+                                MaestroButton {
+                                    text: "Unregister";
+                                    danger: true;
+                                    disabled: SystemIntegrationState.busy && SystemIntegrationState.driver_installed;
+                                    clicked => { SystemIntegrationState.driver_action(ServiceAction.uninstall_files); }
+                                }
+
+                                MaestroButton {
+                                    text: "Reinstall / Repair";
+                                    primary: true;
+                                    disabled: SystemIntegrationState.busy;
+                                    clicked => { SystemIntegrationState.driver_action(ServiceAction.repair); }
                                 }
                             }
                         }

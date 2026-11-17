@@ -421,10 +421,6 @@ export component DeviceManagerView inherits Rectangle {
                         discarded => { DeviceManagerState.discard(DeviceComponent.system); }
                         link_clicked => { root.link_target = DeviceManagerState.system; }
 
-                        // On Windows the WinMM driver is on once registered and
-                        // there is nothing to switch; the System Integration
-                        // tab handles installing and repairing it instead.
-                        switch_visible: !SystemIntegrationState.windows;
                         switch_on: DeviceManagerState.daemon_running;
                         switch_busy: DeviceManagerState.daemon_busy;
                         switch_detail: DeviceManagerState.daemon_state == 1
@@ -437,7 +433,7 @@ export component DeviceManagerView inherits Rectangle {
                             : "Devices appear in your other applications while this is on.";
                         switch_toggled(v) => { DeviceManagerState.set_running(v); }
 
-                        if (!SystemIntegrationState.windows): MaestroCheckBox {
+                        MaestroCheckBox {
                             text: "Start automatically when Maestro opens";
                             checked: DeviceManagerState.start_on_launch;
                             toggled(v) => { DeviceManagerState.set_start_on_launch(v); }
@@ -517,7 +513,8 @@ export component DeviceManagerView inherits Rectangle {
                     DeviceComponentCard {
                         width: Math.min(root.width, 1000px) * 0.6 - 32px;
 
-                        enabled: SystemIntegrationState.api.status == IntegrationStatus.ok;
+                        // enabled: SystemIntegrationState.api.status == IntegrationStatus.ok;
+                        enabled: false;
                         disabled_text: "The Maestro API is not installed. Go to the System Integration tab to install it.";
                         title: "Maestro API Applications";
                         settings_text: "";

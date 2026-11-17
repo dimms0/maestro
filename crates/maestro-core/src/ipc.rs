@@ -212,7 +212,9 @@ pub fn publish(
     // A crashed process with this pid may have left its socket file behind
     #[cfg(target_os = "linux")]
     let _ = fs::remove_file(dir.join(socket_file(pid, component)));
-    let listener = ListenerOptions::new().name(socket_name(pid, component)?).create_sync()?;
+    let listener = ListenerOptions::new()
+        .name(socket_name(pid, component)?)
+        .create_sync()?;
 
     File::create(dir.join(format!("{pid}-{}", component.to_filename())))?;
 
@@ -266,42 +268,6 @@ fn serve(
     }
 }
 
-pub fn request_shutdown_all(component: &ConfigComponent) -> usize {
-    let dir = runtime_dir();
-    let Ok(entries) = fs::read_dir(&dir) else {
-        return 0;
-    };
-
-    let suffix = format!("-{}", component.to_filename());
-    let mut asked = 0;
-
-    for entry in entries.flatten() {
-        let Some(filename) = entry.file_name().to_str().map(str::to_string) else {
-            continue;
-        };
-        let Some(pid) = filename
-            .strip_suffix(&suffix)
-            .and_then(|p| p.parse::<u32>().ok())
-        else {
-            continue;
-        };
-
-        let sent = socket_name(pid, component)
-            .and_then(Stream::connect)
-            .and_then(|mut conn| conn.write_all(&[REQ_SHUTDOWN]));
-
-        match sent {
-            Ok(()) => asked += 1,
-            // The publisher is gone, clean up after it
-            Err(_) => {
-                let _ = fs::remove_file(entry.path());
-            }
-        }
-    }
-
-    asked
-}
-
 const RESCAN: Duration = Duration::from_secs(1);
 
 pub struct StatsSubscriber {
@@ -349,6 +315,16 @@ impl StatsSubscriber {
         }
     }
 
+    pub fn shutdown_all(&mut self, component: &ConfigComponent) -> usize {
+        self.scan();
+        let suffix = format!("-{}", component.to_filename());
+        self.conns
+            .iter_mut()
+            .filter(|(name, _)| name.ends_with(&suffix))
+            .filter_map(|(_, conn)| conn.write_all(&[REQ_SHUTDOWN]).ok())
+            .count()
+    }
+
     fn scan(&mut self) {
         let dir = runtime_dir();
         let Ok(entries) = fs::read_dir(&dir) else {
@@ -372,8 +348,7 @@ impl StatsSubscriber {
                 continue;
             }
 
-            match socket_name(pid, &component).and_then(Stream::connect)
-            {
+            match socket_name(pid, &component).and_then(Stream::connect) {
                 Ok(conn) => self.conns.push((filename, conn)),
                 Err(_) => {
                     let _ = fs::remove_file(entry.path());

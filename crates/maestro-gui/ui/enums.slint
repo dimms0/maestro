@@ -19,8 +19,8 @@ export enum IntegrationStatus {
     unknown,
 }
 
-// What the daemon/driver card can do. The last two are Windows-only, where the
-// card manages the WinMM driver instead of a user service.
+// What the service and WinMM driver cards can do. The last two are for the
+// Windows-only driver card.
 export enum ServiceAction {
     repair,
     start,

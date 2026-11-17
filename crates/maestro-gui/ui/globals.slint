@@ -299,8 +299,6 @@ export global DeviceManagerState {
 // from the config, so it holds no dirty/save state: each action runs a system
 // command on a worker thread and the whole tab is re-checked afterwards.
 export global SystemIntegrationState {
-    // Selects the WinMM driver card over the user-service card. Both arms are
-    // always compiled; this decides which one is shown.
     in-out property <bool> windows: false;
     in-out property <bool> busy: false;
 
@@ -311,6 +309,9 @@ export global SystemIntegrationState {
     // Whether maestrod is set to launch on login (systemd user unit enabled,
     // launchd RunAtLoad, or a registry Run key entry on Windows).
     in-out property <bool> autostart;
+
+    in-out property <SlintIntegrationItem> driver;
+    in-out property <bool> driver_installed: true;
 
     in-out property <SlintIntegrationItem> kdmapi;
     // True when a non-Maestro OmniMIDI owns the system library: the install and
@@ -330,6 +331,7 @@ export global SystemIntegrationState {
     callback refresh();
     callback service_action(ServiceAction);
     callback set_autostart(bool);
+    callback driver_action(ServiceAction);
     callback kdmapi_action(InstallAction);
     callback api_action(InstallAction);
     callback library_action(int, LibraryAction);
