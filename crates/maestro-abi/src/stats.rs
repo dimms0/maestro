@@ -14,12 +14,17 @@ struct Publisher {
     instances: Mutex<Vec<Weak<Shared>>>,
 }
 
+static PUBLISHER: OnceLock<Publisher> = OnceLock::new();
+
 fn publisher() -> &'static Publisher {
-    static PUBLISHER: OnceLock<Publisher> = OnceLock::new();
+    init(&format!("Maestro API - {}", process_name()))
+}
+
+fn init(name: &str) -> &'static Publisher {
     PUBLISHER.get_or_init(|| {
         let shared = SharedStats::default();
         let _ = publish(
-            &format!("Maestro API — {}", process_name()),
+            name,
             shared.clone(),
             &ConfigComponent::Api,
             PublishOptions {
@@ -43,8 +48,8 @@ pub fn set(id: usize, stats: Option<MaestroRealtimeStatistics>) {
     *publisher.shared.lock().unwrap() = live.last().map(|(_, s)| s.clone());
 }
 
-pub fn register(instance: Weak<Shared>) {
-    let mut instances = publisher().instances.lock().unwrap();
+pub fn register(instance: Weak<Shared>, name: Option<&str>) {
+    let mut instances = name.map_or_else(publisher, init).instances.lock().unwrap();
     instances.retain(|i| i.strong_count() > 0);
     instances.push(instance);
 }
