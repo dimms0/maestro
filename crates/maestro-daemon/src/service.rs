@@ -80,13 +80,16 @@ impl Service {
     fn apply_current_config(&mut self) {
         self.recreate_backend();
 
-        if self.idle_timeout().is_some() {
+        let no_devices = !self
+            .backend
+            .as_deref()
+            .is_none_or(MidiBackend::has_devices_connected);
+
+        if self.idle_timeout().is_some() || no_devices {
             self.last_activity = Instant::now();
             self.reminded = false;
             self.engine.stop(GateMode::Idle);
-            log_info!(
-                "Idle on startup enabled; the realtime engine will start on the first MIDI event"
-            );
+            log_info!("Starting idle; the realtime engine will start on the first MIDI event");
             notify::send(
                 "Maestro is available",
                 "Maestro is now visible in your apps and will load when activity is detected.",
@@ -336,7 +339,11 @@ impl Service {
             self.recreate_backend();
         }
 
-        if diff.engine && !self.engine.reload_config(&self.config) {
+        // a sleeping engine picks up the new config when it wakes
+        if diff.engine
+            && !self.engine.reload_config(&self.config)
+            && self.engine.gate().mode() != GateMode::Idle
+        {
             self.start_engine();
             return;
         }
