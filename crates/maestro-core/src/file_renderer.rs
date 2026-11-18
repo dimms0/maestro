@@ -7,7 +7,7 @@ use std::{
     thread,
 };
 
-use midi_parser::{EventRef, FileKind, MidiFile, TempoClock};
+use midi_parser::{Emit, EventRef, FileKind, MidiFile, MidiInfo, TempoMap};
 
 use crate::{
     audio_params::AudioParameters,
@@ -171,9 +171,7 @@ impl MaestroFileRenderer {
             .map_err(|e| FileRendererError::InvalidFile(format!("{e}")))?;
 
         let mut max_port = 0;
-        let mut port_maps = vec![0u8; info.track_ports.len().max(1)];
         if let PortMode::Multi { max_ports } = self.port_mode {
-            port_maps.copy_from_slice(&info.track_ports);
             max_port = info.track_ports.iter().copied().max().unwrap_or(0);
 
             if let Some(max) = max_ports {
@@ -181,82 +179,30 @@ impl MaestroFileRenderer {
             }
         }
 
-        let (snd, rcv) = crossbeam_channel::bounded(1000);
-        let midi_path = self.midi_path.clone();
+        let (port_mode, kind) = (self.port_mode, midi.kind());
+        let route = move |track_port: u8, group: u8| match (port_mode, kind) {
+            (PortMode::Single, _) => 0,
+            (PortMode::Multi { .. }, FileKind::Clip) => group.min(max_port),
+            (PortMode::Multi { .. }, FileKind::Smf) => track_port.min(max_port),
+        };
+
+        let sample_rate = self.audio_params.sample_rate;
+        let channels = u64::from(u16::from(self.audio_params.channels));
+        let window = ((self.batch_size * f64::from(sample_rate)) as u64).max(1);
+
+        // run a whole window ahead of the synth
+        let (snd, rcv) = crossbeam_channel::bounded(2);
         thread::spawn(move || {
-            let Ok(midi) = MidiFile::open(&midi_path) else {
-                return;
-            };
-            let Ok(mut merged) = midi.merged() else {
-                return;
-            };
-
-            let translator = MidiTranslator::new();
-            let mut batch = Vec::new();
-            let mut events = Vec::new();
-            let mut pending = 0u64;
-
-            while let Some(Ok((delta, track, group))) = merged.next_batch(&mut batch) {
-                pending += delta;
-
-                let mut notes = 0u64;
-                let mut tempo = None;
-                let mut port = None;
-
-                events.clear();
-                for event in &batch {
-                    match *event {
-                        EventRef::Midi(m) => {
-                            if m.kind() == 0x90 && m.data2 > 0 {
-                                notes += 1;
-                            }
-                            translator.short(0, m.as_short(), |event| events.push(event));
-                        }
-
-                        EventRef::SysEx(data) => {
-                            if let Some(id) = sysex::store(data) {
-                                events.push(MaestroEvent::SystemExclusive { id });
-                            }
-                        }
-
-                        EventRef::Meta(m) => {
-                            if let Some(micros) = m.tempo() {
-                                tempo = Some(micros);
-                            }
-                            if let Some(assigned) = m.port() {
-                                port = Some(assigned);
-                            }
-                        }
-
-                        EventRef::Ump(packet) => {
-                            if let Some(micros) = packet.tempo() {
-                                tempo = Some(micros);
-                            }
-                            translator.ump(packet.words(), |_, event| events.push(event));
-                        }
-
-                        EventRef::Escape(data) => {
-                            translator.long(0, data, |event| events.push(event));
-                        }
-                    }
-                }
-
-                let batch = RenderBatch {
-                    ticks: pending,
-                    track,
-                    group,
-                    events: std::mem::take(&mut events),
-                    counted: batch.len() as u64,
-                    notes,
-                    tempo,
-                    port,
-                };
-
-                pending = 0;
-                if snd.send(batch).is_err() {
-                    break;
-                }
-            }
+            produce(
+                &midi,
+                &info,
+                route,
+                usize::from(max_port) + 1,
+                window,
+                u64::from(sample_rate),
+                channels,
+                |w| snd.send(w).is_ok(),
+            )
         });
 
         let mut renderer = MaestroRenderer::new(
@@ -275,13 +221,7 @@ impl MaestroFileRenderer {
 
         let mut helper = RendererHelper::new(self.audio_params, renderer, encoder);
 
-        let channels = u64::from(u16::from(self.audio_params.channels));
-        let samples_per_second = self.audio_params.sample_rate as f64 * channels as f64;
-        let mut tempo = TempoClock::new(midi.division(), u64::from(self.audio_params.sample_rate));
-        let mut frames = 0;
-        let mut last_render = 0.0;
-
-        for batch in rcv {
+        for window in rcv {
             if self
                 .cancel
                 .as_ref()
@@ -290,60 +230,130 @@ impl MaestroFileRenderer {
                 return Ok(RenderOutcome::Cancelled);
             }
 
-            if let Some(port) = batch.port
-                && let Some(slot) = port_maps.get_mut(batch.track as usize)
-            {
-                *slot = port;
+            for (port, events) in window.ports.into_iter().enumerate() {
+                helper
+                    .renderer_mut()
+                    .process_timed_events(port as u8, events.into_iter())?;
             }
-
-            let port = match (self.port_mode, midi.kind()) {
-                (PortMode::Single, _) => 0,
-                (PortMode::Multi { .. }, FileKind::Clip) => batch.group.min(max_port),
-                (PortMode::Multi { .. }, FileKind::Smf) => port_maps
-                    .get(batch.track as usize)
-                    .copied()
-                    .unwrap_or(0)
-                    .min(max_port),
-            };
-
-            if let Some(micros) = batch.tempo {
-                tempo.set_tempo(micros);
-            }
-            frames += tempo.advance(batch.ticks);
-            let target = frames * channels;
-
-            helper.renderer_mut().process_timed_events(
-                port,
-                batch.events.into_iter().map(|event| MaestroTimedEvent {
-                    event,
-                    pos: target as u32,
-                }),
-            )?;
-
-            let pos = target as f64 / samples_per_second;
-            stats.set_time(pos);
-            stats.add_processed(batch.counted, batch.notes);
-
-            if pos - last_render > self.batch_size {
-                helper.render_batch(target)?;
-                last_render = pos;
-            }
+            stats.set_time(window.frames as f64 / f64::from(sample_rate));
+            stats.add_processed(window.counted, window.notes);
+            helper.render_batch(window.frames * channels)?;
         }
 
-        helper.render_batch(frames * channels)?;
         helper.finalize()?;
 
         Ok(RenderOutcome::Completed)
     }
 }
 
-struct RenderBatch {
-    ticks: u64,
-    track: u32,
-    group: u8,
-    events: Vec<MaestroEvent>,
+struct Window {
+    ports: Vec<Vec<MaestroTimedEvent>>,
+    frames: u64,
     counted: u64,
     notes: u64,
-    tempo: Option<u32>,
-    port: Option<u8>,
+}
+
+struct TrackState {
+    port: u8,
+    translator: MidiTranslator,
+    hint: usize,
+    counted: u64,
+    notes: u64,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn produce(
+    midi: &MidiFile,
+    info: &MidiInfo,
+    route: impl Fn(u8, u8) -> u8 + Copy + Sync,
+    port_count: usize,
+    window: u64,
+    sample_rate: u64,
+    channels: u64,
+    mut send: impl FnMut(Window) -> bool,
+) {
+    let map = TempoMap::new(info.division, &info.tempos, sample_rate);
+    let total = map.at(info.total_ticks);
+
+    let Ok(mut merged) = midi.merged_par(port_count, |index| TrackState {
+        port: info.track_ports[index],
+        translator: MidiTranslator::new(),
+        hint: 0,
+        counted: 0,
+        notes: 0,
+    }) else {
+        return;
+    };
+
+    let visit = |state: &mut TrackState,
+                 tick,
+                 group,
+                 event: EventRef,
+                 emit: &mut Emit<MaestroTimedEvent>| {
+        state.counted += 1;
+
+        if let EventRef::Meta(m) = event
+            && let Some(port) = m.port()
+        {
+            state.port = port;
+        }
+
+        let pos = (map.at_from(tick, &mut state.hint) * channels) as u32;
+        let port = usize::from(route(state.port, group));
+        let mut push = |event| emit.push(port, MaestroTimedEvent { event, pos });
+
+        match event {
+            EventRef::Midi(m) => {
+                if m.kind() == 0x90 && m.data2 > 0 {
+                    state.notes += 1;
+                }
+                state.translator.short(0, m.as_short(), push);
+            }
+            EventRef::SysEx(data) => {
+                if let Some(id) = sysex::store(data) {
+                    push(MaestroEvent::SystemExclusive { id });
+                }
+            }
+            EventRef::Ump(packet) => state.translator.ump(packet.words(), |_, event| push(event)),
+            EventRef::Escape(data) => state.translator.long(0, data, push),
+            // Tempo is in the map already, and ports were taken above.
+            EventRef::Meta(_) => {}
+        }
+    };
+
+    let (mut start, mut start_tick) = (0, 0);
+    loop {
+        let end = start + window;
+        let last = end >= total;
+        let end_tick = if last {
+            u64::MAX
+        } else {
+            map.first_tick_at(end, start_tick, info.total_ticks)
+        };
+
+        let Ok(ports) = merged.window(end_tick, visit) else {
+            return;
+        };
+        let (counted, notes) =
+            merged
+                .states_mut()
+                .iter_mut()
+                .fold((0, 0), |(counted, notes), state| {
+                    let sums = (counted + state.counted, notes + state.notes);
+                    (state.counted, state.notes) = (0, 0);
+                    sums
+                });
+
+        let frames = if last { total } else { end };
+        if !send(Window {
+            ports,
+            frames,
+            counted,
+            notes,
+        }) || last
+        {
+            return;
+        }
+        (start, start_tick) = (end, end_tick);
+    }
 }

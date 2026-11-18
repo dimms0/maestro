@@ -25,6 +25,8 @@ mod error;
 mod event;
 mod file;
 mod merge;
+#[cfg(feature = "parallel")]
+mod par_merge;
 mod scan;
 mod source;
 mod tempo;
@@ -37,7 +39,9 @@ pub use error::{Error, Result};
 pub use event::{EventRef, Meta, MidiMessage, meta};
 pub use file::{Division, FileKind, MidiFile, Options};
 pub use merge::{Merged, MergedEvent};
+#[cfg(feature = "parallel")]
+pub use par_merge::{Emit, ParMerged};
 pub use scan::{DEFAULT_TEMPO, MidiInfo};
-pub use tempo::TempoClock;
+pub use tempo::{TempoClock, TempoMap};
 pub use ump::Ump;
 pub use writer::{ClipWriter, SmfWriter};

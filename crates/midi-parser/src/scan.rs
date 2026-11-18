@@ -37,6 +37,9 @@ pub struct MidiInfo {
     /// Bit set of the MIDI channels in use.
     pub channels: u16,
     pub tempo_changes: usize,
+    /// Every tempo change as (tick, microseconds per quarter), in the order a
+    /// merged read meets them.
+    pub tempos: Vec<(u64, u32)>,
 }
 
 #[derive(Default)]
@@ -152,6 +155,7 @@ impl<'a> MidiFile<'a> {
             ports: 0,
             channels: 0,
             tempo_changes: 0,
+            tempos: Vec::new(),
         };
 
         // Format 2 tracks play one after another, so each is shifted to start
@@ -177,9 +181,11 @@ impl<'a> MidiFile<'a> {
             tempos.extend(scan.tempos);
         }
 
-        tempos.sort_unstable_by_key(|(tick, _)| *tick);
+        // Stable, so of several changes on one tick the last track's wins, as in a merge.
+        tempos.sort_by_key(|(tick, _)| *tick);
         info.tempo_changes = tempos.len();
         info.duration = duration(self.division(), info.total_ticks, &tempos);
+        info.tempos = tempos;
 
         info
     }
