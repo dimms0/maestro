@@ -39,11 +39,20 @@ pub fn run(args: &[String]) {
         std::process::exit(code);
     }
 
-    if !startup::is_standalone(args) && !maestro_core::ipc::try_lock_single_instance("gui") {
+    let single = !startup::is_standalone(args);
+    if single && !maestro_core::ipc::try_lock_single_instance("gui") {
+        maestro_core::ipc::request_activate("gui");
         return;
     }
 
     let ui = MainWindow::new().expect("Failed to create Slint UI");
+
+    if single {
+        let ui_weak = ui.as_weak();
+        let _ = maestro_core::ipc::listen_activate("gui", move || {
+            let _ = ui_weak.upgrade_in_event_loop(focus);
+        });
+    }
 
     let _ = slint::set_xdg_app_id("gr.dimms.maestro");
 
@@ -117,4 +126,15 @@ pub fn run(args: &[String]) {
     });
 
     ui.run().expect("Slint event loop failed");
+}
+
+fn focus(ui: MainWindow) {
+    use slint::winit_030::{WinitWindowAccessor, winit::window::UserAttentionType};
+
+    let _ = ui.show();
+    ui.window().with_winit_window(|w| {
+        w.set_minimized(false);
+        w.focus_window();
+        w.request_user_attention(Some(UserAttentionType::Critical));
+    });
 }

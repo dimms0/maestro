@@ -168,7 +168,10 @@ fn socket_file(pid: u32, component: &ConfigComponent) -> String {
 }
 
 fn socket_name(pid: u32, component: &ConfigComponent) -> io::Result<Name<'static>> {
-    let name = socket_file(pid, component);
+    local_name(socket_file(pid, component))
+}
+
+fn local_name(name: String) -> io::Result<Name<'static>> {
     // Abstract sockets skip file permissions, so any local user could connect
     #[cfg(target_os = "linux")]
     return runtime_dir().join(name).to_fs_name::<GenericFilePath>();
@@ -386,4 +389,36 @@ pub fn try_lock_single_instance(name: &str) -> bool {
         // the user from starting the application over that...
         Err(TryLockError::Error(_)) => true,
     }
+}
+
+fn activate_file(name: &str) -> String {
+    format!("maestro-{name}-activate.sock")
+}
+
+pub fn listen_activate(name: &str, on_activate: impl Fn() + Send + 'static) -> io::Result<()> {
+    let file = format!("maestro-{name}-activate.sock");
+    #[cfg(target_os = "linux")]
+    {
+        let dir = runtime_dir();
+        fs::create_dir_all(&dir)?;
+        // Holding the lock means any socket file here is stale
+        let _ = fs::remove_file(dir.join(&file));
+    }
+    let listener = ListenerOptions::new()
+        .name(local_name(file)?)
+        .create_sync()?;
+    thread::Builder::new()
+        .name("maestro-activate".to_string())
+        .spawn(move || {
+            for _ in listener.incoming().flatten() {
+                on_activate();
+            }
+        })?;
+    Ok(())
+}
+
+pub fn request_activate(name: &str) -> bool {
+    local_name(activate_file(name))
+        .and_then(Stream::connect)
+        .is_ok()
 }
