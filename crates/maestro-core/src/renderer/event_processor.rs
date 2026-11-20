@@ -257,6 +257,19 @@ impl PortEventProcessor {
                 }
             }
 
+            MaestroEvent::ControlChange { channel, param, .. }
+                if matches!(param, 120 | 123..=127) =>
+            {
+                if self.ignored_channels[channel as usize] {
+                    return None;
+                }
+
+                let row = channel as usize * 128..(channel as usize + 1) * 128;
+                self.missed_notes[row.clone()].fill(0);
+                self.held_since[row].fill(None);
+                Some(event)
+            }
+
             MaestroEvent::ControlChange { channel, .. }
             | MaestroEvent::PitchBendChange { channel, .. }
             | MaestroEvent::ChannelAftertouch { channel, .. }
