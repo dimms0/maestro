@@ -31,6 +31,6 @@ lzma-rust2 = "0.25.0"
 tempfile = "3.27.0"
 
 [features]
-default = ["parallel", "archive"]
+default = ["parallel"]
 parallel = ["dep:rayon"]
 archive = ["dep:zip", "dep:sevenz-rust2", "dep:lzma-rust2", "dep:unrar", "dep:flate2", "dep:tar", "dep:bzip2", "dep:zstd", "dep:tempfile"]
