@@ -26,6 +26,13 @@ jobs:
           components: clippy
       - if: startsWith(matrix.os, 'ubuntu')
         run: sudo apt-get update && sudo apt-get install -y libjack-jackd2-dev libpulse-dev libpipewire-0.3-dev libfontconfig1-dev pkg-config build-essential libasound2-dev libdbus-1-dev
+      - name: Fetch ASIO SDK
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/asio.zip" https://www.steinberg.net/asiosdk
+          mkdir "$RUNNER_TEMP/asio" && tar -xf "$RUNNER_TEMP/asio.zip" -C "$RUNNER_TEMP/asio"
+          echo "CPAL_ASIO_DIR=$(cygpath -m "$(echo "$RUNNER_TEMP"/asio/*/)")" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace
       # The Rust bindings' integration tests, against the library just built.
