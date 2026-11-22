@@ -20,7 +20,7 @@ jobs:
           - { os: windows-11-arm, arch: aarch64 }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -57,7 +57,7 @@ jobs:
     name: maestro-api-rs package
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: dtolnay/rust-toolchain@1.85
       - uses: Swatinem/rust-cache@v2
@@ -70,7 +70,7 @@ jobs:
     name: fetch synth libraries
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: ./packaging/fetch-libs.sh --platform linux --all
       - run: ./packaging/fetch-libs.sh --platform macos --all
       - run: ./packaging/fetch-libs.sh --platform windows --all

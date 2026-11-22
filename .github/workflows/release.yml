@@ -14,7 +14,7 @@ jobs:
     name: maestro.h
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: softprops/action-gh-release@v2
         with:
           draft: true
@@ -34,7 +34,7 @@ jobs:
             }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - run: sudo apt-get update && sudo apt-get install -y libjack-jackd2-dev libpulse-dev libpipewire-0.3-dev libfontconfig1-dev pkg-config build-essential libasound2-dev libdbus-1-dev
       - run: cargo install cargo-deb cargo-generate-rpm
@@ -66,7 +66,7 @@ jobs:
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - run: ./packaging/macos/build-app.sh --arch ${{ matrix.arch }}
       - uses: softprops/action-gh-release@v2
@@ -89,7 +89,7 @@ jobs:
       WIN_CERT_PFX_BASE64: ${{ secrets.WIN_CERT_PFX_BASE64 }}
       WIN_CERT_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - name: Install Inno Setup
         shell: pwsh

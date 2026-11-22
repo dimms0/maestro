@@ -19,7 +19,7 @@ jobs:
       id-token: write # crates.io trusted publishing
       contents: write # the GitHub release
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Check the tag matches the crate version
