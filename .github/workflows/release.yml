@@ -118,7 +118,7 @@ jobs:
         shell: bash
         run: |
           curl -fsSL -o "$RUNNER_TEMP/asio.zip" https://www.steinberg.net/asiosdk
-          mkdir "$RUNNER_TEMP/asio" && tar -xf "$RUNNER_TEMP/asio.zip" -C "$RUNNER_TEMP/asio"
+          mkdir "$RUNNER_TEMP/asio" && "$SYSTEMROOT/System32/tar.exe" -xf "$RUNNER_TEMP/asio.zip" -C "$RUNNER_TEMP/asio"
           echo "CPAL_ASIO_DIR=$(cygpath -m "$(echo "$RUNNER_TEMP"/asio/*/)")" >> "$GITHUB_ENV"
       - run: ./packaging/windows/build-installer.sh --arch ${{ matrix.arch }}
         shell: bash
