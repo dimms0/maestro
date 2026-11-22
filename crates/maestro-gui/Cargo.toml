@@ -33,7 +33,7 @@ slint = { version = "~1.18", default-features = false, features = [
     "system-tray",
     "renderer-skia",
 ] }
-rfd = "0.17"
+rfd = "0.18"
 libloading = "0.9"
 ureq = { version = "3", optional = true, features = ["json"] }
 

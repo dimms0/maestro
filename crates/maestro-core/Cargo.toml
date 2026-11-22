@@ -33,7 +33,7 @@ anyhow = "1"
 notify = { version = "8.0", optional = true }
 
 flacenc = { version = "0.5", optional = true }
-mp3lame-encoder = { version = "0.2", optional = true }
+mp3lame-encoder = { version = "0.3", optional = true }
 vorbis_rs = { version = "0.5", optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
