@@ -59,10 +59,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
-      - uses: dtolnay/rust-toolchain@1.85
+      - uses: dtolnay/rust-toolchain@1.88
       - uses: Swatinem/rust-cache@v2
       - run: cargo package -p maestro-api-rs --locked
-      - run: cargo +1.85 check -p maestro-api-rs --all-targets --locked
+      - run: cargo +1.88 check -p maestro-api-rs --all-targets --locked
 
   # Catches upstream layout or URL changes in the synth libraries the
   # installers download, before a release build trips over them.
