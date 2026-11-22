@@ -164,6 +164,8 @@ pub struct AppData {
     pub selected_config_idx: i32,
 
     pub render_queue: Vec<crate::SlintMidiRenderEntry>,
+    /// Archives holding several MIDIs, waiting for the picker in turn.
+    pub pending_archives: Vec<(std::path::PathBuf, Vec<String>)>,
     pub available_sflists: Vec<String>,
 
     pub audio: AudioDeviceCache,

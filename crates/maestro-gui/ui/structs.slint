@@ -281,7 +281,14 @@ export struct SlintComponentStats {
 
 export struct SlintMidiRenderEntry {
     midi_path: string,
+    // The MIDI inside the archive at midi_path, or "" for a plain MIDI file.
+    entry: string,
     sflist_name: string,
+}
+
+export struct SlintArchiveEntry {
+    name: string,
+    checked: bool,
 }
 
 // A single MIDI currently being scanned or rendered. Shown as one row in the

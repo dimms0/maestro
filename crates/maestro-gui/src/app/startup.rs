@@ -62,6 +62,7 @@ fn empty(standalone_mode: StandaloneMode) -> AppData {
         config_files: Vec::new(),
         selected_config_idx: -1,
         render_queue: Vec::new(),
+        pending_archives: Vec::new(),
         available_sflists: Vec::new(),
         audio: Default::default(),
         standalone_mode,

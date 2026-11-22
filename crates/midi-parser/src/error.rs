@@ -30,6 +30,12 @@ pub enum Error {
 
     #[error("event has no equivalent in the target format")]
     Unrepresentable,
+
+    #[error("archive: {0}")]
+    Archive(String),
+
+    #[error("\"{0}\" is not in the archive")]
+    NotInArchive(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

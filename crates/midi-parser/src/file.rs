@@ -91,6 +91,16 @@ impl MidiFile<'static> {
     pub fn load_with(path: impl AsRef<Path>, options: Options) -> Result<Self> {
         Self::build(Source::read(path.as_ref())?, options)
     }
+
+    /// Opens `entry` (a name from [`crate::archive::list`]) from an archive or
+    /// compressed file, decompressed into a mapped temp file.
+    #[cfg(feature = "archive")]
+    pub fn open_entry(path: impl AsRef<Path>, entry: &str) -> Result<Self> {
+        Self::build(
+            crate::archive::open(path.as_ref(), entry)?,
+            Options::default(),
+        )
+    }
 }
 
 impl<'a> MidiFile<'a> {

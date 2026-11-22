@@ -64,8 +64,13 @@ impl ConverterRenderSettings {
     fn build_renderer(
         &self,
         entry: &SlintMidiRenderEntry,
+        midi: midi_parser::Result<MidiFile<'static>>,
     ) -> Result<MaestroFileRenderer, Box<dyn std::error::Error>> {
         let midi_path = PathBuf::from(entry.midi_path.as_str());
+        let name = match entry.entry.as_str() {
+            "" => midi_path.file_name().unwrap_or_default().to_string_lossy().into_owned(),
+            entry => entry.to_string(),
+        };
         let output_dir = self
             .output_dir_override
             .clone()
@@ -81,6 +86,7 @@ impl ConverterRenderSettings {
             &midi_path,
             output_dir,
         )?
+        .with_midi(midi?, name)
         .with_output_settings(self.output);
 
         if let Some(ep) = &self.event_processor {
@@ -143,25 +149,28 @@ impl RenderRun<'_> {
 
         let job_id = idx as u64;
         set_entry_status(self.ui, idx, RenderStatus::Rendering);
-        self.registry
-            .push(RenderJob::scanning(job_id, entry.midi_path.to_string()));
+        self.registry.push(RenderJob::scanning(job_id, label(entry)));
 
-        let total_pos = self.scan(entry, job_id);
+        let midi = match entry.entry.as_str() {
+            "" => MidiFile::open(entry.midi_path.as_str()),
+            name => MidiFile::open_entry(entry.midi_path.as_str(), name),
+        };
+        let total_pos = self.scan(midi.as_ref().ok(), job_id);
         if self.cancelled() {
             set_entry_status(self.ui, idx, RenderStatus::Pending);
             self.registry.remove(job_id);
             return false;
         }
 
-        let keep_going = self.render(idx, entry, job_id, total_pos);
+        let keep_going = self.render(idx, entry, midi, job_id, total_pos);
         self.registry.remove(job_id);
         keep_going && !self.cancelled()
     }
 
-    fn scan(&self, entry: &SlintMidiRenderEntry, job_id: u64) -> f64 {
+    fn scan(&self, midi: Option<&MidiFile>, job_id: u64) -> f64 {
         let registry = self.registry.clone();
         midi_total_pos(
-            Path::new(entry.midi_path.as_str()),
+            midi,
             self.cancel,
             move |done, total| {
                 let stats = format!("Scanning… track {done} of {total}");
@@ -174,6 +183,7 @@ impl RenderRun<'_> {
         &self,
         idx: usize,
         entry: &SlintMidiRenderEntry,
+        midi: midi_parser::Result<MidiFile<'static>>,
         job_id: u64,
         total_pos: f64,
     ) -> bool {
@@ -184,7 +194,7 @@ impl RenderRun<'_> {
             j.stats = "Starting render…".to_string();
         });
 
-        let renderer = match self.settings.build_renderer(entry) {
+        let renderer = match self.settings.build_renderer(entry, midi) {
             Ok(renderer) => renderer,
             Err(e) => {
                 set_entry_status(self.ui, idx, RenderStatus::Failed);
@@ -192,7 +202,7 @@ impl RenderRun<'_> {
                     ERROR_TITLE,
                     format!(
                         "Could not set up the renderer for \"{}\":\n\n{e}",
-                        entry.midi_path
+                        label(entry)
                     ),
                 );
                 return true;
@@ -240,7 +250,7 @@ impl RenderRun<'_> {
                 set_entry_status(self.ui, idx, RenderStatus::Failed);
                 errors::report(
                     ERROR_TITLE,
-                    format!("Failed to render \"{}\":\n\n{e}", entry.midi_path),
+                    format!("Failed to render \"{}\":\n\n{e}", label(entry)),
                 );
                 true
             }
@@ -285,12 +295,19 @@ fn eta(elapsed: f64, frac: f64) -> f64 {
     }
 }
 
+fn label(entry: &SlintMidiRenderEntry) -> String {
+    match entry.entry.as_str() {
+        "" => entry.midi_path.to_string(),
+        name => format!("{} › {name}", entry.midi_path),
+    }
+}
+
 fn midi_total_pos(
-    midi_path: &Path,
+    midi: Option<&MidiFile>,
     cancel: &AtomicBool,
     on_progress: impl Fn(usize, usize) + Sync,
 ) -> f64 {
-    let Ok(midi) = MidiFile::open(midi_path) else {
+    let Some(midi) = midi else {
         return 1.0;
     };
 

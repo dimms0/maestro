@@ -6,6 +6,7 @@ import {
     Icons,
     LabelText,
     BodyText,
+    MaestroMarqueeText,
 } from "../../widgets.slint";
 import { RendererState } from "../../globals.slint";
 import { RenderStatus } from "../../enums.slint";
@@ -57,10 +58,9 @@ component QueueRow inherits Rectangle {
             alignment: center;
             horizontal-stretch: 1;
 
-            BodyText {
-                text: root.entry.midi_path;
-                font-size: 13px;
-                overflow: elide;
+            MaestroMarqueeText {
+                text: root.entry.entry == "" ? root.entry.midi_path : root.entry.midi_path + " › " + root.entry.entry;
+                text-font-size: 13px;
             }
         }
 
@@ -152,6 +152,7 @@ export component RenderQueueTable inherits VerticalLayout {
 
             if (RendererState.render_queue.length == 0): Rectangle {
                 height: 100px;
+
                 LabelText {
                     text: "Queue is empty. Add MIDI files below, or drop them onto the window.";
                     font-size: 14px;

@@ -51,3 +51,10 @@
   codecs it is built with are BSD-licensed (Xiph.Org Foundation) and are
   linked into it. The license text ships next to the library as
   `libsndfile-LICENSE.txt`.
+
+- **UnRAR** — Copyright Alexander Roshal (https://www.rarlab.com). Compiled
+  in through the `unrar` crate, whose vendored C++ source opens RAR archives
+  in the file renderer. The UnRAR license permits free use and redistribution
+  of the source and binaries for extracting archives, but forbids using it to
+  re-create the RAR compression algorithm. Full text: `license.txt` in the
+  `unrar_sys` crate's `vendor/unrar` folder.

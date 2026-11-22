@@ -7,11 +7,13 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use slint::{ComponentHandle, Global, ModelRc, VecModel};
+use slint::{ComponentHandle, Global, Model, ModelRc, VecModel};
 
 use crate::{
-    MainWindow, RenderStatus, RendererState, SlintMidiRenderEntry, SlintRenderJob, actions,
+    MainWindow, RenderStatus, RendererState, SlintArchiveEntry, SlintMidiRenderEntry,
+    SlintRenderJob, actions,
     app::AppContext,
+    errors,
     state::{AppData, ConfigComponent, index_of},
     sync::sync_renderer_to_slint,
 };
@@ -19,20 +21,26 @@ use crate::{
 use jobs::JobRegistry;
 use worker::{ConverterRenderSettings, RenderRun};
 
-const MIDI_FILTER: [&str; 6] = ["mid", "MID", "midi", "kar", "rmi", "midi2"];
+pub const MIDI_FILTER: [&str; 17] = [
+    "mid", "MID", "midi", "kar", "rmi", "midi2", "zip", "7z", "rar", "tar", "gz", "tgz", "xz",
+    "txz", "bz2", "tbz2", "zst",
+];
+
+const ARCHIVE_ERROR: &str = "Could Not Open Archive";
 
 pub fn clear_entry_statuses(ui: &MainWindow) {
     RendererState::get(ui)
         .set_render_statuses(ModelRc::new(VecModel::from(Vec::<RenderStatus>::new())));
 }
 
-pub fn queue_midis(ui: &MainWindow, data: &mut AppData, paths: Vec<PathBuf>) {
+fn queue_entries(ui: &MainWindow, data: &mut AppData, entries: Vec<(PathBuf, String)>) {
     let sflist = data.converter_default_sflist();
-    let entries: Vec<_> = paths
+    let entries: Vec<_> = entries
         .iter()
-        .filter_map(|p| p.to_str())
-        .map(|p| SlintMidiRenderEntry {
+        .filter_map(|(p, entry)| p.to_str().map(|p| (p, entry)))
+        .map(|(p, entry)| SlintMidiRenderEntry {
             midi_path: p.into(),
+            entry: entry.into(),
             sflist_name: sflist.as_str().into(),
         })
         .collect();
@@ -42,6 +50,37 @@ pub fn queue_midis(ui: &MainWindow, data: &mut AppData, paths: Vec<PathBuf>) {
     data.render_queue.extend(entries);
     clear_entry_statuses(ui);
     sync_renderer_to_slint(ui, data);
+}
+
+pub fn queue_midis(ui: &MainWindow, data: &mut AppData, paths: Vec<PathBuf>) {
+    let mut entries = Vec::new();
+    for path in paths {
+        match midi_parser::archive::list(&path) {
+            Ok(None) => entries.push((path, String::new())),
+            Ok(Some(mut names)) if names.len() == 1 => entries.push((path, names.remove(0))),
+            Ok(Some(names)) if names.is_empty() => {
+                errors::report(ARCHIVE_ERROR, format!("\"{}\" holds no MIDI file.", path.display()));
+            }
+            Ok(Some(names)) => data.pending_archives.push((path, names)),
+            Err(e) => errors::report(ARCHIVE_ERROR, format!("\"{}\":\n\n{e}", path.display())),
+        }
+    }
+    queue_entries(ui, data, entries);
+    if RendererState::get(ui).get_archive_path().is_empty() {
+        show_next_archive(ui, data);
+    }
+}
+
+fn show_next_archive(ui: &MainWindow, data: &mut AppData) {
+    let state = RendererState::get(ui);
+    let (path, names) = match data.pending_archives.first() {
+        Some((path, names)) => (path.to_string_lossy().as_ref().into(), names.clone()),
+        None => (Default::default(), Vec::new()),
+    };
+    let entries: Vec<_> =
+        names.into_iter().map(|name| SlintArchiveEntry { name: name.into(), checked: true }).collect();
+    state.set_archive_entries(ModelRc::new(VecModel::from(entries)));
+    state.set_archive_path(path);
 }
 
 pub fn setup(ui: &MainWindow, cx: &AppContext) {
@@ -54,6 +93,26 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
         // The dialog is modal, so pick before borrowing the app data.
         let paths = actions::pick_files("MIDI", &MIDI_FILTER);
         c.with(|ui, data| queue_midis(ui, data, paths));
+    });
+
+    let c = cx.clone();
+    state.on_close_archive_picker(move |queue| {
+        c.with(|ui, data| {
+            if data.pending_archives.is_empty() {
+                return;
+            }
+            let (path, _) = data.pending_archives.remove(0);
+            if queue {
+                let entries = RendererState::get(ui)
+                    .get_archive_entries()
+                    .iter()
+                    .filter(|e| e.checked)
+                    .map(|e| (path.clone(), e.name.to_string()))
+                    .collect();
+                queue_entries(ui, data, entries);
+            }
+            show_next_archive(ui, data);
+        });
     });
 
     let c = cx.clone();

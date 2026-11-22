@@ -16,7 +16,21 @@ categories.workspace = true
 memmap2 = "0.9"
 thiserror = "2.0"
 rayon = { version = "1.12", optional = true }
+zip = { version = "9.8.1", default-features = false, features = ["deflate", "bzip2", "zstd", "lzma"], optional = true }
+sevenz-rust2 = { version = "0.25.0", default-features = false, features = ["bzip2", "deflate", "zstd", "ppmd"], optional = true }
+lzma-rust2 = { version = "0.25.0", default-features = false, features = ["std", "xz"], optional = true }
+unrar = { version = "0.5.8", optional = true }
+flate2 = { version = "1.1.11", optional = true }
+tar = { version = "0.4.46", optional = true }
+bzip2 = { version = "0.6.1", optional = true }
+zstd = { version = "0.14.4", optional = true }
+tempfile = { version = "3.27.0", optional = true }
+
+[dev-dependencies]
+lzma-rust2 = "0.25.0"
+tempfile = "3.27.0"
 
 [features]
-default = ["parallel"]
+default = ["parallel", "archive"]
 parallel = ["dep:rayon"]
+archive = ["dep:zip", "dep:sevenz-rust2", "dep:lzma-rust2", "dep:unrar", "dep:flate2", "dep:tar", "dep:bzip2", "dep:zstd", "dep:tempfile"]

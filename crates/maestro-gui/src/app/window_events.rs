@@ -13,7 +13,6 @@ use crate::{
 };
 use maestro_core::soundfont::SoundFont;
 
-const MIDI_EXTENSIONS: [&str; 4] = ["mid", "midi", "kar", "rmi"];
 const SOUNDFONT_EXTENSIONS: [&str; 3] = ["sf2", "sf3", "sfz"];
 
 pub fn setup(ui: &MainWindow, cx: &AppContext) {
@@ -41,7 +40,7 @@ fn handle_drop(ui: &MainWindow, data: &mut AppData, path: &Path) {
         .map(|e| e.to_ascii_lowercase())
         .unwrap_or_default();
 
-    if MIDI_EXTENSIONS.contains(&ext.as_str()) {
+    if renderer::MIDI_FILTER.contains(&ext.as_str()) {
         queue_midi(ui, data, path);
     } else if SOUNDFONT_EXTENSIONS.contains(&ext.as_str()) {
         add_soundfont(ui, data, path);

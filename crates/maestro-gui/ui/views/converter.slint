@@ -11,7 +11,7 @@ import {
 } from "../widgets.slint";
 import { RendererState } from "../globals.slint";
 import { RenderQueueTable } from "converter/queue.slint";
-import { RenderProgressModal } from "converter/modals.slint";
+import { RenderProgressModal, ArchivePickerModal } from "converter/modals.slint";
 import { ScrollView } from "std-widgets.slint";
 
 // Banner shown while the converter config has in-memory edits: a render loads
@@ -130,4 +130,5 @@ export component RendererView inherits Rectangle {
     }
 
     if (RendererState.is_rendering): RenderProgressModal { }
+    if (RendererState.archive_path != ""): ArchivePickerModal { }
 }

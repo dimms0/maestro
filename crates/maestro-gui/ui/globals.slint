@@ -30,6 +30,7 @@ import {
     SlintConverterCustom,
     SlintSystemCustom,
     SlintMidiRenderEntry,
+    SlintArchiveEntry,
     SlintRenderJob,
     SlintErrorDialog,
     SlintIntegrationItem,
@@ -240,12 +241,17 @@ export global RendererState {
     // Per-queue-entry status, parallel to `render_queue`. Empty when no render
     // has been started for the current queue contents.
     in-out property <[RenderStatus]> render_statuses;
+    // The archive whose MIDIs the picker offers, or "" when it is closed.
+    in-out property <string> archive_path;
+    in-out property <[SlintArchiveEntry]> archive_entries;
 
     // Opens a multi-select file dialog and queues every picked MIDI with the
     // converter's default SoundFont list.
     callback add_midis();
     callback remove_midi_from_queue(int);
     callback update_midi_sflist(int, string);
+    // Closes the archive picker, queueing the checked entries when `queue`.
+    callback close_archive_picker(bool);
     callback start_render();
     callback cancel_render();
     callback open_converter_settings();

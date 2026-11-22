@@ -57,6 +57,7 @@ pub struct MaestroFileRenderer {
     audio_params: AudioParameters,
     soundfonts: SoundFontList,
     midi_path: PathBuf,
+    midi: Option<(MidiFile<'static>, String)>,
     output_dir: PathBuf,
     output_file: Option<PathBuf>,
     output: OutputSettings,
@@ -90,6 +91,7 @@ impl MaestroFileRenderer {
             config,
             soundfonts,
             midi_path,
+            midi: None,
             output_dir,
             output_file: None,
             output: OutputSettings::default(),
@@ -115,6 +117,13 @@ impl MaestroFileRenderer {
     pub fn with_output_file(self, path: impl Into<PathBuf>) -> Self {
         Self {
             output_file: Some(path.into()),
+            ..self
+        }
+    }
+
+    pub fn with_midi(self, midi: MidiFile<'static>, name: impl Into<String>) -> Self {
+        Self {
+            midi: Some((midi, name.into())),
             ..self
         }
     }
@@ -152,8 +161,11 @@ impl MaestroFileRenderer {
         let audio_path = match &self.output_file {
             Some(path) => path.clone(),
             None => {
-                let stem = self
-                    .midi_path
+                let name = self
+                    .midi
+                    .as_ref()
+                    .map_or(self.midi_path.as_path(), |(_, n)| Path::new(n));
+                let stem = name
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("output");
@@ -162,9 +174,12 @@ impl MaestroFileRenderer {
             }
         };
 
-        let midi = MidiFile::open(&self.midi_path).map_err(|e| {
-            FileRendererError::InvalidFile(format!("{}: {e}", self.midi_path.display()))
-        })?;
+        let midi = match self.midi {
+            Some((midi, _)) => midi,
+            None => MidiFile::open(&self.midi_path).map_err(|e| {
+                FileRendererError::InvalidFile(format!("{}: {e}", self.midi_path.display()))
+            })?,
+        };
 
         let info = midi
             .scan()

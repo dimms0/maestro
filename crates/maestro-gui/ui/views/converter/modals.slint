@@ -7,6 +7,9 @@ import {
     TitleText,
     LabelText,
     BodyText,
+    MaestroCheckBox,
+    ModalOverlay,
+    ModalActions,
 } from "../../widgets.slint";
 import { RendererState } from "../../globals.slint";
 import { RenderPhase } from "../../enums.slint";
@@ -144,6 +147,46 @@ export component RenderProgressModal inherits Rectangle {
                     clicked => { RendererState.cancel_render(); }
                 }
             }
+        }
+    }
+}
+
+// Picks which of an archive's MIDI files to queue.
+export component ArchivePickerModal inherits ModalOverlay {
+    title: "Choose MIDI Files";
+    card_width: 480px;
+    content_spacing: 16px;
+
+    dismissed => { RendererState.close_archive_picker(false); }
+
+    LabelText {
+        text: RendererState.archive_path;
+        font-size: 13px;
+        overflow: elide;
+    }
+
+    ScrollView {
+        height: min(320px, RendererState.archive_entries.length * 32px);
+        VerticalLayout {
+            spacing: 8px;
+            for e[i] in RendererState.archive_entries: MaestroCheckBox {
+                text: e.name;
+                checked: e.checked;
+                toggled(c) => { RendererState.archive_entries[i].checked = c; }
+            }
+        }
+    }
+
+    ModalActions {
+        MaestroButton {
+            text: "Cancel";
+            clicked => { RendererState.close_archive_picker(false); }
+        }
+
+        MaestroButton {
+            text: "Queue";
+            primary: true;
+            clicked => { RendererState.close_archive_picker(true); }
         }
     }
 }

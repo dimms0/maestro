@@ -19,6 +19,8 @@
 //! # Ok::<(), midi_parser::Error>(())
 //! ```
 
+#[cfg(feature = "archive")]
+pub mod archive;
 pub mod convert;
 mod cursor;
 mod error;
