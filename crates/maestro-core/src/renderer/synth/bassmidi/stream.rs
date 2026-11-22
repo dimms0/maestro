@@ -184,7 +184,7 @@ impl BASSMIDIStream {
             (lib.bass.BASS_ChannelSetAttribute)(
                 stream,
                 BASS_ATTRIB_MIDI_KILL,
-                if config.fade_out_killing { 1.0 } else { 0.0 },
+                if config.fade_out_killing { 0.0 } else { 1.0 },
             );
             (lib.bass.BASS_ChannelSetAttribute)(
                 stream,
