@@ -6,4 +6,4 @@ mod synth;
 
 pub(crate) use library::BASSMIDILib;
 pub(crate) use stream::BASSMIDIStream;
-pub(crate) use synth::BASSMIDISynth;
+pub(crate) use synth::{BASSMIDISynth, parallel_threads};

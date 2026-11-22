@@ -18,7 +18,7 @@ pub struct ComponentProfile {
     pub has_renderer: bool,
     pub has_event_processor: bool,
     pub has_post_processor: bool,
-    pub has_port_threads: bool,
+    pub has_multiple_ports: bool,
 }
 
 impl ComponentProfile {
@@ -33,7 +33,7 @@ impl ComponentProfile {
             has_renderer: true,
             has_event_processor: true,
             has_post_processor: true,
-            has_port_threads: true,
+            has_multiple_ports: true,
         };
         match kind {
             ConfigComponent::Converter => ComponentProfile {
@@ -51,7 +51,7 @@ impl ComponentProfile {
             ConfigComponent::KDMAPI => ComponentProfile {
                 has_audio_params: true,
                 has_realtime: true,
-                has_port_threads: false,
+                has_multiple_ports: false,
                 ..base
             },
             ConfigComponent::Api => ComponentProfile {

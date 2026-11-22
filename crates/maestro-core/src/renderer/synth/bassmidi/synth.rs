@@ -24,7 +24,7 @@ pub(crate) struct BASSMIDISynth {
 
     divisor: usize,
     kbdiv: usize,
-    threadpool: Option<rayon::ThreadPool>,
+    parallel: bool,
     config: BASSMIDIConfig,
 }
 
@@ -36,38 +36,16 @@ impl BASSMIDISynth {
     ) -> Result<Self, RendererError> {
         let mut streams = Vec::new();
 
-        let kbdiv;
-        let instances;
-        let threadpool;
-
-        if let Some(mtcfg) = config.multithreading
-            && (mtcfg.thread_count > 1 || mtcfg.thread_count == 0)
-        {
-            let threads = if mtcfg.thread_count == 0 {
-                std::thread::available_parallelism()
-                    .map(|v| v.get())
-                    .unwrap_or(4)
-            } else {
-                mtcfg.thread_count.min(128) as usize
-            };
-
-            kbdiv = if mtcfg.divide_channels {
-                threads / 16
-            } else {
-                0
-            };
-            instances = if kbdiv > 0 { 16 * kbdiv } else { threads };
-
-            threadpool = Some(
-                rayon::ThreadPoolBuilder::new()
-                    .num_threads(threads)
-                    .build()?,
-            );
+        let threads = parallel_threads(config);
+        let kbdiv = match config.multithreading {
+            Some(mtcfg) if mtcfg.divide_channels => threads / 16,
+            _ => 0,
+        };
+        let instances = if kbdiv > 0 {
+            16 * kbdiv
         } else {
-            kbdiv = 0;
-            instances = 1;
-            threadpool = None;
-        }
+            threads.max(1)
+        };
 
         for i in 0..instances {
             let stream_config = split_voices(config, i, instances);
@@ -85,9 +63,19 @@ impl BASSMIDISynth {
             buffers: vec![Vec::new(); instances].into_boxed_slice(),
             divisor: if kbdiv == 0 { instances } else { kbdiv },
             kbdiv,
-            threadpool,
+            parallel: threads > 1,
             config: *config,
         })
+    }
+}
+
+pub(crate) fn parallel_threads(config: &BASSMIDIConfig) -> usize {
+    match config.multithreading.map(|m| m.thread_count) {
+        None | Some(1) => 0,
+        Some(0) => std::thread::available_parallelism()
+            .map(|v| v.get())
+            .unwrap_or(4),
+        Some(count) => count.min(128) as usize,
     }
 }
 
@@ -177,27 +165,22 @@ impl SynthModule for BASSMIDISynth {
     fn read_audio(&mut self, buffer: &mut [f32]) {
         let render_len = buffer.len();
 
-        if let Some(pool) = &self.threadpool {
-            let streams = &mut self.streams;
-            let buffers = &mut self.buffers;
-            let priority = Priority::current().filter(|_| self.config.realtime_priority);
+        if self.parallel {
+            let priority = Priority::current();
+            self.streams
+                .par_iter_mut()
+                .zip(self.buffers.par_iter_mut())
+                .for_each(|(s, b)| {
+                    if let Some(priority) = priority {
+                        priority.promote();
+                    }
+                    prepapre_cache_vec(b, render_len, 0.0);
+                    s.read_audio(b);
+                });
 
-            pool.install(|| {
-                streams
-                    .par_iter_mut()
-                    .zip(buffers.par_iter_mut())
-                    .for_each(|(s, b)| {
-                        if let Some(priority) = priority {
-                            priority.promote();
-                        }
-                        prepapre_cache_vec(b, render_len, 0.0);
-                        s.read_audio(b);
-                    });
-
-                for buf in buffers.iter_mut() {
-                    sum_buffer(buf, buffer);
-                }
-            });
+            for buf in self.buffers.iter_mut() {
+                sum_buffer(buf, buffer);
+            }
         } else {
             self.streams[0].read_audio(buffer);
         }

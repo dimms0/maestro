@@ -7,14 +7,14 @@ use crate::{
     helpers::{prepapre_cache_vec, sum_buffer},
     realtime::priority::Priority,
     renderer::{
-        config::{EventProcessorConfig, PostProcessorConfig, RendererConfig, SynthConfig},
+        config::{EventProcessorConfig, PostProcessorConfig, RenderThreads, RendererConfig, SynthConfig},
         event_processor::PortEventProcessor,
         port::{PortRenderer, PortSynthManager},
         post_processor::AudioPostProcessor,
         sender::PortEventSender,
         synth::{
             SoundFontHandle, SynthLibrary,
-            bassmidi::{BASSMIDILib, BASSMIDISynth},
+            bassmidi::{BASSMIDILib, BASSMIDISynth, parallel_threads},
             fluidsynth::{FluidSynthLib, FluidSynthSynth},
             kestrel::{KestrelLib, KestrelSynth},
             svms::{SVMSLib, SVMSSynth},
@@ -136,7 +136,7 @@ impl MaestroRenderer {
         let audio_dur_div =
             audio_params.sample_rate as f32 * u16::from(audio_params.channels) as f32;
 
-        let threadpool = build_threadpool(config.port_threads, port_count as usize)?;
+        let threadpool = build_threadpool(pool_threads(&config, port_count as usize))?;
         let post_proc = postproc
             .map(|c| AudioPostProcessor::new(c, audio_params))
             .transpose()?;
@@ -352,8 +352,14 @@ impl MaestroRenderer {
             return Ok(false);
         }
 
-        if config.port_threads != self.config.port_threads {
-            self.threadpool = build_threadpool(config.port_threads, self.ports.len())?;
+        let threads = pool_threads(&config, self.ports.len());
+        if threads
+            != self
+                .threadpool
+                .as_ref()
+                .map_or(1, |p| p.current_num_threads())
+        {
+            self.threadpool = build_threadpool(threads)?;
         }
 
         if postproc != self.postproc {
@@ -378,6 +384,11 @@ impl MaestroRenderer {
         Ok(true)
     }
 
+    pub(crate) fn rebuild_threadpool(&mut self) -> Result<(), RendererError> {
+        self.threadpool = build_threadpool(pool_threads(&self.config, self.ports.len()))?;
+        Ok(())
+    }
+
     pub fn get_statistics(&self) -> Arc<MaestroRenderStatistics> {
         self.stats.clone()
     }
@@ -391,16 +402,20 @@ impl MaestroRenderer {
     }
 }
 
-fn build_threadpool(
-    threads: Option<usize>,
-    port_count: usize,
-) -> Result<Option<rayon::ThreadPool>, RendererError> {
-    match threads {
-        Some(threads) if threads > 1 => Ok(Some(
-            rayon::ThreadPoolBuilder::new()
-                .num_threads(threads.min(port_count))
-                .build()?,
-        )),
-        _ => Ok(None),
-    }
+fn pool_threads(config: &RendererConfig, port_count: usize) -> usize {
+    let synth = match &config.synth {
+        SynthConfig::BASSMIDI(cfg) => parallel_threads(cfg),
+        _ => 0,
+    };
+    let ports = match config.render_threads {
+        RenderThreads::Auto => std::thread::available_parallelism().map_or(1, |n| n.get()),
+        RenderThreads::Fixed(threads) => threads,
+    };
+    ports.min(port_count).max(synth)
+}
+
+fn build_threadpool(threads: usize) -> Result<Option<rayon::ThreadPool>, RendererError> {
+    Ok((threads > 1)
+        .then(|| rayon::ThreadPoolBuilder::new().num_threads(threads).build())
+        .transpose()?)
 }

@@ -19,7 +19,7 @@ use maestro_core::{
     renderer::{
         SynthAvailability,
         config::{
-            EventProcessorConfig, RendererConfig, SynthConfig, bassmidi::BASSMIDIConfig,
+            EventProcessorConfig, RenderThreads, RendererConfig, SynthConfig, bassmidi::BASSMIDIConfig,
             fluidsynth::FluidSynthConfig,
         },
     },
@@ -380,7 +380,7 @@ fn file_render(c: &mut Criterion) {
 
     let base = RendererConfig {
         synth: rig.synth,
-        port_threads: None,
+        render_threads: RenderThreads::Fixed(1),
     };
 
     let generated: Vec<(&Workload, PathBuf, u64)> = WORKLOADS
@@ -432,7 +432,7 @@ fn file_render(c: &mut Criterion) {
 
     if let Some((_, path, events)) = generated.iter().find(|(w, ..)| w.name == "multi_port") {
         let threaded = RendererConfig {
-            port_threads: Some(4),
+            render_threads: RenderThreads::Fixed(4),
             ..base
         };
 

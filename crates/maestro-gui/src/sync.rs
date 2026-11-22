@@ -14,6 +14,7 @@ use crate::{
 use maestro_core::{
     audio_params::{COMMON_SAMPLE_RATES, ChannelCount},
     realtime::UMP_GROUPS,
+    renderer::config::RenderThreads,
 };
 use slint::{Global, Model, ModelRc, SharedString, VecModel};
 
@@ -293,8 +294,11 @@ pub fn build_slint_component_config(state: &AppData) -> Option<SlintComponentCon
 
         has_renderer: p.has_renderer,
         renderer: SlintRendererConfig {
-            port_threads: file.renderer.port_threads.unwrap_or(rem.port_threads) as i32,
-            has_port_threads: file.renderer.port_threads.is_some(),
+            auto_threads: file.renderer.render_threads == RenderThreads::Auto,
+            threads: match file.renderer.render_threads {
+                RenderThreads::Auto => rem.render_threads,
+                RenderThreads::Fixed(threads) => threads,
+            } as i32,
         },
 
         synth: synth_to_slint(&file.renderer.synth, rem),
@@ -303,7 +307,7 @@ pub fn build_slint_component_config(state: &AppData) -> Option<SlintComponentCon
         has_post_processor: file.has_post_processor,
         post_processor: postproc_to_slint(&file.post_processor, rem),
 
-        has_port_threads: p.has_port_threads,
+        has_multiple_ports: p.has_multiple_ports,
         has_converter_options: p.has_converter_options(),
         has_device_options: p.has_device_options(),
         converter_custom: converter_custom_to_slint(&file.converter_custom),

@@ -10,5 +10,13 @@ pub use synth::*;
 #[serde(default)]
 pub struct RendererConfig {
     pub synth: SynthConfig,
-    pub port_threads: Option<usize>,
+    pub render_threads: RenderThreads,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RenderThreads {
+    #[default]
+    Auto,
+    Fixed(usize),
 }

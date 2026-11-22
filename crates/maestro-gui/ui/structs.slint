@@ -52,8 +52,8 @@ export struct SlintRealtimeConfig {
 }
 
 export struct SlintRendererConfig {
-    port_threads: int,
-    has_port_threads: bool,
+    auto_threads: bool,
+    threads: int,
 }
 
 // Union of every synthesizer's parameters. Only the fields for the active
@@ -96,7 +96,6 @@ export struct SlintSynthConfig {
     bass_custom_thread_count: bool,
     bass_thread_count: int,
     bass_divide_channels: bool,
-    bass_realtime_priority: bool,
     bass_disable_effects: bool,
     bass_fade_out_killing: bool,
     bass_note_off1: bool,
@@ -239,7 +238,7 @@ export struct SlintComponentConfig {
     // Which component-specific panels the editor shows. Derived from the
     // component profile on the Rust side so the view never has to know which
     // component it is looking at.
-    has_port_threads: bool,
+    has_multiple_ports: bool,
     has_converter_options: bool,
     has_device_options: bool,
     converter_custom: SlintConverterCustom,

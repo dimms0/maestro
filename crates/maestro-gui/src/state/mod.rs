@@ -54,7 +54,7 @@ impl SoundfontFileCache {
 pub struct RememberedSettings {
     pub nps_limit: usize,
     pub buffer_size: u32,
-    pub port_threads: usize,
+    pub render_threads: usize,
     pub limiter: AudioLimiterConfig,
     pub equalizer: EqualizerConfig,
     pub reverb: ReverbConfig,
@@ -84,7 +84,7 @@ impl Default for RememberedSettings {
         Self {
             nps_limit: 400_000,
             buffer_size: DEFAULT_BUFFER_SIZE,
-            port_threads: 4,
+            render_threads: 4,
             limiter: AudioLimiterConfig::default(),
             equalizer: EqualizerConfig::default(),
             reverb: ReverbConfig::default(),

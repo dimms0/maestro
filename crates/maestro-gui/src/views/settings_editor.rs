@@ -15,6 +15,7 @@ use crate::{
     views::device_manager::WINDOWS_COMPAT_TEXT,
 };
 use maestro_core::audio_params::{AudioParameters, ChannelCount};
+use maestro_core::renderer::config::RenderThreads;
 
 /// Dialog title used for problems raised while saving a component config.
 pub(crate) const ERROR_TITLE: &str = "Settings";
@@ -145,8 +146,11 @@ pub fn setup(ui: &MainWindow, cx: &AppContext) {
     state.on_update_renderer(move |r: SlintRendererConfig| {
         c.with(|ui, data| {
             actions::edit_selected_config(ui, data, |f| {
-                f.remembered.port_threads = r.port_threads.max(1) as usize;
-                f.renderer.port_threads = r.has_port_threads.then_some(f.remembered.port_threads);
+                f.remembered.render_threads = r.threads.max(1) as usize;
+                f.renderer.render_threads = match r.auto_threads {
+                    true => RenderThreads::Auto,
+                    false => RenderThreads::Fixed(f.remembered.render_threads),
+                };
             })
         });
     });

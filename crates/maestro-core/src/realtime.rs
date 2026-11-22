@@ -155,6 +155,10 @@ impl MaestroRealtimeEngine {
             return Ok(false);
         }
 
+        if old.config.realtime_priority != new.config.realtime_priority {
+            self.renderer.lock().unwrap().rebuild_threadpool()?;
+        }
+
         self.sender.reload_config(&new.config);
 
         // Whatever the sender doesn't handle belongs to the output stream

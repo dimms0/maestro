@@ -316,7 +316,7 @@ export component EventProcessorSection inherits SectionCard {
             HorizontalLayout {
                 spacing: 16px;
 
-                if (SettingsEditorState.current_config.has_port_threads): FlagGrid {
+                if (SettingsEditorState.current_config.has_multiple_ports): FlagGrid {
                     label: "Ports / Groups";
                     enabled: root.on;
                     bypassed: SettingsEditorState.current_config.event_processor.bypass_ports;
@@ -328,7 +328,7 @@ export component EventProcessorSection inherits SectionCard {
                     }
                 }
 
-                if (SettingsEditorState.current_config.has_port_threads): HorizontalSeparator { }
+                if (SettingsEditorState.current_config.has_multiple_ports): HorizontalSeparator { }
 
                 FlagGrid {
                     label: "Channels";

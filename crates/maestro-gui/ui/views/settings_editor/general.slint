@@ -248,13 +248,13 @@ export component RendererSection inherits SectionCard {
     title: "Renderer";
 
     Setting {
-        text: "Multi-Threading across MIDI ports/groups";
-        subtext: "Each MIDI port/group will be rendered in a separate thread. Usually this is not needed unless excessive stress is put in each thread.";
+        text: "Automatic Render Threads";
+        subtext: "Each MIDI port/group gets its own render thread, up to the number of CPU cores. When disabled, ports and synth instances share the set number of threads, and 1 renders ports one after another. Synth multi-threading can raise the thread count further.";
         has-switch: true;
-        checked: SettingsEditorState.current_config.renderer.has_port_threads;
+        checked: SettingsEditorState.current_config.renderer.auto_threads;
         toggled(v) => {
             root.edit = SettingsEditorState.current_config.renderer;
-            root.edit.has_port_threads = v;
+            root.edit.auto_threads = v;
             SettingsEditorState.update_renderer(root.edit);
         }
 
@@ -262,12 +262,12 @@ export component RendererSection inherits SectionCard {
             horizontal-stretch: 0;
             width: 150px;
             minimum: 1;
-            maximum: 16;
-            value: SettingsEditorState.current_config.renderer.port_threads;
-            enabled: SettingsEditorState.current_config.renderer.has_port_threads;
+            maximum: 128;
+            value: SettingsEditorState.current_config.renderer.threads;
+            enabled: !SettingsEditorState.current_config.renderer.auto_threads;
             edited(v) => {
                 root.edit = SettingsEditorState.current_config.renderer;
-                root.edit.port_threads = v;
+                root.edit.threads = v;
                 SettingsEditorState.update_renderer(root.edit);
             }
         }
@@ -355,7 +355,7 @@ export component RealtimeSection inherits SectionCard {
 
     if (root.show_advanced): Setting {
         text: "Real-Time Thread Priority";
-        subtext: "Runs the render thread at real-time priority, which helps avoid stutters under heavy load. On Linux the system may kill Maestro if rendering lags too far behind.";
+        subtext: "Runs the render thread and the shared render threads at real-time priority, which helps avoid stutters under heavy load. On Linux the system may kill Maestro if rendering lags too far behind.";
 
         has-switch: true;
         checked: SettingsEditorState.current_config.realtime.realtime_priority;
