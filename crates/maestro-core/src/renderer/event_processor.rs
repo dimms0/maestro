@@ -257,9 +257,11 @@ impl PortEventProcessor {
                 }
             }
 
-            MaestroEvent::ControlChange { channel, param, .. }
-                if matches!(param, 120 | 123..=127) =>
-            {
+            MaestroEvent::ControlChange {
+                channel,
+                param: 120 | 123..=127,
+                ..
+            } => {
                 if self.ignored_channels[channel as usize] {
                     return None;
                 }

@@ -7,7 +7,9 @@ use crate::{
     helpers::{prepapre_cache_vec, sum_buffer},
     realtime::priority::Priority,
     renderer::{
-        config::{EventProcessorConfig, PostProcessorConfig, RenderThreads, RendererConfig, SynthConfig},
+        config::{
+            EventProcessorConfig, PostProcessorConfig, RenderThreads, RendererConfig, SynthConfig,
+        },
         event_processor::PortEventProcessor,
         port::{PortRenderer, PortSynthManager},
         post_processor::AudioPostProcessor,
@@ -54,7 +56,7 @@ pub(crate) struct MaestroRenderer {
     audio_dur_div: f32,
     audio_channels: usize,
 
-    threadpool: Option<rayon::ThreadPool>,
+    threadpool: Option<Arc<rayon::ThreadPool>>,
 }
 
 impl MaestroRenderer {
@@ -64,6 +66,7 @@ impl MaestroRenderer {
         audio_params: &AudioParameters,
         evproc: Option<EventProcessorConfig>,
         postproc: Option<PostProcessorConfig>,
+        shared_pool: Option<Arc<rayon::ThreadPool>>,
     ) -> Result<Self, RendererError> {
         let mut ports = Vec::new();
         let library: Arc<dyn SynthLibrary> = match config.synth {
@@ -136,7 +139,10 @@ impl MaestroRenderer {
         let audio_dur_div =
             audio_params.sample_rate as f32 * u16::from(audio_params.channels) as f32;
 
-        let threadpool = build_threadpool(pool_threads(&config, port_count as usize))?;
+        let threadpool = match shared_pool {
+            Some(pool) => Some(pool),
+            None => build_threadpool(pool_threads(&config, port_count as usize))?,
+        };
         let post_proc = postproc
             .map(|c| AudioPostProcessor::new(c, audio_params))
             .transpose()?;
@@ -402,7 +408,7 @@ impl MaestroRenderer {
     }
 }
 
-fn pool_threads(config: &RendererConfig, port_count: usize) -> usize {
+pub fn pool_threads(config: &RendererConfig, port_count: usize) -> usize {
     let synth = match &config.synth {
         SynthConfig::BASSMIDI(cfg) => parallel_threads(cfg),
         _ => 0,
@@ -414,8 +420,13 @@ fn pool_threads(config: &RendererConfig, port_count: usize) -> usize {
     ports.min(port_count).max(synth)
 }
 
-fn build_threadpool(threads: usize) -> Result<Option<rayon::ThreadPool>, RendererError> {
+fn build_threadpool(threads: usize) -> Result<Option<Arc<rayon::ThreadPool>>, RendererError> {
     Ok((threads > 1)
-        .then(|| rayon::ThreadPoolBuilder::new().num_threads(threads).build())
+        .then(|| {
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .map(Arc::new)
+        })
         .transpose()?)
 }

@@ -70,6 +70,7 @@ pub struct MaestroFileRenderer {
 
     stats: MaestroFileRendererStatistics,
     cancel: Option<Arc<AtomicBool>>,
+    threadpool: Option<Arc<rayon::ThreadPool>>,
 }
 
 impl MaestroFileRenderer {
@@ -102,7 +103,15 @@ impl MaestroFileRenderer {
             audio_params,
             stats: MaestroFileRendererStatistics::new(),
             cancel: None,
+            threadpool: None,
         })
+    }
+
+    pub fn with_threadpool(self, pool: Arc<rayon::ThreadPool>) -> Self {
+        Self {
+            threadpool: Some(pool),
+            ..self
+        }
     }
 
     pub fn with_batch_size(self, batch_size: f64) -> Self {
@@ -226,6 +235,7 @@ impl MaestroFileRenderer {
             &self.audio_params,
             self.evproc,
             self.postproc,
+            self.threadpool,
         )?;
         renderer.load_soundfonts(&self.soundfonts)?;
         renderer.set_statistics(self.stats.renderer_handle());

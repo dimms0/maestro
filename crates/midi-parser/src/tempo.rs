@@ -71,15 +71,24 @@ impl TempoMap {
     pub fn new(division: Division, tempos: &[(u64, u32)], units_per_second: u64) -> Self {
         let rate = u128::from(units_per_second);
         let (denominator, per_tick) = match division {
-            Division::Ppq(ppq) => (u128::from(ppq.max(1)) * 1_000_000, rate * u128::from(DEFAULT_TEMPO)),
-            Division::Smpte { fps, subframes } => ((u128::from(fps) * u128::from(subframes)).max(1), rate),
+            Division::Ppq(ppq) => (
+                u128::from(ppq.max(1)) * 1_000_000,
+                rate * u128::from(DEFAULT_TEMPO),
+            ),
+            Division::Smpte { fps, subframes } => {
+                ((u128::from(fps) * u128::from(subframes)).max(1), rate)
+            }
         };
 
         let mut segments = vec![(0, 0, per_tick)];
         if division.ppq().is_some() {
             for &(tick, micros) in tempos.iter().filter(|(_, micros)| *micros > 0) {
                 let (start, reached, per_tick) = *segments.last().unwrap();
-                let next = (tick, reached + u128::from(tick - start) * per_tick, rate * u128::from(micros));
+                let next = (
+                    tick,
+                    reached + u128::from(tick - start) * per_tick,
+                    rate * u128::from(micros),
+                );
                 if tick == start {
                     *segments.last_mut().unwrap() = next;
                 } else {
@@ -88,7 +97,10 @@ impl TempoMap {
             }
         }
 
-        Self { segments, denominator }
+        Self {
+            segments,
+            denominator,
+        }
     }
 
     pub fn at(&self, tick: u64) -> u64 {
@@ -133,7 +145,13 @@ mod tests {
 
     #[test]
     fn tempo_map_agrees_with_the_clock() {
-        let tempos = [(0, 400_000), (7, 0), (100, 250_000), (100, 333_333), (1_000, 1_234_567)];
+        let tempos = [
+            (0, 400_000),
+            (7, 0),
+            (100, 250_000),
+            (100, 333_333),
+            (1_000, 1_234_567),
+        ];
         let map = TempoMap::new(Division::Ppq(480), &tempos, RATE);
 
         let mut clock = TempoClock::new(Division::Ppq(480), RATE);

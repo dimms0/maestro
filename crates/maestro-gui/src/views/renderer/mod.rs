@@ -59,7 +59,10 @@ pub fn queue_midis(ui: &MainWindow, data: &mut AppData, paths: Vec<PathBuf>) {
             Ok(None) => entries.push((path, String::new())),
             Ok(Some(mut names)) if names.len() == 1 => entries.push((path, names.remove(0))),
             Ok(Some(names)) if names.is_empty() => {
-                errors::report(ARCHIVE_ERROR, format!("\"{}\" holds no MIDI file.", path.display()));
+                errors::report(
+                    ARCHIVE_ERROR,
+                    format!("\"{}\" holds no MIDI file.", path.display()),
+                );
             }
             Ok(Some(names)) => data.pending_archives.push((path, names)),
             Err(e) => errors::report(ARCHIVE_ERROR, format!("\"{}\":\n\n{e}", path.display())),
@@ -77,8 +80,13 @@ fn show_next_archive(ui: &MainWindow, data: &mut AppData) {
         Some((path, names)) => (path.to_string_lossy().as_ref().into(), names.clone()),
         None => (Default::default(), Vec::new()),
     };
-    let entries: Vec<_> =
-        names.into_iter().map(|name| SlintArchiveEntry { name: name.into(), checked: true }).collect();
+    let entries: Vec<_> = names
+        .into_iter()
+        .map(|name| SlintArchiveEntry {
+            name: name.into(),
+            checked: true,
+        })
+        .collect();
     state.set_archive_entries(ModelRc::new(VecModel::from(entries)));
     state.set_archive_path(path);
 }

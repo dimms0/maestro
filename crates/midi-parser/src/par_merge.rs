@@ -43,7 +43,11 @@ impl<T> Emit<'_, T> {
 impl<'a> MidiFile<'a> {
     /// A parallel merge into `lanes` outputs, with `state` building each
     /// track's callback state from its index.
-    pub fn merged_par<S, T>(&'a self, lanes: usize, state: impl FnMut(usize) -> S) -> Result<ParMerged<'a, S, T>> {
+    pub fn merged_par<S, T>(
+        &'a self,
+        lanes: usize,
+        state: impl FnMut(usize) -> S,
+    ) -> Result<ParMerged<'a, S, T>> {
         let count = self.track_count();
 
         // Format 2 tracks play one after another, so each starts where the
@@ -52,7 +56,13 @@ impl<'a> MidiFile<'a> {
         if self.kind() == FileKind::Smf && self.format() == 2 {
             let ends: Vec<u64> = (0..count)
                 .into_par_iter()
-                .map(|index| self.track(index).unwrap().map_while(Result::ok).last().map_or(0, |e| e.0))
+                .map(|index| {
+                    self.track(index)
+                        .unwrap()
+                        .map_while(Result::ok)
+                        .last()
+                        .map_or(0, |e| e.0)
+                })
                 .collect();
             for index in 1..count {
                 offsets[index] = offsets[index - 1] + ends[index - 1];
@@ -130,7 +140,16 @@ impl<'a, T> Track<'a, T> {
             self.next = next.as_ref().ok().copied().flatten();
             next?;
 
-            visit(state, tick, group, event, &mut Emit { out: &mut self.out, tick });
+            visit(
+                state,
+                tick,
+                group,
+                event,
+                &mut Emit {
+                    out: &mut self.out,
+                    tick,
+                },
+            );
         }
 
         Ok(())
@@ -150,7 +169,11 @@ fn merge<T: Copy + Send + Sync>(outs: &[&[(u64, T)]]) -> Vec<T> {
     let mut samples: Vec<(u64, usize)> = outs
         .iter()
         .enumerate()
-        .flat_map(|(index, out)| out.iter().step_by(stride).map(move |&(tick, _)| (tick, index)))
+        .flat_map(|(index, out)| {
+            out.iter()
+                .step_by(stride)
+                .map(move |&(tick, _)| (tick, index))
+        })
         .collect();
     samples.sort_unstable();
 
@@ -161,7 +184,9 @@ fn merge<T: Copy + Send + Sync>(outs: &[&[(u64, T)]]) -> Vec<T> {
             let (tick, track) = samples[group * samples.len() / groups];
             outs.iter()
                 .enumerate()
-                .map(|(index, out)| out.partition_point(|e| e.0 < tick || (e.0 == tick && index < track)))
+                .map(|(index, out)| {
+                    out.partition_point(|e| e.0 < tick || (e.0 == tick && index < track))
+                })
                 .collect()
         })
         .collect();
@@ -181,11 +206,25 @@ fn merge<T: Copy + Send + Sync>(outs: &[&[(u64, T)]]) -> Vec<T> {
     }
 
     jobs.into_par_iter().for_each(|(pair, dest)| {
-        let slices: Vec<_> = outs.iter().zip(pair[0].iter().zip(&pair[1])).map(|(out, (&a, &b))| &out[a..b]).collect();
-        let Some(lo) = slices.iter().filter_map(|slice| slice.first()).map(|e| e.0).min() else {
+        let slices: Vec<_> = outs
+            .iter()
+            .zip(pair[0].iter().zip(&pair[1]))
+            .map(|(out, (&a, &b))| &out[a..b])
+            .collect();
+        let Some(lo) = slices
+            .iter()
+            .filter_map(|slice| slice.first())
+            .map(|e| e.0)
+            .min()
+        else {
             return;
         };
-        let hi = slices.iter().filter_map(|slice| slice.last()).map(|e| e.0).max().unwrap();
+        let hi = slices
+            .iter()
+            .filter_map(|slice| slice.last())
+            .map(|e| e.0)
+            .max()
+            .unwrap();
 
         // Going through tracks in order keeps ties in track order either way.
         let span = (hi - lo) as usize + 1;
@@ -222,9 +261,14 @@ mod tests {
 
     fn smf(format: u8) -> Vec<u8> {
         let tracks: [&[u8]; 3] = [
-            &[0x00, 0x90, 60, 1, 0x10, 0x90, 61, 1, 0x00, 0x90, 62, 1, 0x00, 0xFF, 0x2F, 0x00],
+            &[
+                0x00, 0x90, 60, 1, 0x10, 0x90, 61, 1, 0x00, 0x90, 62, 1, 0x00, 0xFF, 0x2F, 0x00,
+            ],
             &[0x00, 0xFF, 0x2F, 0x00],
-            &[0x00, 0x91, 70, 1, 0x00, 0x91, 71, 1, 0x10, 0x91, 72, 1, 0x05, 0x91, 73, 1, 0x00, 0xFF, 0x2F, 0x00],
+            &[
+                0x00, 0x91, 70, 1, 0x00, 0x91, 71, 1, 0x10, 0x91, 72, 1, 0x05, 0x91, 73, 1, 0x00,
+                0xFF, 0x2F, 0x00,
+            ],
         ];
         let mut bytes = b"MThd\0\0\0\x06\0".to_vec();
         bytes.extend([format, 0, 3, 0, 96]);
@@ -275,7 +319,9 @@ mod tests {
     fn merge_matches_a_stable_sort_across_groups() {
         let mut seed = 1u64;
         let mut next = move |range: u64| {
-            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             (seed >> 33) % range
         };
 

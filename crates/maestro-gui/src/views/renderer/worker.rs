@@ -5,8 +5,6 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
-use rayon::prelude::*;
-
 use midi_parser::MidiFile;
 
 use crate::utils::{fmt_count, fmt_dur};
@@ -18,7 +16,10 @@ use maestro_core::{
     file_renderer::{
         MaestroFileRenderer, MaestroFileRendererStatistics, OutputSettings, RenderOutcome,
     },
-    renderer::config::{EventProcessorConfig, PostProcessorConfig, RendererConfig},
+    renderer::{
+        config::{EventProcessorConfig, PostProcessorConfig, RendererConfig},
+        pool_threads,
+    },
     system_cfg::{ConfigComponent, MaestroConfigManager},
 };
 
@@ -41,6 +42,7 @@ pub struct ConverterRenderSettings {
     post_processor: Option<PostProcessorConfig>,
     pub multithreaded: bool,
     pub threads: usize,
+    pool: Option<Arc<rayon::ThreadPool>>,
 }
 
 impl ConverterRenderSettings {
@@ -48,6 +50,17 @@ impl ConverterRenderSettings {
         let path =
             MaestroConfigManager::default().get_component_config_path(&ConfigComponent::Converter);
         let cfg = load_config_cache(CONVERTER_COMPONENT.to_string(), path).unwrap();
+
+        let threads = pool_threads(&cfg.renderer, usize::MAX);
+        let pool = (threads > 1)
+            .then(|| {
+                rayon::ThreadPoolBuilder::new()
+                    .num_threads(threads)
+                    .build()
+                    .ok()
+            })
+            .flatten()
+            .map(Arc::new);
 
         Self {
             renderer: cfg.renderer,
@@ -58,6 +71,7 @@ impl ConverterRenderSettings {
             post_processor: cfg.has_post_processor.then_some(cfg.post_processor),
             multithreaded: cfg.converter_custom.multithreaded_export,
             threads: cfg.converter_custom.export_threads,
+            pool,
         }
     }
 
@@ -68,7 +82,11 @@ impl ConverterRenderSettings {
     ) -> Result<MaestroFileRenderer, Box<dyn std::error::Error>> {
         let midi_path = PathBuf::from(entry.midi_path.as_str());
         let name = match entry.entry.as_str() {
-            "" => midi_path.file_name().unwrap_or_default().to_string_lossy().into_owned(),
+            "" => midi_path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
             entry => entry.to_string(),
         };
         let output_dir = self
@@ -95,6 +113,9 @@ impl ConverterRenderSettings {
         if let Some(pp) = &self.post_processor {
             renderer = renderer.with_post_processor(*pp);
         }
+        if let Some(pool) = &self.pool {
+            renderer = renderer.with_threadpool(pool.clone());
+        }
         Ok(renderer)
     }
 }
@@ -120,26 +141,23 @@ impl RenderRun<'_> {
     }
 
     pub fn run_parallel(&self, queue: &[SlintMidiRenderEntry]) {
-        let render_all = || {
-            queue.par_iter().enumerate().for_each(|(idx, entry)| {
-                let _ = self.render_one(idx, entry);
-            });
+        let threads = match self.settings.threads {
+            0 => std::thread::available_parallelism().map_or(1, |n| n.get()),
+            threads => threads,
         };
+        let next = AtomicUsize::new(0);
 
-        let threads = self.settings.threads.min(queue.len());
-        let pool = (threads > 0)
-            .then(|| {
-                rayon::ThreadPoolBuilder::new()
-                    .num_threads(threads)
-                    .build()
-                    .ok()
-            })
-            .flatten();
-
-        match pool {
-            Some(pool) => pool.install(render_all),
-            None => render_all(),
-        }
+        std::thread::scope(|scope| {
+            for _ in 0..threads.min(queue.len()) {
+                scope.spawn(|| {
+                    loop {
+                        let idx = next.fetch_add(1, Ordering::Relaxed);
+                        let Some(entry) = queue.get(idx) else { break };
+                        let _ = self.render_one(idx, entry);
+                    }
+                });
+            }
+        });
     }
 
     fn render_one(&self, idx: usize, entry: &SlintMidiRenderEntry) -> bool {
@@ -149,7 +167,8 @@ impl RenderRun<'_> {
 
         let job_id = idx as u64;
         set_entry_status(self.ui, idx, RenderStatus::Rendering);
-        self.registry.push(RenderJob::scanning(job_id, label(entry)));
+        self.registry
+            .push(RenderJob::scanning(job_id, label(entry)));
 
         let midi = match entry.entry.as_str() {
             "" => MidiFile::open(entry.midi_path.as_str()),
@@ -169,14 +188,10 @@ impl RenderRun<'_> {
 
     fn scan(&self, midi: Option<&MidiFile>, job_id: u64) -> f64 {
         let registry = self.registry.clone();
-        midi_total_pos(
-            midi,
-            self.cancel,
-            move |done, total| {
-                let stats = format!("Scanning… track {done} of {total}");
-                registry.update(job_id, |j| j.stats = stats);
-            },
-        )
+        midi_total_pos(midi, self.cancel, move |done, total| {
+            let stats = format!("Scanning… track {done} of {total}");
+            registry.update(job_id, |j| j.stats = stats);
+        })
     }
 
     fn render(

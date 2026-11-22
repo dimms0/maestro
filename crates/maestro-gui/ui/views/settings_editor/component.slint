@@ -108,7 +108,7 @@ export component ConverterSection inherits SectionCard {
 
     Setting {
         text: "Multi-threaded queue export";
-        subtext: "When enabled, Maestro will render multiple MIDIs simultaneously according to the number of threads set. When set to 0 (automatic), Maestro will create as many threads as the CPU core count. It is not recommended to use this option with BASSMIDI multithreading enabled.";
+        subtext: "When enabled, Maestro will render multiple MIDIs simultaneously according to the number of threads set. When set to 0 (automatic), Maestro will create as many threads as the CPU core count.";
         has-switch: true;
         checked: SettingsEditorState.current_config.converter_custom.multithreaded_export;
         toggled(v) => {

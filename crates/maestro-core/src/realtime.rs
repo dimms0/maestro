@@ -106,6 +106,7 @@ impl MaestroRealtimeEngine {
             &stream_params,
             options.event_processor.clone(),
             options.post_processor,
+            None,
         )?;
         let stats = MaestroRealtimeStatistics::new();
         renderer.set_statistics(stats.renderer_handle());

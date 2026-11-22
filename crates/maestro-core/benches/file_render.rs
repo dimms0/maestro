@@ -19,8 +19,8 @@ use maestro_core::{
     renderer::{
         SynthAvailability,
         config::{
-            EventProcessorConfig, RenderThreads, RendererConfig, SynthConfig, bassmidi::BASSMIDIConfig,
-            fluidsynth::FluidSynthConfig,
+            EventProcessorConfig, RenderThreads, RendererConfig, SynthConfig,
+            bassmidi::BASSMIDIConfig, fluidsynth::FluidSynthConfig,
         },
     },
     soundfont::SoundFontList,

@@ -347,7 +347,9 @@ pub fn sync_renderer_to_slint(ui: &MainWindow, state: &AppData) {
 
 // Virtual MIDI device
 
-fn system_custom_with_topology(cfg: &crate::state::ComponentConfigCache) -> crate::SlintSystemCustom {
+fn system_custom_with_topology(
+    cfg: &crate::state::ComponentConfigCache,
+) -> crate::SlintSystemCustom {
     let mut custom = system_custom_to_slint(&cfg.system_custom, &cfg.remembered);
     if cfg.dirty
         && let Some(saved) = crate::config::load_config_cache(cfg.name.clone(), cfg.path.clone())
